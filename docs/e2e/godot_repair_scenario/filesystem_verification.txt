@@ -1,0 +1,40 @@
+Real filesystem verification after ROLLBACK (M2 auto-repair E2E scenario)
+============================================================================
+
+Objective given to Claude: "Add an exported integer variable named lives
+with default value 3 to main.gd, using GDScript's @export annotation
+syntax, plus a function take_damage(amount) that subtracts amount from
+lives."
+
+This project's project.godot has config_version=4 but the installed
+engine is Godot 3.5.2 (godot3-server), where @export (a Godot 4-only
+annotation) is not valid GDScript -- a genuine, unprompted engine-version
+mismatch, not a fabricated error.
+
+Attempt 0 (initial): Claude used @export. Real godot3-server --check-only
+reported: "SCRIPT ERROR: Parse Error: Parse error: Unexpected '@'".
+validation.failed, duration_ms=97.
+
+Repair 1: Claude received the real error via the repair context, replaced
+`@export var lives: int = 3` with the Godot 3 equivalent
+`export(int) var lives = 3`. Real godot3-server --check-only reported no
+errors. validation.passed, duration_ms=104.
+
+Final: VALIDATED. Task COMPLETED.
+
+ROLLBACK result -- main.gd content after rollback:
+  extends Node
+
+  func _ready():
+  	print("hello")
+
+This is byte-for-byte identical to the pre-task committed content --
+BOTH the initial attempt's and the repair's changes were fully reverted
+in one step, using only the ORIGINAL pre-task checkpoint (never an
+intermediate repair state).
+
+git status --porcelain after rollback:
+  ?? .impulsor/
+
+(clean: only the Hub's own metadata directory remains untracked; no
+project file was left modified.)

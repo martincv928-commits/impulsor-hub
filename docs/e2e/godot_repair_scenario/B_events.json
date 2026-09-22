@@ -1,0 +1,191 @@
+[
+    {
+        "id": "6c1e542e-4a70-44da-9812-edb312667973",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.finished",
+        "severity": "info",
+        "payload": {
+            "final_status": "COMPLETED",
+            "validation_status": "pass",
+            "repair_attempts_used": 1
+        },
+        "created_at": "2026-09-22T14:03:06.890827+00:00"
+    },
+    {
+        "id": "2c2bbbd5-23d6-4d3e-9158-cb15077b7037",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "validation.passed",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "validator": "godot",
+            "status": "pass",
+            "summary": "All 1 GDScript file(s) parsed cleanly",
+            "duration_ms": 104,
+            "error_count": 0,
+            "errors": [],
+            "warning_count": 0
+        },
+        "created_at": "2026-09-22T14:03:06.887207+00:00"
+    },
+    {
+        "id": "3b5c2107-28e8-4e25-9bcf-b6e48999e8ef",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "repair.finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "run_status": "completed"
+        },
+        "created_at": "2026-09-22T14:03:06.780981+00:00"
+    },
+    {
+        "id": "5e507cdc-a080-4ecf-8eb0-081f8ee598d5",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.execution_finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "kind": "repair",
+            "run_status": "completed",
+            "exit_code": 0,
+            "warnings": [
+                "1 tool call(s) were denied by permission policy"
+            ],
+            "stdout_path": "/home/user/e2e_godot_repair/.impulsor/logs/543cbc98-4fc1-45eb-9bab-e3d9db270917/attempt_1_stdout.log",
+            "stderr_path": "/home/user/e2e_godot_repair/.impulsor/logs/543cbc98-4fc1-45eb-9bab-e3d9db270917/attempt_1_stderr.log"
+        },
+        "created_at": "2026-09-22T14:03:06.778193+00:00"
+    },
+    {
+        "id": "6625697d-68de-4d5e-b11e-fdb0bd415de1",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.execution_started",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "kind": "repair"
+        },
+        "created_at": "2026-09-22T14:02:48.014269+00:00"
+    },
+    {
+        "id": "5f8ce43b-7613-46c5-8d52-5f62530b1480",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "repair.started",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "error_count": 1
+        },
+        "created_at": "2026-09-22T14:02:48.013424+00:00"
+    },
+    {
+        "id": "2f98e672-59bc-4ecb-95ad-a6fe377bef5d",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "validation.failed",
+        "severity": "warning",
+        "payload": {
+            "attempt": 0,
+            "validator": "godot",
+            "status": "fail",
+            "summary": "1 script error(s) across 1 checked file(s)",
+            "duration_ms": 97,
+            "error_count": 1,
+            "errors": [
+                {
+                    "file": "main.gd",
+                    "line": 3,
+                    "message": "SCRIPT ERROR: Parse Error: Parse error: Unexpected '@'"
+                }
+            ],
+            "warning_count": 0
+        },
+        "created_at": "2026-09-22T14:02:48.012123+00:00"
+    },
+    {
+        "id": "a5c99933-a8cb-46bf-a2bc-3bbce206d1de",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "validator.detected",
+        "severity": "info",
+        "payload": {
+            "validator": "godot",
+            "health": {
+                "status": "healthy",
+                "available": true,
+                "version": "3.5.2.stable.custom_build",
+                "executable_path": "/usr/bin/godot3-server"
+            }
+        },
+        "created_at": "2026-09-22T14:02:47.912625+00:00"
+    },
+    {
+        "id": "96aaa6ed-61fd-48e7-a3a5-144c91e62ea3",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.execution_finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial",
+            "run_status": "completed",
+            "exit_code": 0,
+            "warnings": [],
+            "stdout_path": "/home/user/e2e_godot_repair/.impulsor/logs/543cbc98-4fc1-45eb-9bab-e3d9db270917/attempt_0_stdout.log",
+            "stderr_path": "/home/user/e2e_godot_repair/.impulsor/logs/543cbc98-4fc1-45eb-9bab-e3d9db270917/attempt_0_stderr.log"
+        },
+        "created_at": "2026-09-22T14:02:47.894281+00:00"
+    },
+    {
+        "id": "391121a9-d99c-40b5-89e8-b8f9703c43aa",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.execution_started",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial"
+        },
+        "created_at": "2026-09-22T14:02:37.612900+00:00"
+    },
+    {
+        "id": "cc6c36b5-9c32-4e8d-b7ee-30dfdd66d0ec",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": "543cbc98-4fc1-45eb-9bab-e3d9db270917",
+        "type": "task.checkpoint_created",
+        "severity": "info",
+        "payload": {
+            "checkpoint_id": "7fd4ee33-4d59-46c0-bb40-7680d36a8650",
+            "mechanism": "filesystem_snapshot"
+        },
+        "created_at": "2026-09-22T14:02:37.611538+00:00"
+    },
+    {
+        "id": "e92dbe7a-b980-49ac-b395-9bd94ec8cb4f",
+        "project_id": "e7011ae7-aefe-42f8-86e4-2ffb4c1bcd57",
+        "task_id": "525b9f2b-1ba5-46bf-8903-b995a9cb8344",
+        "task_run_id": null,
+        "type": "task.locked",
+        "severity": "info",
+        "payload": {},
+        "created_at": "2026-09-22T14:02:37.607919+00:00"
+    }
+]

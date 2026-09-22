@@ -1,0 +1,107 @@
+[
+    {
+        "id": "ab17860f-9a39-4329-a579-03f556f54786",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "task.finished",
+        "severity": "info",
+        "payload": {
+            "final_status": "COMPLETED",
+            "validation_status": "pass",
+            "repair_attempts_used": 0
+        },
+        "created_at": "2026-09-22T14:01:59.619842+00:00"
+    },
+    {
+        "id": "0dc65de7-3a6c-49a8-aa03-defc5b887abe",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "validation.passed",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "validator": "godot",
+            "status": "pass",
+            "summary": "All 1 GDScript file(s) parsed cleanly",
+            "duration_ms": 85,
+            "error_count": 0,
+            "errors": [],
+            "warning_count": 0
+        },
+        "created_at": "2026-09-22T14:01:59.616797+00:00"
+    },
+    {
+        "id": "59e9e73e-37d4-4d37-a15d-9d82a652a9f4",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "validator.detected",
+        "severity": "info",
+        "payload": {
+            "validator": "godot",
+            "health": {
+                "status": "healthy",
+                "available": true,
+                "version": "3.5.2.stable.custom_build",
+                "executable_path": "/usr/bin/godot3-server"
+            }
+        },
+        "created_at": "2026-09-22T14:01:59.529063+00:00"
+    },
+    {
+        "id": "3587e133-5253-4261-92a9-1328e5cb3445",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "task.execution_finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial",
+            "run_status": "completed",
+            "exit_code": 0,
+            "warnings": [],
+            "stdout_path": "/home/user/e2e_godot_pass/.impulsor/logs/3688a199-012a-4d12-94a6-84cb15adcdaf/attempt_0_stdout.log",
+            "stderr_path": "/home/user/e2e_godot_pass/.impulsor/logs/3688a199-012a-4d12-94a6-84cb15adcdaf/attempt_0_stderr.log"
+        },
+        "created_at": "2026-09-22T14:01:59.510813+00:00"
+    },
+    {
+        "id": "da454f07-efcf-4034-98db-d790206370d2",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "task.execution_started",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial"
+        },
+        "created_at": "2026-09-22T14:01:49.759064+00:00"
+    },
+    {
+        "id": "114ec60a-0d72-4ec8-aa11-6817e15bd0f2",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": "3688a199-012a-4d12-94a6-84cb15adcdaf",
+        "type": "task.checkpoint_created",
+        "severity": "info",
+        "payload": {
+            "checkpoint_id": "f9fe53b6-2d51-4866-b53d-d43ecd7fa9ba",
+            "mechanism": "filesystem_snapshot"
+        },
+        "created_at": "2026-09-22T14:01:49.753223+00:00"
+    },
+    {
+        "id": "8b7b7e9b-aea5-47d9-82ff-686066ef40d3",
+        "project_id": "158dc7a9-141e-4721-bdd3-185a43238b78",
+        "task_id": "1772411c-9591-4869-b234-4d215dee6151",
+        "task_run_id": null,
+        "type": "task.locked",
+        "severity": "info",
+        "payload": {},
+        "created_at": "2026-09-22T14:01:49.746525+00:00"
+    }
+]
