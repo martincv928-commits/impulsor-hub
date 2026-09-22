@@ -44,7 +44,7 @@ jobs:
       # at runtime, on the machine it actually runs on.
       - name: Package ImpulsorHub.exe
         run: |
-          pyinstaller --onefile --name ImpulsorHub --add-data "ui/dist;ui/dist" app/launcher.py
+          pyinstaller --onefile --name ImpulsorHub --add-data "ui/dist;ui/dist" --add-data "fixtures;fixtures" app/launcher.py
 
       - name: Assemble ImpulsorHub-Windows.zip contents
         run: |

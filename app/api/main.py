@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -66,7 +67,13 @@ def health() -> dict:
 # only ever stops a DIFFERENT origin's JS (some other open tab) from
 # blindly calling the API using the browser as a confused deputy, which
 # it still does since that other origin can't read this page's response.
-_UI_DIST = Path(__file__).resolve().parents[2] / "ui" / "dist"
+# Same PyInstaller-frozen-bundle caveat as app/api/routers/testgame.py's
+# _template_dir(): __file__ is meaningless inside a --onefile bundle, use
+# sys._MEIPASS (where --add-data "ui/dist;ui/dist" places it) instead.
+if getattr(sys, "frozen", False):
+    _UI_DIST = Path(getattr(sys, "_MEIPASS")) / "ui" / "dist"
+else:
+    _UI_DIST = Path(__file__).resolve().parents[2] / "ui" / "dist"
 if _UI_DIST.is_dir():
     _INDEX_HTML = (_UI_DIST / "index.html").read_text(encoding="utf-8")
     app.mount("/assets", StaticFiles(directory=str(_UI_DIST / "assets")), name="ui-assets")

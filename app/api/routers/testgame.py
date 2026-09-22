@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -25,7 +26,19 @@ from app.projects import service as projects_service
 
 router = APIRouter(prefix="/api/test-game", tags=["test-game"])
 
-_TEMPLATE_DIR = Path(__file__).resolve().parents[3] / "fixtures" / "impulsor_hub_test_game"
+
+def _template_dir() -> Path:
+    # Inside a PyInstaller --onefile bundle, __file__ points into a
+    # temporary extraction dir, not the source tree, so parents[]-walking
+    # from it is meaningless -- PyInstaller instead exposes the bundle
+    # root as sys._MEIPASS, and the workflow's --add-data flag places
+    # fixtures/ there (see .github/workflows/windows-build.yml).
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS")) / "fixtures" / "impulsor_hub_test_game"
+    return Path(__file__).resolve().parents[3] / "fixtures" / "impulsor_hub_test_game"
+
+
+_TEMPLATE_DIR = _template_dir()
 
 
 def _copies_root() -> Path:
