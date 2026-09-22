@@ -1,0 +1,189 @@
+[
+    {
+        "id": "89d6a209-d7c3-4444-a814-f5150ca0bc82",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.finished",
+        "severity": "info",
+        "payload": {
+            "final_status": "COMPLETED",
+            "validation_status": "pass",
+            "repair_attempts_used": 1
+        },
+        "created_at": "2026-09-22T17:20:10.267753+00:00"
+    },
+    {
+        "id": "2488037d-7708-4a56-93f6-96245bd7bae2",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "validation.passed",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "validator": "godot",
+            "status": "pass",
+            "summary": "All 1 GDScript file(s) parsed cleanly",
+            "duration_ms": 182,
+            "error_count": 0,
+            "errors": [],
+            "warning_count": 0
+        },
+        "created_at": "2026-09-22T17:20:10.263386+00:00"
+    },
+    {
+        "id": "c0d307ea-ac1a-4592-b5a8-da3d1b22ff27",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "repair.finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "run_status": "completed"
+        },
+        "created_at": "2026-09-22T17:20:10.078982+00:00"
+    },
+    {
+        "id": "2ff8a465-ffdb-4846-a4c4-e18412844e3b",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.execution_finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "kind": "repair",
+            "run_status": "completed",
+            "exit_code": 0,
+            "warnings": [],
+            "stdout_path": "/home/user/e2e_godot4_repair/.impulsor/logs/8954f9d8-3425-4ed5-8d35-36405078d233/attempt_1_stdout.log",
+            "stderr_path": "/home/user/e2e_godot4_repair/.impulsor/logs/8954f9d8-3425-4ed5-8d35-36405078d233/attempt_1_stderr.log"
+        },
+        "created_at": "2026-09-22T17:20:10.071550+00:00"
+    },
+    {
+        "id": "c061bafd-ca09-46ca-8263-16e809843a2c",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.execution_started",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "kind": "repair"
+        },
+        "created_at": "2026-09-22T17:19:42.020179+00:00"
+    },
+    {
+        "id": "35c0da93-1e35-44a2-9876-e74800fb5331",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "repair.started",
+        "severity": "info",
+        "payload": {
+            "attempt": 1,
+            "error_count": 1
+        },
+        "created_at": "2026-09-22T17:19:42.019205+00:00"
+    },
+    {
+        "id": "cef2b060-045f-4cdf-90cc-01a916cb7ff8",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "validation.failed",
+        "severity": "warning",
+        "payload": {
+            "attempt": 0,
+            "validator": "godot",
+            "status": "fail",
+            "summary": "1 script error(s) across 1 checked file(s)",
+            "duration_ms": 177,
+            "error_count": 1,
+            "errors": [
+                {
+                    "file": "main.gd",
+                    "line": 3,
+                    "message": "SCRIPT ERROR: Parse Error: Unexpected \"Identifier\" in class body."
+                }
+            ],
+            "warning_count": 0
+        },
+        "created_at": "2026-09-22T17:19:42.017645+00:00"
+    },
+    {
+        "id": "16f29d6d-6b5d-4ae6-b1d3-473b353e68ba",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "validator.detected",
+        "severity": "info",
+        "payload": {
+            "validator": "godot",
+            "health": {
+                "status": "healthy",
+                "available": true,
+                "version": "4.2.2.stable.official.15073afe3",
+                "executable_path": "/usr/local/bin/godot4"
+            }
+        },
+        "created_at": "2026-09-22T17:19:41.838551+00:00"
+    },
+    {
+        "id": "f5bf1fd6-3111-43df-860a-9945b7e8c5c9",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.execution_finished",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial",
+            "run_status": "completed",
+            "exit_code": 0,
+            "warnings": [],
+            "stdout_path": "/home/user/e2e_godot4_repair/.impulsor/logs/8954f9d8-3425-4ed5-8d35-36405078d233/attempt_0_stdout.log",
+            "stderr_path": "/home/user/e2e_godot4_repair/.impulsor/logs/8954f9d8-3425-4ed5-8d35-36405078d233/attempt_0_stderr.log"
+        },
+        "created_at": "2026-09-22T17:19:41.820153+00:00"
+    },
+    {
+        "id": "1db724af-ebf1-406e-a592-d497c8d460a4",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.execution_started",
+        "severity": "info",
+        "payload": {
+            "attempt": 0,
+            "kind": "initial"
+        },
+        "created_at": "2026-09-22T17:19:32.003825+00:00"
+    },
+    {
+        "id": "f387bfdb-e83b-4042-91ee-fc6c133272ad",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": "8954f9d8-3425-4ed5-8d35-36405078d233",
+        "type": "task.checkpoint_created",
+        "severity": "info",
+        "payload": {
+            "checkpoint_id": "81dfad44-75c6-4493-b13b-d7d92bfec745",
+            "mechanism": "filesystem_snapshot"
+        },
+        "created_at": "2026-09-22T17:19:32.002044+00:00"
+    },
+    {
+        "id": "7084a343-3adc-4088-8b35-ff278a0d122c",
+        "project_id": "22fb18a5-4b25-411e-bc1a-7ddcaf3331e3",
+        "task_id": "2fb9e1f6-2f11-42e1-bb6d-a6c264c01680",
+        "task_run_id": null,
+        "type": "task.locked",
+        "severity": "info",
+        "payload": {},
+        "created_at": "2026-09-22T17:19:31.991812+00:00"
+    }
+]

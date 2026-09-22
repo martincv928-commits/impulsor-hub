@@ -1,0 +1,12 @@
+[
+    {
+        "id": "213a320e-3440-4841-a46c-58edcd9ec5ab",
+        "task_run_id": "c6c397fa-09df-4921-a8ce-e182cb2de63d",
+        "path": "main.gd",
+        "change_type": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "claimed_by_executor": true,
+        "observed_by_vcs": true
+    }
+]

@@ -1,0 +1,43 @@
+Real filesystem verification after ROLLBACK (M2 HARDENING: Godot 4 real auto-repair E2E)
+==========================================================================================
+
+Godot binary: /usr/local/bin/godot4, official release, verified via SHA512
+checksum against godotengine/godot's own SHA512-SUMS.txt for 4.2.2-stable.
+`godot4 --version` -> 4.2.2.stable.official.15073afe3
+
+Objective given to Claude: "Add a variable named self_ref to main.gd that
+caches a reference to this node, declared using the classic Godot GDScript
+'onready var' keyword syntax (bare 'onready', not the '@onready'
+annotation), plus a function get_self() that returns self_ref."
+
+This project's project.godot targets Godot 4 (config_version=5,
+features=["4.2"]) and is validated with the real godot4 binary, where the
+bare `onready` keyword was removed (Godot 4 only supports the `@onready`
+annotation) -- a genuine, verified-by-hand parse error, not fabricated:
+manually running `godot4 --headless --check-only --script` against a file
+using bare `onready var x = 1` produces the real engine error
+"Parse Error: Unexpected 'Identifier' in class body" before this scenario
+was ever run through the app.
+
+Attempt 0 (initial): Claude used bare `onready var self_ref = self`. Real
+godot4 --check-only reported a parse error. validation.failed,
+duration_ms=177.
+
+Repair 1: Claude received the real error via the repair context, replaced
+it with `@onready var self_ref = self` (Godot 4's actual syntax). Real
+godot4 --check-only reported no errors. validation.passed, duration_ms=182.
+
+Final: VALIDATED. Task COMPLETED.
+
+ROLLBACK result -- main.gd content after rollback:
+  extends Node
+
+  func _ready():
+  	print("hello")
+
+Byte-for-byte identical to the pre-task committed content -- both the
+initial attempt's and the repair's changes were fully reverted in one
+step, from the original checkpoint only.
+
+git status --porcelain after rollback:
+  ?? .impulsor/

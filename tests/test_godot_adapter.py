@@ -1,3 +1,22 @@
+"""GodotAdapter tests.
+
+Organization (M2 HARDENING, per external audit): tests here are split into
+two groups, distinguished by the `@pytest.mark.real_godot` marker:
+
+- **Unmarked tests** are fully portable -- they use `monkeypatch` to
+  simulate subprocess behavior (or don't touch a real Godot binary at
+  all, e.g. resource-discovery ordering via a faked `shutil.which`, or
+  `supports()`, which only stats a file). These always run and never
+  require Godot to be installed.
+- **`@pytest.mark.real_godot` tests** execute the actual Godot binary
+  (detection, a real PASS, a real FAIL with a real parse error, real
+  cancellation of a real subprocess, ...). `tests/conftest.py`
+  auto-skips these (SKIPPED, never a false FAIL) when no real Godot
+  executable is detected, so plain `pytest tests/` is portable to a
+  machine without Godot. Run `pytest -m real_godot` to select only these
+  and force them to actually execute (they'll individually skip pieces
+  that still can't run, e.g. if pointed at a fake path on purpose).
+"""
 from __future__ import annotations
 
 import os
@@ -21,6 +40,7 @@ def godot_project(tmp_path: Path) -> Path:
 
 
 # 1. Godot detectado.
+@pytest.mark.real_godot
 def test_godot_detected():
     adapter = GodotAdapter()
     info = adapter.detect()
@@ -38,6 +58,7 @@ def test_godot_not_installed(monkeypatch):
 
 
 # 3. Health check.
+@pytest.mark.real_godot
 def test_health_check_reports_healthy_when_available():
     adapter = GodotAdapter()
     health = adapter.health_check()
@@ -70,6 +91,7 @@ def test_non_godot_project_not_supported(tmp_path: Path):
 
 
 # 6. Validation PASS.
+@pytest.mark.real_godot
 def test_validation_pass(godot_project: Path):
     adapter = GodotAdapter()
     result = adapter.validate(godot_project, run_id="r1", timeout_seconds=30)
@@ -80,6 +102,7 @@ def test_validation_pass(godot_project: Path):
 
 
 # 7. Validation FAIL.
+@pytest.mark.real_godot
 def test_validation_fail_reports_error_with_location(godot_project: Path):
     (godot_project / "broken.gd").write_text("extends Node\nfunc broken(:\n\tpass\n")
     adapter = GodotAdapter()
@@ -92,6 +115,7 @@ def test_validation_fail_reports_error_with_location(godot_project: Path):
 
 
 # 8. Validator timeout.
+@pytest.mark.real_godot
 def test_validator_timeout(godot_project: Path, monkeypatch):
     import subprocess
 
@@ -129,6 +153,7 @@ def test_validator_timeout(godot_project: Path, monkeypatch):
 
 
 # 9. Validator process error.
+@pytest.mark.real_godot
 def test_validator_process_error_when_launch_fails(godot_project: Path, monkeypatch):
     import subprocess
 
@@ -163,6 +188,7 @@ def test_validator_error_for_non_godot_project(tmp_path: Path):
 
 
 # 10. Cancelación.
+@pytest.mark.real_godot
 def test_cancel_stops_an_in_flight_validation(tmp_path: Path):
     ws = tmp_path / "many_scripts"
     ws.mkdir()
@@ -179,7 +205,15 @@ def test_cancel_stops_an_in_flight_validation(tmp_path: Path):
 
     t = threading.Thread(target=run)
     t.start()
-    time.sleep(0.02)
+    # Poll for validate() to have registered the run rather than a fixed
+    # sleep: a heavier engine build (e.g. a full Godot 4 editor binary vs.
+    # the lightweight godot3-server) can take meaningfully longer just to
+    # answer `--version` inside detect(), which would make a short fixed
+    # sleep fire before cancellation is even possible to register.
+    for _ in range(300):  # up to ~30s
+        if "cancel-me" in adapter._cancelled:
+            break
+        time.sleep(0.1)
     signalled = adapter.cancel("cancel-me")
     t.join(timeout=30)
 
@@ -188,6 +222,7 @@ def test_cancel_stops_an_in_flight_validation(tmp_path: Path):
     assert "cancel" in results["result"].summary.lower()
 
 
+@pytest.mark.real_godot
 def test_no_gd_scripts_is_a_trivial_pass(tmp_path: Path):
     ws = tmp_path / "empty_godot"
     ws.mkdir()
@@ -195,3 +230,56 @@ def test_no_gd_scripts_is_a_trivial_pass(tmp_path: Path):
     adapter = GodotAdapter()
     result = adapter.validate(ws, run_id="r7", timeout_seconds=30)
     assert result.status == ValidationStatus.PASS
+
+
+# --- Resource discovery: Godot 3 + Godot 4 simultaneously installed -----
+# Fully portable: simulates PATH contents via a faked shutil.which, so
+# these never need a real binary of either version.
+
+
+def test_resource_discovery_prefers_godot4_name_when_both_present(monkeypatch):
+    from app.adapters.validator.godot import adapter as godot_adapter_module
+
+    # Isolation: don't let an ambient IMPULSOR_HUB_GODOT_PATH (e.g. set by
+    # whoever is running the suite to force a specific Godot version) leak
+    # into this test -- it must reflect a clean PATH-search scenario.
+    monkeypatch.delenv("IMPULSOR_HUB_GODOT_PATH", raising=False)
+    fake_paths = {"godot4": "/usr/local/bin/godot4", "godot3-server": "/usr/bin/godot3-server"}
+    monkeypatch.setattr(godot_adapter_module.shutil, "which", lambda name: fake_paths.get(name))
+
+    resolved = godot_adapter_module._resolve_executable()
+
+    assert resolved == "/usr/local/bin/godot4"
+
+
+def test_resource_discovery_falls_back_to_godot3_when_godot4_name_absent(monkeypatch):
+    from app.adapters.validator.godot import adapter as godot_adapter_module
+
+    monkeypatch.delenv("IMPULSOR_HUB_GODOT_PATH", raising=False)
+    fake_paths = {"godot3-server": "/usr/bin/godot3-server"}
+    monkeypatch.setattr(godot_adapter_module.shutil, "which", lambda name: fake_paths.get(name))
+
+    resolved = godot_adapter_module._resolve_executable()
+
+    assert resolved == "/usr/bin/godot3-server"
+
+
+def test_manual_override_wins_over_path_discovery_even_with_both_installed(monkeypatch):
+    from app.adapters.validator.godot import adapter as godot_adapter_module
+
+    fake_paths = {"godot4": "/usr/local/bin/godot4", "godot3-server": "/usr/bin/godot3-server"}
+    monkeypatch.setattr(godot_adapter_module.shutil, "which", lambda name: fake_paths.get(name))
+    monkeypatch.setenv("IMPULSOR_HUB_GODOT_PATH", "godot3-server")
+
+    resolved = godot_adapter_module._resolve_executable()
+
+    # Manual override picks Godot 3 even though godot4 would otherwise win.
+    assert resolved == "/usr/bin/godot3-server"
+
+
+def test_major_version_parses_godot3_and_godot4_version_strings():
+    from app.adapters.validator.godot.adapter import _major_version
+
+    assert _major_version("3.5.2.stable.custom_build") == 3
+    assert _major_version("4.2.2.stable.official.15073afe3") == 4
+    assert _major_version("not a version") is None

@@ -13,6 +13,22 @@ def _git(args: list[str], cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True)
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Tests marked `real_godot` need an actual Godot executable. Auto-skip
+    them (SKIPPED, never a false FAIL) when none is detected, so the plain
+    `pytest tests/` command is portable to a machine without Godot
+    installed -- explicit `pytest -m real_godot` still selects (and thus
+    attempts) them regardless of this skip logic."""
+    from app.adapters.validator.godot.adapter import GodotAdapter
+
+    if GodotAdapter().detect()["available"]:
+        return
+    skip_marker = pytest.mark.skip(reason="real Godot executable not available in this environment (SKIPPED, not FAILED)")
+    for item in items:
+        if "real_godot" in item.keywords:
+            item.add_marker(skip_marker)
+
+
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     path = tmp_path / "hub_test.db"
