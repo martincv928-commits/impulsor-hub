@@ -121,10 +121,10 @@ GitHub Actions API** (not assumed):
   (`ImpulsorHub-Windows.zip`, 18.6 MB) — this is what surfaced the
   frozen-path bug in §3.2 (the .exe would have built but "USAR PROYECTO
   DE PRUEBA" would have silently found no template).
-- Run 2 (commit `65322b3`, with both §3 fixes): triggered by the same
-  push that fixed the issues; check its live status at
-  https://github.com/martincv928-commits/impulsor-hub/actions/workflows/windows-build.yml
-  if it hadn't finished by the time this report was read.
+- Run 2 (commit `65322b3`, with both §3 fixes): **also completed
+  successfully** (`ImpulsorHub-Windows.zip`, 18.7 MB) — confirmed via the
+  Actions API after it finished:
+  https://github.com/martincv928-commits/impulsor-hub/actions/runs/35793184792
 
 **Downloading the built `.exe` itself is not possible from this sandbox**
 (the artifact-blob endpoint is blocked by this environment's egress
@@ -173,9 +173,6 @@ M2.5B already did would have been pure redundant verification.
   (both runs), but **not executed on an actual Windows machine** by this
   session — "WINDOWS VERIFIED: NO" is accurate; nothing here should be
   read as a claim that a human has run the .exe.
-- The corrected (run 2) build's final status may still have been
-  in-progress at the moment this report was written; the run URL in §5
-  is the source of truth if so.
 - Godot preview's window still can't be visually screenshotted from this
   sandbox (no real display, only Xvfb) — verified instead by the
   stronger, more direct signal the milestone asked for: the real OS
