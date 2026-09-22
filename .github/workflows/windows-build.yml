@@ -1,0 +1,58 @@
+name: Build Windows artifact
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [master]
+    paths:
+      - "app/**"
+      - "ui/**"
+      - "requirements.txt"
+      - ".github/workflows/windows-build.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Build the REAL-mode frontend (no VITE_DEMO_MODE) so the packaged
+      # Agent can serve it directly -- see app/api/main.py's `GET /`.
+      - name: Build real-mode frontend
+        working-directory: ui
+        run: |
+          npm install
+          npm run build
+
+      - name: Install backend dependencies + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # Single-file executable wrapping app/launcher.py (starts the Agent,
+      # opens the browser -- see M2_6_1_REPORT.md "Windows artifact").
+      # No token or secret is embedded: the Agent generates its own token
+      # at runtime, on the machine it actually runs on.
+      - name: Package ImpulsorHub.exe
+        run: |
+          pyinstaller --onefile --name ImpulsorHub --add-data "ui/dist;ui/dist" app/launcher.py
+
+      - name: Assemble ImpulsorHub-Windows.zip contents
+        run: |
+          mkdir ImpulsorHub-Windows
+          copy dist\ImpulsorHub.exe ImpulsorHub-Windows\
+          copy README.md ImpulsorHub-Windows\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImpulsorHub-Windows
+          path: ImpulsorHub-Windows/

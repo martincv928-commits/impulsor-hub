@@ -150,10 +150,9 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
           <p className="muted" style={{ marginBottom: 4 }}>
             Herramientas utilizadas
           </p>
-          <p className="muted">
-            Git{run?.structured_result ? ", Claude Code" : ""}
-            {hasValidator ? ", Godot" : ""}
-          </p>
+          <p style={{ margin: 0 }}>Git ✓</p>
+          {run?.structured_result && <p style={{ margin: 0 }}>Claude Code ✓</p>}
+          {hasValidator && <p style={{ margin: 0 }}>Godot ✓</p>}
         </div>
       )}
 

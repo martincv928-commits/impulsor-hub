@@ -1,7 +1,9 @@
 // Real-mode-only helpers outside the ApiClient contract: Agent liveness
-// (M2.6 SPEC section D) and the native folder picker (section F). Never
-// imported by ui/src/demo/*.
+// (M2.6 SPEC section D), the native folder picker (section F), and the
+// M2.6.1 test-game / project-scoped preview additions. Never imported by
+// ui/src/demo/*.
 import { agentToken } from "./client";
+import { Project } from "./types";
 
 export interface PickFolderResult {
   path: string | null;
@@ -47,3 +49,18 @@ export const previewStatus = (runId: string) =>
 
 export const stopPreview = (runId: string) =>
   agentRequest<{ status: PreviewStatus }>(`/api/task-runs/${runId}/preview/stop`, { method: "POST" });
+
+export const startProjectPreview = (projectId: string) =>
+  agentRequest<{ status: PreviewStatus; pid?: number }>(`/api/projects/${projectId}/preview/start`, {
+    method: "POST",
+  });
+
+export const projectPreviewStatus = (projectId: string) =>
+  agentRequest<{ status: PreviewStatus; pid?: number; exit_code?: number }>(
+    `/api/projects/${projectId}/preview/status`
+  );
+
+export const stopProjectPreview = (projectId: string) =>
+  agentRequest<{ status: PreviewStatus }>(`/api/projects/${projectId}/preview/stop`, { method: "POST" });
+
+export const createTestGameProject = () => agentRequest<Project>("/api/test-game", { method: "POST" });

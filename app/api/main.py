@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routers import agent, preview, projects, resources, tasks
+from app.api.routers import agent, preview, projects, resources, tasks, testgame
 from app.core.security import get_or_create_agent_token, require_agent_token
 from app.database.db import init_db
 
@@ -17,6 +17,10 @@ from app.database.db import init_db
 async def _lifespan(app: FastAPI):
     init_db()
     yield
+    # Only ever stops preview processes THIS Agent started and is tracking
+    # (see app/api/routers/preview.py) -- never a Godot process the user
+    # launched some other way (M2.6.1 SPEC section M).
+    preview.stop_all()
 
 
 app = FastAPI(title="Impulsor Hub", version="0.1.0", lifespan=_lifespan)
@@ -39,6 +43,7 @@ app.include_router(projects.router, dependencies=_AUTH)
 app.include_router(resources.router, dependencies=_AUTH)
 app.include_router(tasks.router, dependencies=_AUTH)
 app.include_router(preview.router, dependencies=_AUTH)
+app.include_router(testgame.router, dependencies=_AUTH)
 app.include_router(agent.router)  # agent.py applies the dependency itself per-route (status is public)
 
 

@@ -1,0 +1,23 @@
+[gd_scene load_steps=2 format=3 uid="uid://c0impulsorhubtest"]
+
+[ext_resource type="Script" path="res://player.gd" id="1_player"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Label" type="Label" parent="."]
+offset_left = 40.0
+offset_top = 40.0
+offset_right = 500.0
+offset_bottom = 90.0
+text = "Impulsor Hub funciona"
+
+[node name="Instructions" type="Label" parent="."]
+offset_left = 40.0
+offset_top = 90.0
+offset_right = 500.0
+offset_bottom = 130.0
+text = "Usa las flechas o WASD para mover el círculo"
+
+[node name="Player" type="Node2D" parent="."]
+position = Vector2(300, 250)
+script = ExtResource("1_player")

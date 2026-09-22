@@ -11,7 +11,7 @@ import AgentGate from "./components/AgentGate";
 export type View =
   | { name: "projects" }
   | { name: "project"; projectId: string }
-  | { name: "newTask"; projectId: string }
+  | { name: "newTask"; projectId: string; suggestedObjective?: string }
   | { name: "taskResult"; taskId: string }
   | { name: "resources" };
 
@@ -54,7 +54,7 @@ export default function App() {
           {view.name === "project" && (
             <ProjectPage
               projectId={view.projectId}
-              onNewTask={() => setView({ name: "newTask", projectId: view.projectId })}
+              onNewTask={(suggestedObjective) => setView({ name: "newTask", projectId: view.projectId, suggestedObjective })}
               onOpenTask={(taskId) => setView({ name: "taskResult", taskId })}
               onBack={() => setView({ name: "projects" })}
             />
@@ -62,6 +62,7 @@ export default function App() {
           {view.name === "newTask" && (
             <NewTaskPage
               projectId={view.projectId}
+              initialObjective={view.suggestedObjective}
               onCreated={(taskId) => setView({ name: "taskResult", taskId })}
               onCancel={() => setView({ name: "project", projectId: view.projectId })}
             />

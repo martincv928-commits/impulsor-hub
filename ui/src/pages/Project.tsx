@@ -1,7 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Project, Resource, Task } from "../api/client";
+import {
+  PreviewStatus,
+  projectPreviewStatus,
+  startProjectPreview,
+  stopProjectPreview,
+} from "../api/agentClient";
 
 const TYPE_LABEL: Record<string, string> = { godot: "Godot", generic: "Otro" };
+const TEST_GAME_NAME = "Impulsor Hub Test Game (prueba)";
+const SUGGESTED_OBJECTIVE = "Cambia el texto principal a 'Mi primer cambio con Impulsor Hub'";
 
 function resourceCheck(r: Resource): string {
   if (r.availability !== "available") return "✗";
@@ -16,13 +24,16 @@ export default function ProjectPage({
   onBack,
 }: {
   projectId: string;
-  onNewTask: () => void;
+  onNewTask: (suggestedObjective?: string) => void;
   onOpenTask: (taskId: string) => void;
   onBack: () => void;
 }) {
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
+  const [preview, setPreview] = useState<PreviewStatus>("not_started");
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     api.getProject(projectId).then(setProject);
@@ -30,9 +41,41 @@ export default function ProjectPage({
     api.projectResources(projectId).then(setResources);
   }, [projectId]);
 
+  useEffect(() => () => {
+    if (previewTimer.current) clearInterval(previewTimer.current);
+  }, []);
+
   if (!project) return <p className="muted">Cargando...</p>;
 
+  const isTestGame = project.name === TEST_GAME_NAME;
   const relevant = resources.filter((r) => r.adapter_key !== "godot" || project.project_type === "godot");
+
+  const handleStartPreview = async () => {
+    setPreviewError(null);
+    try {
+      await startProjectPreview(projectId);
+      setPreview("running");
+      previewTimer.current = setInterval(async () => {
+        const s = await projectPreviewStatus(projectId);
+        setPreview(s.status);
+        if (s.status !== "running" && previewTimer.current) {
+          clearInterval(previewTimer.current);
+          previewTimer.current = null;
+        }
+      }, 2000);
+    } catch (e) {
+      setPreviewError(String(e));
+    }
+  };
+
+  const handleStopPreview = async () => {
+    if (previewTimer.current) {
+      clearInterval(previewTimer.current);
+      previewTimer.current = null;
+    }
+    await stopProjectPreview(projectId);
+    setPreview("stopped");
+  };
 
   return (
     <div>
@@ -40,10 +83,16 @@ export default function ProjectPage({
         ← Proyectos
       </button>
       <h2>{project.name}</h2>
-      <span className="badge good">PROYECTO REAL</span>
+      <span className="badge good">{isTestGame ? "PROYECTO REAL DE PRUEBA" : "PROYECTO REAL"}</span>
       <p className="muted" style={{ marginTop: 8 }}>
         Detectado: {TYPE_LABEL[project.project_type] ?? "Otro"}
       </p>
+      {isTestGame && (
+        <p className="muted">
+          Esta copia sí contiene archivos reales en tu computadora. Los cambios realizados aquí son
+          reales, pero puedes restaurarlos.
+        </p>
+      )}
 
       <div className="card">
         <p className="muted" style={{ marginBottom: 4 }}>
@@ -56,14 +105,44 @@ export default function ProjectPage({
         ))}
       </div>
 
+      {project.project_type === "godot" && (
+        <div className="card">
+          {preview === "running" ? (
+            <>
+              <p>Godot se está ejecutando...</p>
+              <button className="secondary" onClick={handleStopPreview}>
+                CERRAR PREVIEW
+              </button>
+            </>
+          ) : (
+            <button className="primary" onClick={handleStartPreview}>
+              PROBAR ESTADO ACTUAL
+            </button>
+          )}
+          {previewError && <p style={{ color: "var(--danger)" }}>{previewError}</p>}
+        </div>
+      )}
+
       <details className="card">
         <summary>Detalles</summary>
         <p className="muted">{project.root_path}</p>
       </details>
 
+      {isTestGame && tasks.length === 0 && (
+        <div className="card">
+          <p className="muted" style={{ marginBottom: 6 }}>
+            ¿Qué quieres cambiar?
+          </p>
+          <p>"{SUGGESTED_OBJECTIVE}"</p>
+          <button className="secondary" onClick={() => onNewTask(SUGGESTED_OBJECTIVE)}>
+            USAR ESTE EJEMPLO
+          </button>
+        </div>
+      )}
+
       <div className="row" style={{ marginBottom: 16 }}>
         <h3 style={{ margin: 0 }}>Tareas</h3>
-        <button className="primary" onClick={onNewTask}>
+        <button className="primary" onClick={() => onNewTask()}>
           NUEVA TAREA
         </button>
       </div>

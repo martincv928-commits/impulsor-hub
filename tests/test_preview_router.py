@@ -131,3 +131,60 @@ def test_preview_requires_token(client, godot_fixture_repo):
     del client.headers["Authorization"]
     resp = client.post(f"/api/task-runs/{run_id}/preview/start")
     assert resp.status_code == 401
+
+
+# --- PROBAR ESTADO ACTUAL: project-scoped preview (M2.6.1) --------------
+
+
+def _make_project(godot_fixture_repo: Path, project_type: str = "godot") -> str:
+    with get_connection() as conn:
+        project = projects_service.add_project(conn, root_path=str(godot_fixture_repo))
+        if project.project_type != project_type:
+            conn.execute("UPDATE project SET project_type = ? WHERE id = ?", (project_type, project.id))
+    return project.id
+
+
+def test_project_preview_start_and_status(client, monkeypatch, godot_fixture_repo):
+    project_id = _make_project(godot_fixture_repo)
+    monkeypatch.setattr(
+        preview_router.GodotAdapter, "detect", lambda self: {"available": True, "executable_path": "godot4"}
+    )
+    fake = _FakeProc()
+    monkeypatch.setattr(preview_router.subprocess, "Popen", lambda *a, **k: fake)
+
+    resp = client.post(f"/api/projects/{project_id}/preview/start")
+    assert resp.json() == {"status": "running", "pid": fake.pid}
+    resp = client.get(f"/api/projects/{project_id}/preview/status")
+    assert resp.json() == {"status": "running", "pid": fake.pid}
+
+    resp = client.post(f"/api/projects/{project_id}/preview/stop")
+    assert resp.json() == {"status": "stopped"}
+
+
+def test_project_preview_rejected_for_non_godot_project(client, fixture_repo):
+    project_id = _make_project(fixture_repo, project_type="generic")
+    resp = client.post(f"/api/projects/{project_id}/preview/start")
+    assert resp.status_code == 409
+
+
+def test_project_and_run_preview_keys_never_collide(client):
+    """A project id and a task-run id could be the exact same string in a
+    pathological case; the two scopes must never share state."""
+    same_id = "shared-id-value"
+    preview_router._processes[f"project:{same_id}"] = _FakeProc(pid=1)
+
+    assert client.get(f"/api/task-runs/{same_id}/preview/status").json()["status"] == "not_started"
+    assert client.get(f"/api/projects/{same_id}/preview/status").json() == {"status": "running", "pid": 1}
+
+
+def test_stop_all_kills_every_tracked_preview_but_nothing_else(monkeypatch):
+    preview_router._processes.clear()
+    a, b = _FakeProc(pid=1), _FakeProc(pid=2)
+    preview_router._processes["run:a"] = a
+    preview_router._processes["project:b"] = b
+
+    preview_router.stop_all()
+
+    assert a.poll() is not None
+    assert b.poll() is not None
+    assert preview_router._processes == {}
