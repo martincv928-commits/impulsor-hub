@@ -12,6 +12,15 @@ safe baseline → Claude Code → independent Git verification → KEEP/
 ROLLBACK) and `M2_REPORT.md` (Milestone 2: the Godot validator adapter,
 the validation + repair loop, and known limitations).
 
+## Live demo
+
+**https://martincv928-commits.github.io/impulsor-hub/**
+
+A static, read-only build of the frontend with seeded sample data (no
+live backend, no real AI tasks or file changes) — see "Demo mode"
+below. For the real thing, run it locally per "Setup" / "Run" or with
+Docker below.
+
 ## Prerequisites
 
 - Python 3.11+
@@ -105,6 +114,25 @@ npx tsc -b
 npx vite build
 ```
 
+## Demo mode
+
+`VITE_DEMO_MODE=true` builds the frontend against an in-memory mock API
+client (`ui/src/api/demoClient.ts`) seeded with realistic sample data
+instead of the real `fetch()`-based client — no backend needed, nothing
+is written to disk, and a visible banner marks it as a demo. This is
+what's deployed at the live demo URL above.
+
+```bash
+cd ui
+# BUILD_BASE_PATH only matters when hosting under a subpath (e.g. GitHub
+# Pages project sites); omit it (defaults to "/") for local use.
+VITE_DEMO_MODE=true BUILD_BASE_PATH=/impulsor-hub/ npx vite build
+npx serve dist   # or any static file server
+```
+
+Demo mode never talks to `/api` — `git grep DEMO_MODE ui/src` shows
+every branch point.
+
 ## Adding a project
 
 Use an **existing local git repository**. For a first try, do not point
@@ -117,6 +145,45 @@ git init && git commit --allow-empty -m "init"
 
 Then in the UI: Projects → paste `/tmp/demo-project` → Add Project → open
 it → New Task → describe an objective → Run.
+
+## Docker (optional, real backend + frontend — separate from the public demo)
+
+This is a local convenience for running the *real* Hub (real backend,
+real Claude Code CLI, real Git checkpoints) with one command instead of
+two manual processes. It is unrelated to the read-only public demo
+above, which has no backend at all.
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:8080/
+- Backend directly: http://localhost:8000/api/health
+
+Before running a task, authenticate the `claude` CLI once (the compose
+file mounts your host `~/.claude` into the container read-only, so a
+host login is normally picked up automatically; if not, run
+`docker compose exec backend claude auth login`).
+
+Projects you add through the UI must live under `/workspaces` **inside
+the container** — by default this is bind-mounted from `./workspaces`
+in the repo root (set `IMPULSOR_HUB_WORKSPACES` to point it elsewhere).
+So to add the project at `./workspaces/my-project` on the host, add
+`/workspaces/my-project` as the project's root path in the UI.
+
+The Hub's SQLite database persists in a named Docker volume
+(`hub-db`), independent of the container lifecycle.
+
+Godot validation is not included in the backend image (Godot isn't
+installed there) — non-Godot projects work exactly as in M1 regardless;
+add a Godot install to `docker/Dockerfile.backend` if you need it.
+
+**Not build-verified in this environment** (no Docker daemon available
+in this sandbox — see `M1_REPORT.md`'s "Known limitations" for the same
+constraint on the Tauri build). Reviewed by hand against the same
+commands documented above for a bare-metal run; verify with
+`docker compose up --build` in an environment with Docker before relying
+on it.
 
 ## Repository layout
 

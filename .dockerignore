@@ -7,6 +7,7 @@ dist/
 ui/src-tauri/target/
 *.db
 .impulsor/
-.DS_Store
-ui/tsconfig.tsbuildinfo
-/workspaces/
+.git/
+.gitignore
+*.zip
+workspaces/

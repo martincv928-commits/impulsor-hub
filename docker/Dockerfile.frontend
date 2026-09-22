@@ -1,0 +1,11 @@
+FROM node:20-slim AS build
+WORKDIR /src
+COPY ui/package*.json ./
+RUN npm install
+COPY ui .
+RUN npx vite build
+
+FROM nginx:1.27-alpine
+COPY --from=build /src/dist /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

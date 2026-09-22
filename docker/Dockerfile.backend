@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+# git: required by GitAdapter (checkpoints, change manifest).
+# nodejs/npm: required to install the `claude` CLI (Claude Code), the AI
+# executor. curl: used by the npm install below.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && apt-get purge -y curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv/impulsor-hub
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+
+EXPOSE 8000
+CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

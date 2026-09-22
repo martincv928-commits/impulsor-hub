@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - IMPULSOR_HUB_DB_PATH=/data/hub.db
+    volumes:
+      - hub-db:/data
+      # Projects you add in the UI must live under /workspaces inside the
+      # container -- point root_path at /workspaces/<your-project-dir>.
+      - ${IMPULSOR_HUB_WORKSPACES:-./workspaces}:/workspaces
+      # Reuses your host `claude` CLI login so you don't have to
+      # re-authenticate inside the container. Omit this line if you'd
+      # rather log in fresh inside the container (`docker compose exec
+      # backend claude auth login`).
+      - ${HOME}/.claude:/root/.claude:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  hub-db:
