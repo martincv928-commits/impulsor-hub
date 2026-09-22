@@ -5,7 +5,7 @@ import NewTaskPage from "./pages/NewTask";
 import TaskResultPage from "./pages/TaskResult";
 import ResourcesPage from "./pages/Resources";
 import { DEMO_MODE } from "./api/client";
-import { DEMO_NOTICE } from "./api/demoData";
+import DemoApp from "./demo/DemoApp";
 
 export type View =
   | { name: "projects" }
@@ -17,9 +17,17 @@ export type View =
 export default function App() {
   const [view, setView] = useState<View>({ name: "projects" });
 
+  // DEMO_MODE renders an entirely separate, mobile-first UI tree backed by
+  // DemoTaskEngine (see ui/src/demo/) instead of this real-mode app. See
+  // M2_5B_REPORT.md for the mode-separation rationale -- DemoApp never
+  // imports `api`/ApiClient, and this tree never imports anything from
+  // ui/src/demo/.
+  if (DEMO_MODE) {
+    return <DemoApp />;
+  }
+
   return (
     <div className="app-root">
-      {DEMO_MODE && <div className="demo-banner">{DEMO_NOTICE}</div>}
       <div className="app-shell">
       <nav className="sidebar">
         <h1>Impulsor Hub</h1>

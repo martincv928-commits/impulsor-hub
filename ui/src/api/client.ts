@@ -8,7 +8,6 @@ import {
   Task,
   TaskRun,
 } from "./types";
-import { demoApi } from "./demoClient";
 
 export type { Project, Resource, Task, ExecutorResult, TaskRun, FileChange, EventItem };
 
@@ -64,4 +63,8 @@ const realApi: ApiClient = {
   },
 };
 
-export const api: ApiClient = DEMO_MODE ? demoApi : realApi;
+// Demo Mode no longer goes through this client at all -- see
+// ui/src/demo/ (DemoTaskEngine + its own localStorage-backed store).
+// `api` here is always the real, fetch-based client; DEMO_MODE only
+// decides which top-level component App.tsx renders.
+export const api: ApiClient = realApi;
