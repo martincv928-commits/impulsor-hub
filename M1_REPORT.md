@@ -1,8 +1,12 @@
 # Impulsor Hub — Milestone 1 Report
 
-Status: **PASS** (all M1 must-implement items delivered; one honestly-documented
-manifest-detection gap under a specific dirty-repo edge case — see
-"Known limitations").
+Status: **PASS.** M1 is closed for external audit: every must-implement
+item is delivered, the one previously-documented limitation (§7.1 in the
+prior revision of this report — a dirty-repo change-manifest gap) has been
+fixed, proven with new tests, and re-verified against the real `claude`
+CLI in the exact scenario that first exposed it. This revision documents
+that fix; see the "Revision history" note at the end for what changed
+since the provisional acceptance.
 
 ## 1. Implementation summary
 
@@ -13,8 +17,9 @@ M1 delivers the full pipeline required by the SPEC:
 - **Backend**: Python, FastAPI, SQLite (stdlib `sqlite3`, no ORM), Pydantic
   v2 contracts for every entity and for the executor result schema.
 - **Adapters**: a `GitAdapter` (detection, status, checkpoint/restore,
-  change-manifest computation) and a `ClaudeCodeAdapter` that drives the
-  real `claude` CLI non-interactively (`-p --output-format json`).
+  content-hash-based change-manifest computation) and a `ClaudeCodeAdapter`
+  that drives the real `claude` CLI non-interactively
+  (`-p --output-format json`).
 - **Orchestrator**: a single pipeline function
   (`app/core/orchestrator/orchestrator.py`) that owns every state
   transition, the project-level execution lock, checkpoint creation,
@@ -25,10 +30,11 @@ M1 delivers the full pipeline required by the SPEC:
   Result, Resources), talking to the API over `fetch`. A Tauri v2 skeleton
   wraps it for desktop packaging (see limitation below on why the desktop
   build itself wasn't verified here).
-- **Tests**: 56 automated tests (pytest), see §5.
-- **Real end-to-end verification**: two full runs against the *actual*
-  `claude` CLI (not a mock) driving the real UI in a headless browser —
-  one KEEP scenario, one dirty-repo ROLLBACK scenario. See §6.
+- **Tests**: 64 automated tests (pytest), see §5.
+- **Real end-to-end verification**: three full runs against the *actual*
+  `claude` CLI (not a mock) driving the real UI in a headless browser — a
+  clean-repo KEEP, a dirty-repo ROLLBACK, and the dirty-file-re-edit
+  scenario that specifically re-verifies the §7.1 fix. See §6.
 
 ## 2. Final architecture / tree
 
@@ -56,11 +62,13 @@ impulsor-hub/
     src/api/client.ts                # typed fetch client mirroring the Pydantic models
     src/pages/{Projects,Project,NewTask,TaskResult,Resources}.tsx
     src-tauri/{tauri.conf.json,Cargo.toml,src/main.rs,build.rs}   # desktop shell skeleton
-  tests/                             # 56 tests: policy, git adapter, claude_code adapter,
+  tests/                             # 64 tests: policy, git adapter, claude_code adapter,
                                       # task lifecycle, orchestrator pipeline, API integration
   docs/
     IMPULSOR_HUB_SPEC_V0.1.md, CLAUDE_M1.md     # copies of the source spec/brief
-    e2e/                             # screenshots from the real end-to-end runs (§6)
+    e2e/                              # screenshots + raw evidence from all real end-to-end runs (§6)
+      reedit_scenario/                # §7.1 fix re-verification: screenshots, file_changes.json,
+                                       # events.json, filesystem_verification.txt
   README.md
   requirements.txt, pytest.ini
 ```
@@ -95,69 +103,83 @@ Tests: `source .venv/bin/activate && python -m pytest tests/ -v`
 
 ```
 python -m pytest tests/ -v
-======================== 56 passed in ~4.5s ========================
+======================== 64 passed in ~5.3s ========================
 ```
 
 Breakdown (files map ~1:1 to SPEC §18 requirements):
 
-| File | Covers |
-|---|---|
-| `test_policy.py` (14) | path normalization/boundary checks (incl. a sibling-prefix regression guard), forbidden git subcommands, task envelope contents |
-| `test_vcs_git.py` (16) | detection, repo validation, status (clean/dirty/non-repo), **clean-repo rollback**, **dirty-repo rollback preserving tracked + untracked pre-existing work**, deleted-file restore, change-manifest computation excluding pre-existing dirty state |
-| `test_claude_code_adapter.py` (9) | conforming result parsing, prose-prefixed fenced-JSON extraction, malformed result, CLI-level error, non-JSON CLI output, non-zero exit, **timeout + process termination**, **cancel signalling**, missing-binary detection |
-| `test_task_lifecycle.py` (5) | task state machine, illegal transitions rejected, terminal states have no outgoing edges, active-task detection |
-| `test_orchestrator.py` (9) | full pipeline happy path + manifest-vs-claim match, **discrepancy detection**, **malformed result → task FAILED (never silently COMPLETED)**, timeout → FAILED, dirty-repo baseline warning + successful run, **KEEP**, **ROLLBACK restoring dirty pre-existing work**, KEEP-then-ROLLBACK rejected, **concurrent second run blocked by the project lock** |
-| `test_api_integration.py` (5) | full HTTP flow (add project → create task → run → poll → changes → keep), 400 on bad path, 404 on unknown task, 409 on a locked project |
+| File | Count | Covers |
+|---|---|---|
+| `test_policy.py` | 14 | path normalization/boundary checks (incl. a sibling-prefix regression guard), forbidden git subcommands, task envelope contents |
+| `test_vcs_git.py` | 19 | detection, repo validation, status (clean/dirty/non-repo), **clean-repo rollback**, **dirty-repo rollback preserving tracked + untracked pre-existing work**, deleted-file restore, and the full §7.1 content-hash manifest suite: dirty tracked file modified-again vs. untouched, dirty untracked file modified-again vs. untouched, new file created, file deleted, created-then-deleted nets to no change, and a broken-symlink hardening case |
+| `test_claude_code_adapter.py` | 9 | conforming result parsing, prose-prefixed fenced-JSON extraction, malformed result, CLI-level error, non-JSON CLI output, non-zero exit, **timeout + process termination**, **cancel signalling**, missing-binary detection |
+| `test_task_lifecycle.py` | 5 | task state machine, illegal transitions rejected, terminal states have no outgoing edges, active-task detection |
+| `test_orchestrator.py` | 12 | full pipeline happy path + manifest-vs-claim match, **discrepancy detection**, **malformed result → task FAILED (never silently COMPLETED)**, timeout → FAILED, dirty-repo baseline warning + successful run, **KEEP**, **ROLLBACK restoring dirty pre-existing work**, KEEP-then-ROLLBACK rejected, concurrent-run project lock, and three §7.1-specific pipeline tests: re-edit detected with **no false discrepancy**, **KEEP** after a dirty re-edit, and **ROLLBACK** after a dirty re-edit with **byte-for-byte** baseline preservation |
+| `test_api_integration.py` | 5 | full HTTP flow (add project → create task → run → poll → changes → keep), 400 on bad path, 404 on unknown task, 409 on a locked project |
 
 All of SPEC §18's required coverage areas are exercised, using disposable
-`tmp_path` git fixtures — no test ever touches a real project.
+`tmp_path` git fixtures — no test ever touches a real project. UI:
+`npx tsc -b && npx vite build` → clean, no type errors (unchanged by this
+fix; no UI code was touched).
 
-## 6. Manual end-to-end test performed
+## 6. Manual end-to-end tests performed
 
-Two **real** runs (actual `claude` CLI, not a fake), driven through the
+Three **real** runs (actual `claude` CLI, not a fake), driven through the
 actual React UI in a headless Chromium browser, against disposable fixture
-repositories created solely for this test (never MONTARO, per
-instructions):
+repositories created solely for these tests (never MONTARO, per
+instructions). All were re-run after the §7.1 fix landed.
 
-**Scenario A — clean repo, KEEP.** Added `/tmp/.../e2e_fixture_keep` (one
-commit, clean tree), objective: *"Create hello.txt containing 'hello from
-impulsor hub'."* Result: task COMPLETED in ~7s, executor claimed and Git
-observed exactly one created file, no discrepancy, KEEP persisted it.
-Screenshots: `docs/e2e/keep_scenario_completed.png`,
-`docs/e2e/keep_scenario_kept.png`.
+**Scenario A — clean repo, KEEP.** Objective: *"Create hello.txt
+containing 'hello from impulsor hub'."* Result: task COMPLETED in ~7s,
+executor claimed and Git observed exactly one created file, no
+discrepancy, KEEP persisted it. Evidence: `docs/e2e/keep_scenario_*.png`.
 
-**Scenario B — dirty repo, ROLLBACK.** Fixture repo with a pre-existing
-*uncommitted modification* to a tracked file and a pre-existing
-*untracked* file (simulating the user's own unsaved work), objective:
-*"Append a line to notes.txt and create ai_output.txt."* The Hub logged a
-`task.dirty_repository_baseline` warning, took a checkpoint anyway
-(SPEC 15's "if a safe approach can be implemented confidently, use it"
-branch — see §8), ran the task, and flagged a real discrepancy (see §9).
-On ROLLBACK: verified on the actual filesystem afterward —
-`notes.txt` was restored to exactly its pre-task dirty content (the
-user's own edit intact, the AI's appended line gone), `ai_output.txt`
-(AI-created) was removed, and the pre-existing untracked file was
-untouched. Screenshots: `docs/e2e/rollback_scenario_completed_with_discrepancy.png`,
-`docs/e2e/rollback_scenario_rolled_back.png`.
+**Scenario B — dirty repo, ROLLBACK.** Pre-existing uncommitted
+modification to a tracked file + a pre-existing untracked file. Objective:
+*"Append a line to notes.txt and create ai_output.txt."* ROLLBACK restored
+`notes.txt` to its exact pre-task dirty content, removed the AI-created
+file, left the pre-existing untracked file untouched. Evidence:
+`docs/e2e/rollback_scenario_*.png`.
 
-This is the strongest evidence available that the core safety invariant in
-SPEC 15 holds against the real executor, not just against test doubles.
+**Scenario C — the exact §7.1 regression scenario, re-run post-fix.**
+Fresh disposable repo. Pre-task state: `notes.txt` has an uncommitted user
+edit, and `scratch_before.txt` is a pre-existing untracked file. Objective
+given to Claude: *"Append the line 'AI SECOND EDIT' to notes.txt, and
+create a new file named ai_new_file.txt."* — i.e. Claude re-edits the
+already-dirty file and also creates a new one, precisely the case §7.1
+described as broken.
+
+Observed (real UI, real filesystem, real `claude` CLI):
+- Task Result showed **`modified notes.txt (+1/-0)`** and
+  **`created ai_new_file.txt (+1/-0)`** — the re-edit of the already-dirty
+  file *was* detected as a task-attributable change.
+- **No discrepancy was shown or logged** (`GET /api/events` for the task
+  has zero `task.claim_discrepancy` entries) — Claude declared both files
+  and the Hub's independent observation matched exactly. Confirmed via the
+  `FILE_CHANGE` rows too: both entries have `claimed_by_executor: true`
+  **and** `observed_by_vcs: true`.
+- **ROLLBACK**, verified against the real filesystem afterward:
+  `notes.txt` → exactly `"line1\nuser's own uncommitted edit"` (the
+  content immediately before the task, byte for byte); `ai_new_file.txt`
+  → gone; `scratch_before.txt` → untouched,
+  `"pre-existing untracked scratch file\n"`.
+
+Evidence preserved under `docs/e2e/reedit_scenario/`: `completed_task_result.png`,
+`after_rollback.png`, `file_changes.json` (raw API response), `events.json`
+(raw API response, showing the absence of any discrepancy event), and
+`filesystem_verification.txt` (the exact filesystem check transcript).
+
+This is the strongest evidence available that both the original SPEC 15
+invariant *and* the §7.1 fix hold against the real executor, not just
+against test doubles.
 
 ## 7. Known limitations
 
-1. **Dirty-repo change manifest can miss a second edit to an
-   already-dirty file.** The manifest is computed by diffing `git status`
-   porcelain codes captured before vs. after the run. If a file was
-   already modified before the task (status code `" M"`) and the AI edits
-   it further, the code is still `" M"` afterward, so that file does not
-   appear as a task-attributable change — **this was caught live** in
-   Scenario B above (`notes.txt` showed as "claimed but NOT observed").
-   The system did the *safe* thing (surfaced a `task.claim_discrepancy`
-   warning rather than silently trusting the claim), but the manifest
-   itself is incomplete in this specific case. A fix (content-hash
-   comparison instead of/alongside status codes) is a good first task for
-   whoever picks this up next.
-2. **No OS-level sandbox for the executor.** The workspace-boundary rule
+§7.1 from the prior revision ("dirty-repo change manifest can miss a
+second edit to an already-dirty file") is **fixed** — see §8 for the
+mechanism and §6 Scenario C for live proof. Remaining limitations:
+
+1. **No OS-level sandbox for the executor.** The workspace-boundary rule
    ("work only inside WORKSPACE") is enforced by the task envelope
    instruction, the CLI's default tool-to-cwd scoping, and Hub-side
    post-hoc Git verification — not by a hard OS boundary (chroot/
@@ -166,24 +188,38 @@ SPEC 15 holds against the real executor, not just against test doubles.
    `--disallowedTools`, which is a real guardrail, not just prompt text.
    SPEC 10 asks for enforcement "where technically possible" within M1;
    full sandboxing is future work.
-3. **Checkpoints are full filesystem copies**, not diffs (see §8 for why).
-   This is correct and simple but does not scale gracefully to very large
-   repositories/binary assets; fine for M1's scope.
-4. **The project execution lock is in-process** (a `threading.Lock` per
+2. **Checkpoints are full filesystem copies**, not diffs. Correct and
+   simple, but does not scale gracefully to very large repositories/binary
+   assets. The §7.1 fix adds a full read-and-hash pass over every common
+   path on top of that existing copy cost (same order of magnitude as the
+   copy itself, so not a new class of limitation, but worth naming
+   together): for a very large repo this makes verification, not just
+   checkpointing, proportional to total tracked+untracked content size.
+   Fine for M1's scope; a future milestone could hash incrementally or
+   scope hashing to paths `git status` already flags as touched.
+3. **Line-level additions/deletions are `null` for binary files** (or any
+   file that isn't valid UTF-8) in a `FileChange`'s `additions`/
+   `deletions` fields — `change_type` (created/modified/deleted) is still
+   always correct, since that classification is hash-based, not
+   line-based. This matches SPEC 14's "additions/deletions when
+   practical."
+4. **No rename detection.** A file rename still shows as one `deleted` +
+   one `created` entry rather than a `renamed` entry. SPEC 14 lists this
+   as "when detectable" (optional); unchanged from the original M1
+   delivery, not something §7.1's fix touched.
+5. **The project execution lock is in-process** (a `threading.Lock` per
    `project_id`), backed by a DB-level fallback check
    (`has_active_task`) for crash/restart recovery. It does not span
    multiple Hub processes; M1 only ever runs one.
-5. **Tauri desktop build not verified.** This container has no display
+6. **Tauri desktop build not verified.** This container has no display
    server or GTK/WebKitGTK system libraries, so `cargo tauri build`
    could not be exercised here. The React UI itself *was* fully verified
    (type-checked, built, and driven live in a real Chromium browser via
    Playwright — see §6). The Tauri skeleton is written to the current
    Tauri v2 config schema but is unbuilt/untested.
-6. **Resource routing is a fixed pair**, not intelligent selection
-   (explicitly correct per SPEC §4 — "no intelligent planner yet"), so
-   `ResourceRouter` always returns the one git adapter and one
-   claude_code adapter.
-7. **Godot detection was not implemented.** SPEC 4 says it "may be
+7. **Resource routing is a fixed pair**, not intelligent selection
+   (explicitly correct per SPEC §4 — "no intelligent planner yet").
+8. **Godot detection was not implemented.** SPEC 4 says it "may be
    detected/displayed if convenient" — treated as optional and skipped to
    keep scope minimal, since M1 must not execute/validate with Godot
    anyway.
@@ -203,98 +239,120 @@ skipped without being named here.
   files by default and interacts with the index in ways that are easy to
   get subtly wrong under a dirty repo; a plain recursive copy gives an
   exact, trivially-verifiable baseline and restore, independent of git
-  plumbing edge cases, and was the approach that let me *prove* (not just
-  assert) the dirty-repo invariant in both the unit tests and the live
-  E2E run. `git` itself is still used for the observation half of the
-  pipeline (`status`/`diff`), since that is specifically what
-  "Git-observed changes" means in SPEC 3.10-3.11. This is a substitution
-  of mechanism, not a weakening of the guarantee — see §5 and §6 for
-  proof it holds.
-- **Change manifest derivation**: computed as the delta between two
-  `git status` snapshots (before/after) rather than a single post-hoc
-  `git diff`, so that changes to files that were *already* dirty before
-  the task can, in principle, be distinguished from the user's own
-  pre-existing dirty state. §7.1 documents the one case where this
-  approach still falls short.
+  plumbing edge cases.
+- **Change manifest derivation (updated by the §7.1 fix).** The original
+  M1 delivery computed the manifest as the delta between two `git status`
+  snapshots (before/after task execution). That approach could not
+  distinguish a file that was already dirty at checkpoint time from one
+  the task edited *further* while it stayed dirty, since both cases
+  produce the identical git status code (e.g. `" M"`) before and after —
+  confirmed live in the original Scenario B run (§6 in the prior
+  revision), which is exactly what §7.1 named.
+
+  **Fix:** `GitAdapter.compute_change_manifest` now takes the
+  `CheckpointRef` instead of two `VcsStatus` snapshots, and classifies
+  every path by comparing **actual file content** against the checkpoint
+  snapshot already taken before the task ran:
+  - `created` = present now, absent from the snapshot.
+  - `deleted` = present in the snapshot, absent now.
+  - `modified` = present in both, but `sha256(checkpoint bytes) !=
+    sha256(current bytes)`.
+  - present in both with **identical** hashes = excluded — genuinely
+    untouched during the task, regardless of what `git status` still
+    shows relative to HEAD.
+
+  Additions/deletions are computed with `difflib.SequenceMatcher` between
+  the checkpoint version and the current version of the file (not `git
+  diff` against HEAD), so a re-edited dirty file's reported line delta is
+  the task's own contribution only, not the user's pre-existing dirty
+  lines mixed in.
+
+  This is a strictly more accurate mechanism than the one it replaces —
+  it does not weaken any existing guarantee (checkpoint/restore is
+  unchanged; only *detection* changed) and closes exactly the gap named in
+  §7.1, proven by 8 new tests (§5) and a live re-run of the exact failing
+  scenario (§6 Scenario C).
 - Everything else follows the SPEC directly; no stack substitution was
   needed (Tauri/React/TypeScript/Python/FastAPI/Pydantic/SQLite all
   worked as specified).
 
 ## 9. Safety/rollback design explanation
 
-Three independent layers, each verified by tests and/or the live E2E run:
+Three independent layers, each verified by tests and/or the live E2E runs:
 
 1. **Never trust the executor's claim.** `ExecutorResult` is validated
    with Pydantic; a non-conforming or missing result is treated as an
    *unverified* run (`task.status = FAILED`, `failure_reason` recorded),
-   never as a silent success — even if the CLI process itself exited 0
-   (`_final_statuses` in `orchestrator.py`). Observed for real in the
-   first attempt at Scenario B in §6 before a parser hardening fix (see
-   the git history / adapter docstring) — the model prefixed prose before
-   its JSON despite instructions, and the system correctly refused to
-   treat that as success.
-2. **Independent observation.** After execution, `GitAdapter.status()` is
-   called again and diffed against the pre-task snapshot to build the
-   `FileChange` manifest, independent of anything the executor said. Each
+   never as a silent success — even if the CLI process itself exited 0.
+   Observed for real during the original Scenario B run before a parser
+   hardening fix — the model prefixed prose before its JSON despite
+   instructions, and the system correctly refused to treat that as
+   success.
+2. **Independent observation.** After execution, the change manifest is
+   computed by comparing actual file content against the pre-task
+   checkpoint (§8), independent of anything the executor said. Each
    `FileChange` row records `claimed_by_executor` and `observed_by_vcs`
    separately; any mismatch is logged as a `task.claim_discrepancy`
-   warning event and shown in the UI, without blocking the user's ability
-   to inspect and decide.
+   warning event and shown in the UI. Since the §7.1 fix, a correctly
+   *declared* re-edit of an already-dirty file no longer produces a false
+   discrepancy (§6 Scenario C) — the safety net is more accurate without
+   being any less strict about undeclared changes.
 3. **Reversible by construction.** Every run gets a checkpoint *before*
-   the executor touches anything (`CHECKPOINTING` happens before
-   `RUNNING` in the task state machine — see `TASK_TRANSITIONS` in
-   `database/models.py`). ROLLBACK replays that snapshot exactly: it
-   deletes anything created since the checkpoint and restores every path
-   that existed at checkpoint time to its exact prior bytes — covering
-   modified, deleted, and re-created files uniformly, and proven (unit +
-   live E2E) to preserve pre-existing tracked *and* untracked user work.
-   KEEP and ROLLBACK are mutually exclusive terminal dispositions on a
-   `TaskRun` (`RunDisposition`), independent of whether the run itself
-   was verified as COMPLETED or FAILED — a failed/timed-out run can still
-   be rolled back if a checkpoint exists.
+   the executor touches anything. ROLLBACK replays that snapshot exactly:
+   it deletes anything created since the checkpoint and restores every
+   path that existed at checkpoint time to its exact prior bytes —
+   covering modified, deleted, and re-created files uniformly, and proven
+   (unit + live E2E, including the byte-for-byte assertion added for
+   §7.1) to preserve pre-existing tracked *and* untracked user work, even
+   when the task re-edits an already-dirty file. This mechanism did not
+   need to change for the §7.1 fix — it was never the part that was
+   broken; only change *detection/reporting* was.
 
 ## 10. Files/modules that should be reviewed next
 
-- `app/adapters/vcs/git/adapter.py` — the safety-critical core; review the
-  checkpoint/restore algorithm and `compute_change_manifest` first.
+- `app/adapters/vcs/git/adapter.py` — the safety-critical core; review
+  `compute_change_manifest`'s hash comparison and the checkpoint/restore
+  algorithm together, since they now share the same snapshot.
 - `app/core/orchestrator/orchestrator.py` — the state machine and where
   every safety decision is wired together.
 - `app/adapters/ai/claude_code/adapter.py` — the real CLI integration,
   including `--disallowedTools` and the result-extraction heuristics in
-  `_parse_executor_result` (§7.1 fix lives here).
+  `_parse_executor_result`.
 - `tests/test_vcs_git.py` and `tests/test_orchestrator.py` — the safety
-  test suite; extend these before changing checkpoint/rollback behavior.
+  test suite; extend these before changing checkpoint/rollback or manifest
+  behavior.
 
 ## 11. Recommended M2 starting point
 
 Per CLAUDE_M1: M2 is the Godot adapter + headless validation + repair
 loop. Suggested first steps once M1 is reviewed:
 
-1. Fix §7.1 (content-hash-based manifest diffing) first — M2's repair
-   loop will depend on an accurate change manifest.
-2. Add a `GodotAdapter` implementing a new, narrow "Validator" contract
+1. Add a `GodotAdapter` implementing a new, narrow "Validator" contract
    (not the existing `AIExecutor`/`VCS` contracts) so the orchestrator's
    verification phase can optionally invoke headless validation after
    the existing Git-based verification, without touching the M1 pipeline.
-3. Reuse the existing `EVENT`/`FILE_CHANGE` tables for validation
+2. Reuse the existing `EVENT`/`FILE_CHANGE` tables for validation
    results before introducing new schema.
+3. If repo/binary-asset size becomes a real concern for M2's Godot
+   projects, revisit limitation §7.2 (hashing cost) before it does.
 
 ---
 
 ## Completion response (per CLAUDE_M1 §"Completion response")
 
 1. **M1 status:** PASS.
-2. **Test command / results:** `python -m pytest tests/ -v` → **56 passed**,
-   0 failed. UI: `npx tsc -b && npx vite build` → clean build, no
-   type errors.
-3. **End-to-end scenario tested:** two real runs against the live `claude`
-   CLI through the actual UI — a clean-repo KEEP and a dirty-repo
-   ROLLBACK — both verified against the real filesystem/git state
-   afterward (§6).
+2. **Test command / results:** `python -m pytest tests/ -v` → **64 passed**,
+   0 failed. UI: `npx tsc -b && npx vite build` → clean build, no type
+   errors.
+3. **End-to-end scenario tested:** three real runs against the live
+   `claude` CLI through the actual UI — clean-repo KEEP, dirty-repo
+   ROLLBACK, and the dirty-file-re-edit scenario that specifically
+   re-verifies the §7.1 fix — all verified against the real
+   filesystem/git state afterward (§6).
 4. **SPEC deviations:** checkpoint/rollback implemented as a filesystem
-   snapshot instead of git-stash-based, and the change manifest computed
-   as a before/after `git status` diff — both documented with rationale
-   in §8, and known to still miss one specific edge case (§7.1).
+   snapshot instead of git-stash-based; the change manifest now computed
+   by content-hash comparison against that snapshot instead of diffing
+   `git status` codes (§8) — this second point is the §7.1 fix itself.
 5. **Path to M1_REPORT.md:** `M1_REPORT.md` (this file, repo root).
 6. **Exact commands to launch the app:**
    ```bash
@@ -305,3 +363,16 @@ loop. Suggested first steps once M1 is reviewed:
    ```
 
 M2 is not started.
+
+---
+
+## Revision history
+
+- **Rev 1 (provisional acceptance):** initial M1 delivery, 56 tests, §7.1
+  identified and documented as a known limitation (git-status-code-based
+  manifest couldn't detect re-edits of already-dirty files).
+- **Rev 2 (this revision, audit-ready):** §7.1 fixed via content-hash
+  comparison against the checkpoint snapshot (§8); 8 new tests (64 total);
+  the exact §7.1 regression scenario re-run against the real `claude` CLI
+  and verified (§6 Scenario C); no existing test was deleted or weakened
+  to make the suite pass. M2 still not started.
