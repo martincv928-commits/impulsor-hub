@@ -12,6 +12,7 @@ from app.database.models import ExecutorResult
 @dataclass
 class ExecuteRequest:
     task_id: str
+    run_id: str
     workspace: Path
     objective: str
     timeout_seconds: int

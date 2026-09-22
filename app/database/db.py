@@ -16,16 +16,18 @@ from pathlib import Path
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 # Default data directory lives under the Hub's own app data, never inside a
-# managed project's workspace.
-DEFAULT_DB_PATH = Path(
-    os.environ.get("IMPULSOR_HUB_DB_PATH", str(Path.home() / ".impulsor-hub" / "hub.db"))
-)
+# managed project's workspace. Resolved at call time (not import time) so
+# IMPULSOR_HUB_DB_PATH can be overridden per-process (e.g. in tests) without
+# reloading this module.
+def _default_db_path() -> Path:
+    return Path(os.environ.get("IMPULSOR_HUB_DB_PATH", str(Path.home() / ".impulsor-hub" / "hub.db")))
+
 
 _lock = threading.Lock()
 
 
-def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
-    db_path = Path(db_path)
+def init_db(db_path: Path | str | None = None) -> None:
+    db_path = Path(db_path) if db_path is not None else _default_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
@@ -37,8 +39,8 @@ def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
 
 
 @contextmanager
-def get_connection(db_path: Path | str = DEFAULT_DB_PATH):
-    db_path = Path(db_path)
+def get_connection(db_path: Path | str | None = None):
+    db_path = Path(db_path) if db_path is not None else _default_db_path()
     if not db_path.exists():
         init_db(db_path)
     conn = sqlite3.connect(str(db_path))

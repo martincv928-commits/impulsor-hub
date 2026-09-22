@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from app.database.db import init_db
+
 
 def _git(args: list[str], cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True)
+
+
+@pytest.fixture
+def db_path(tmp_path: Path) -> Path:
+    path = tmp_path / "hub_test.db"
+    init_db(path)
+    return path
+
+
+@pytest.fixture
+def db_conn(db_path: Path):
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    yield conn
+    conn.close()
 
 
 @pytest.fixture

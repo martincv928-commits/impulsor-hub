@@ -159,7 +159,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             )
 
         with self._lock:
-            self._processes[request.task_id] = popen
+            self._processes[request.run_id] = popen
 
         try:
             stdout, stderr = popen.communicate(timeout=request.timeout_seconds)
@@ -180,7 +180,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             )
         finally:
             with self._lock:
-                self._processes.pop(request.task_id, None)
+                self._processes.pop(request.run_id, None)
 
         if popen.returncode == -15 or popen.returncode == -9:
             return ExecuteOutcome(
