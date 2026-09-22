@@ -18,11 +18,17 @@ the validation + repair loop, and known limitations).
 - Node.js 18+ (tested on Node 22) and npm
 - `git` CLI
 - `claude` CLI (Claude Code), authenticated (`claude auth status`)
-- A Godot executable, only for Godot-project validation (optional —
-  everything else works without it; Godot projects just skip validation
-  and behave like M1 if it's missing). Tested against Godot 3.5.2
-  (`apt-get install godot3-server` on Debian/Ubuntu). Auto-detected on
-  PATH, or set `IMPULSOR_HUB_GODOT_PATH` to a specific executable.
+- A Godot executable, only needed for **Godot projects** (any project
+  without a `project.godot` at its root works exactly like M1 regardless
+  of whether Godot is installed). If a project *is* a Godot project but no
+  Godot executable is available, tasks on it fail clearly (a distinct
+  "validator error", never a silent pass) rather than the Hub crashing.
+  Verified against two official builds: Godot 3.5.2
+  (`apt-get install godot3-server` on Debian/Ubuntu) and Godot 4.2.2
+  (official release from github.com/godotengine/godot, checksum-verified
+  — see `M2_REPORT.md` §12.2). Auto-detected on PATH (prefers a `godot4`
+  binary over `godot3-server` when both are present — see §12.3), or set
+  `IMPULSOR_HUB_GODOT_PATH` to force a specific executable.
 - Rust + `cargo` only if you intend to build the Tauri desktop shell
   (`ui/npm run build` + `tauri` — see "Known limitations" in
   `M1_REPORT.md` for why this wasn't build-verified in the dev sandbox)
@@ -80,6 +86,15 @@ npm run tauri dev
 ```bash
 source .venv/bin/activate
 python -m pytest tests/ -v
+```
+
+This is fully portable: it runs (and passes) with or without Godot
+installed. Tests that need a real Godot binary are marked
+`@pytest.mark.real_godot` and auto-skip (never falsely fail) when none is
+detected. To force-select only those:
+
+```bash
+python -m pytest -m real_godot -v
 ```
 
 UI type-check / build:

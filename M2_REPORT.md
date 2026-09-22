@@ -1,9 +1,20 @@
 # Impulsor Hub — Milestone 2 Report
 
-Status: **PASS.** Godot is now the first external validation tool wired into
-Impulsor Hub, end to end, with a real repair loop verified against the real
-`claude` CLI and a real Godot engine — not mocks. `REAL_GODOT_E2E = VERIFIED`
-(see §6).
+Status: **PASS, HARDENED.** Godot is now the first external validation tool
+wired into Impulsor Hub, end to end, with a real repair loop verified against
+the real `claude` CLI and real Godot engines — not mocks.
+`REAL_GODOT_E2E = VERIFIED` for both Godot 3.5.2 and Godot 4.2.2 (see §6 and
+§12 "M2 HARDENING").
+
+**Document structure**: §1-11 and the original "Completion response" below
+are the **unmodified original M2 delivery report** (before external audit).
+Nothing in that original text was deleted or rewritten. **§12 "M2 HARDENING"**
+at the end of this document is what was added afterward in response to the
+external audit's two findings (test-suite portability, Godot 4 verification)
+— read it for the current, final state of those two points; where it
+supersedes a statement made earlier in this document (e.g. §7.1's "not
+tested against Godot 4"), §12 says so explicitly rather than silently
+overwriting the earlier text.
 
 ## 1. Implementation summary
 
@@ -376,3 +387,304 @@ UI: `npx tsc -b && npx vite build` → clean, no type errors.
 6. **Path to M2_REPORT.md:** `M2_REPORT.md` (this file, repo root).
 
 M3 is not started.
+
+*(End of the original M2 delivery report. Everything below was added during
+M2 HARDENING, in response to external audit findings.)*
+
+---
+
+## 12. M2 HARDENING
+
+Triggered by external audit of the M2 delivery ZIP, which surfaced two
+concrete, valid findings:
+
+1. Running `python -m pytest tests/ -v` on a machine **without Godot
+   installed** produced **83 passed, 8 FAIL** — the 8 failures were all in
+   `test_godot_adapter.py` and were caused purely by the absence of a real
+   Godot binary, not a real defect. The original M2 report's own "91
+   passed, 0 failed" was only true because this development environment
+   happened to have `godot3-server` installed; that dependency was never
+   made explicit to the test *runner*, only to a human reading the README.
+2. `M2_REPORT.md` §7.1 honestly flagged Godot 4 as "implemented but not
+   real-world verified" — a real gap, not a documentation shortcut, since
+   no Godot 4 package was available through this container's `apt` proxy
+   at the time.
+
+Both are now closed. Nothing about the orchestrator, checkpoint/rollback,
+content-hash manifest comparison, `ClaudeCodeAdapter`, the repair loop's
+control flow, `MAX_REPAIR_ATTEMPTS` (still 2), or the general UI layout was
+touched — this work is scoped entirely to the `GodotAdapter`/test-suite
+area, as instructed.
+
+### 12.1 Why the suite failed without Godot, and how it was fixed
+
+Every `test_godot_adapter.py` test that calls `GodotAdapter.validate()` or
+`.detect()` against reality (not a monkeypatched `subprocess`) needs a real
+executable on the machine; there was previously no mechanism to distinguish
+"this is a real defect" from "this environment simply doesn't have Godot."
+Pytest's `skip` mechanism is exactly built for that second case, and hadn't
+been used.
+
+**Fix**: a `real_godot` pytest marker (registered in `pytest.ini`) plus a
+`pytest_collection_modifyitems` hook in `tests/conftest.py`:
+
+```python
+def pytest_collection_modifyitems(config, items):
+    from app.adapters.validator.godot.adapter import GodotAdapter
+    if GodotAdapter().detect()["available"]:
+        return
+    skip_marker = pytest.mark.skip(reason="real Godot executable not available in this environment (SKIPPED, not FAILED)")
+    for item in items:
+        if "real_godot" in item.keywords:
+            item.add_marker(skip_marker)
+```
+
+The 8 tests that need a real binary now carry `@pytest.mark.real_godot`;
+everything else (including 4 *new* resource-discovery/version-parsing tests
+added during this hardening pass, §12.3) is unmarked and always runs.
+
+#### A) Portable unit/integration tests (no Godot required, always run)
+
+These use `monkeypatch` on `subprocess.Popen`/env vars, or don't touch a
+binary at all (`supports()` only stats a file; resource-discovery tests
+fake `shutil.which`). They validate exactly what the audit asked for:
+detection-when-missing, health-check-when-missing, command construction
+(the `--path`/`--script`/`--check-only`/`--headless` argument list),
+result parsing, the ERROR paths (launch failure, binary missing, non-Godot
+project), and the entire repair pipeline (`test_repair_loop.py`, all 13
+tests, which were *already* fully portable — they use `FakeValidatorAdapter`
+and never touch a real binary).
+
+#### B) Real Godot integration/E2E tests (`@pytest.mark.real_godot`)
+
+Detection-when-present, health-check-when-present, a real PASS, a real FAIL
+with a real file/line, a real timeout (simulated subprocess hang, but a
+real `detect()` call first), a real launch-failure path, real cancellation
+of a real in-flight subprocess, and the real "no scripts = trivial pass"
+case. These run automatically whenever Godot is present, and are cleanly
+skipped (never failed) when it isn't. `docs/e2e/godot*_scenario/` also
+still holds the full real end-to-end evidence (screenshots, raw
+events/file-changes JSON) from actually driving the app through the UI —
+these were never pytest tests and are untouched by this hardening pass.
+
+#### Commands
+
+```bash
+# Portable suite (works with or without Godot installed)
+python -m pytest tests/ -v
+
+# Force-select only the real-Godot tests (they still individually skip
+# whatever genuinely can't run, e.g. if pointed at a fake path on purpose)
+python -m pytest -m real_godot -v
+```
+
+#### Verification (this environment, both Godot 3 and Godot 4 installed)
+
+| Scenario | Command | Result |
+|---|---|---|
+| Godot binaries hidden (simulated clean machine) | `pytest tests/ -v -rs` | **87 passed, 8 skipped**, 0 failed — every skip reason reads `"real Godot executable not available in this environment (SKIPPED, not FAILED)"` |
+| Godot binaries hidden | `pytest -m real_godot -v -rs` | **8 skipped**, 87 deselected, 0 failed |
+| Both Godot binaries present | `pytest tests/ -v` | **95 passed**, 0 failed, 0 skipped |
+
+This directly answers the audit: the same command (`pytest tests/`) that
+used to report 8 FAIL on a Godot-less machine now reports 8 SKIPPED there,
+and unchanged full-pass behavior wherever Godot *is* installed.
+
+A genuine, secondary bug was found and fixed while doing this verification:
+two of the new resource-discovery tests (§12.3) didn't clear
+`IMPULSOR_HUB_GODOT_PATH` from the ambient environment before asserting
+PATH-search behavior, so running the suite with that variable deliberately
+set (exactly what re-verifying Godot 3 below requires) made them fail on a
+false premise — a real test-isolation defect, fixed with an explicit
+`monkeypatch.delenv("IMPULSOR_HUB_GODOT_PATH", raising=False)`.
+
+### 12.2 Godot 4: obtained, verified, real
+
+An **official** Godot 4.2.2-stable Linux x86_64 build was downloaded from
+`github.com/godotengine/godot`'s own GitHub Releases (the project's
+canonical release channel) and its integrity was verified against that
+same release's own published `SHA512-SUMS.txt` **before** it was used for
+anything:
+
+```
+$ sha512sum Godot_v4.2.2-stable_linux.x86_64.zip
+4c0294f4...  Godot_v4.2.2-stable_linux.x86_64.zip
+$ grep linux.x86_64.zip SHA512-SUMS.txt
+4c0294f4...  Godot_v4.2.2-stable_linux.x86_64.zip
+```
+Hashes matched exactly. `godot4 --version` → `4.2.2.stable.official.15073afe3`.
+
+No unofficial/third-party source was used; no Godot 3 binary was renamed or
+disguised as Godot 4 (they are two genuinely distinct installed executables,
+`/usr/bin/godot3-server` 3.5.2 and `/usr/local/bin/godot4` 4.2.2, and both
+are exercised by name in the resource-discovery tests).
+
+**A real quirk this uncovered**: `godot4 --version` exits `0`, in contrast
+to `godot3-server --version`, which — as the original M2 report already
+documented — exits `255` even on success. `GodotAdapter.detect()` already
+judged success by output shape (`^\d+\.`) rather than exit code specifically
+*because* of the Godot 3 quirk found earlier; that same code path turned
+out to already be correct for Godot 4 too, needing no change. This is a
+second confirmation that judging by output shape rather than exit code was
+the right call, not a lucky one-off fix.
+
+#### Godot 4 unit tests
+
+All 18 `test_godot_adapter.py` tests (including the 8 `real_godot` ones)
+pass with Godot 4 as the default-selected binary (§12.3). Re-run explicitly:
+
+```
+$ pytest tests/test_godot_adapter.py -v      # godot4 preferred by default
+18 passed in 0.81s
+```
+
+#### Godot 4 real E2E
+
+Two more real scenarios, same method as the original M2 E2E (§6): real
+`claude` CLI, real Godot binary (this time 4.2.2), disposable fixture
+projects, never MONTARO. Evidence under `docs/e2e/godot4_pass_scenario/`
+and `docs/e2e/godot4_repair_scenario/`.
+
+**Scenario C — Godot 4 PASS.** Minimal valid Godot 4 project
+(`config_version=5`, `features=["4.2"]`). Objective: *"Add a new function
+named multiply(a, b) to main.gd that returns a * b... use modern Godot 4
+GDScript syntax."* Claude wrote valid GDScript; `validation.passed` at
+184ms; KEEP persisted it; independently re-ran
+`godot4 --headless --check-only` against the real file afterward — exit 0.
+
+**Scenario D — Godot 4 real auto-repair.** Same setup, but the objective
+explicitly asked for the **classic bare `onready var` keyword** — syntax
+Godot 4 genuinely removed in favor of the `@onready` annotation. This was
+verified by hand *before* the scenario was run through the app (not
+inferred): running `godot4 --headless --check-only --script` against a
+file using bare `onready var x = 1` produces the real engine error
+`Parse Error: Unexpected 'Identifier' in class body`. This mirrors the
+original M2 report's Scenario B methodology exactly (there: asking for
+Godot-4-only `@export` on a Godot 3 project), just in the opposite
+direction (asking for pre-4.0 `onready` on a Godot 4 project) — a real,
+hand-confirmed engine rejection, never a manually constructed
+`ValidationResult`.
+- **Attempt 0**: Claude used bare `onready var self_ref = self`.
+  `validation.failed` at 177ms, the real Godot 4 error text flowed into the
+  Repair Context.
+- **Repair 1**: Claude's own summary explicitly names the mechanism ("The
+  bare 'onready' keyword was removed in Godot 4's GDScript... Used
+  '@onready' instead since it is the only Godot-4-valid way..."), rewrote
+  it correctly. `validation.passed` at 182ms.
+- **Final: VALIDATED**, task COMPLETED.
+- **ROLLBACK**, verified against the real filesystem afterward: `main.gd`
+  restored to exactly the pre-task committed content, byte for byte,
+  reverting both the initial attempt and the repair in one step from the
+  original checkpoint only; `git status` showed nothing but the Hub's own
+  `.impulsor/` left untracked.
+
+`REAL_GODOT_E2E = VERIFIED` now covers **both** Godot 3.5.2 and Godot 4.2.2
+— this explicitly supersedes §7.1's original "not real-world verified"
+note and item 1 of the original §7 limitations list (both left as-written
+above for the historical record, per instructions not to delete prior
+content).
+
+### 12.3 Godot 3 + Godot 4 resource discovery (deterministic)
+
+With both `/usr/bin/godot3-server` (3.5.2) and `/usr/local/bin/godot4`
+(4.2.2) installed simultaneously:
+
+- **What gets selected**: Godot 4. `GodotAdapter._resolve_executable()`
+  searches a fixed, ordered candidate-name list —
+  `["godot4", "godot", "godot3-server", "godot3", "Godot",
+  "godot.x11.opt.tools.64"]` — via `shutil.which`, first match wins. Since
+  both were on `PATH`, `"godot4"` (checked first) won deterministically.
+  Confirmed live: `GodotAdapter().detect()` →
+  `{'available': True, 'version': '4.2.2.stable.official.15073afe3',
+  'executable_path': '/usr/local/bin/godot4'}`.
+- **Why this order**: prefer the explicitly-versioned modern name when
+  present, matching the reasonable default expectation that a project
+  without other configuration should validate against the newer engine
+  generation. It is a fixed, hard-coded preference order — not a smart
+  per-project selector — consistent with M2 SPEC section 4's "no
+  intelligent router yet" and this task's explicit "no necesitamos
+  todavía un selector gráfico sofisticado."
+- **Manual override**: `IMPULSOR_HUB_GODOT_PATH` (an executable name
+  resolved via `PATH`, or an absolute path) always wins over the
+  candidate-name search, regardless of what else is installed — e.g.
+  `IMPULSOR_HUB_GODOT_PATH=godot3-server` forces Godot 3 even with Godot 4
+  present, which is exactly how Godot 3 was re-verified below. Proven by
+  `test_manual_override_wins_over_path_discovery_even_with_both_installed`.
+- **What appears in Resources**: whatever `detect()`/`health_check()`
+  currently resolve to — with both installed and no override, `GET
+  /api/resources` reports the `godot` resource with
+  `"version": "4.2.2.stable.official.15073afe3"`. Setting
+  `IMPULSOR_HUB_GODOT_PATH` and refreshing resources would show 3.5.2
+  instead. No new UI was added for this — Resources already renders
+  whatever the API returns generically (unchanged from the original M2
+  delivery).
+- Determinism, override-still-works, and version-string parsing for both
+  major versions are all covered by four new, fully portable tests (no
+  real binary needed — they fake `shutil.which`):
+  `test_resource_discovery_prefers_godot4_name_when_both_present`,
+  `test_resource_discovery_falls_back_to_godot3_when_godot4_name_absent`,
+  `test_manual_override_wins_over_path_discovery_even_with_both_installed`,
+  `test_major_version_parses_godot3_and_godot4_version_strings`.
+
+### 12.4 Godot 3 re-verified (no regression)
+
+With Godot 4 now installed and preferred by default, Godot 3 support was
+explicitly re-confirmed rather than assumed unaffected:
+
+```
+$ IMPULSOR_HUB_GODOT_PATH=godot3-server pytest tests/test_godot_adapter.py -v
+18 passed in 0.55s
+```
+
+All 8 `real_godot` tests (including a real PASS and a real FAIL with a real
+parse error) ran against the real `godot3-server` 3.5.2 binary specifically,
+forced via the same manual-override mechanism §12.3 describes, and all
+passed. The original M2 report's Scenario A/B E2E evidence
+(`docs/e2e/godot_pass_scenario/`, `docs/e2e/godot_repair_scenario/`) is
+untouched and still valid — nothing about the Godot 3 code path changed
+during this hardening pass, so it was not re-run end-to-end through the UI
+a third time; the targeted adapter-level re-verification above plus the
+unchanged evidence together demonstrate no regression.
+
+### 12.5 Full validation performed for this hardening pass
+
+1. Portable suite, Godot hidden: **87 passed, 8 skipped**, 0 failed (§12.1).
+2. Godot 3 real, forced via override, Godot 4 also installed: **18/18
+   passed** (§12.4).
+3. Godot 4 real, default selection: **18/18 passed** (§12.2).
+4. Full suite, both installed: **95 passed**, 0 failed, 0 skipped.
+5. Frontend: `npx tsc -b` clean, `npx vite build` clean.
+6. Existing E2E evidence (Scenarios A, B) re-confirmed present and
+   untouched; two new real E2E scenarios (C, D) run fresh against Godot 4
+   (§12.2).
+
+### 12.6 Remaining limitations after hardening
+
+- Godot 4 is now verified with one real build (4.2.2-stable). Different
+  Godot 4.x point releases, or the `.NET`/Mono build variant, were not
+  separately tested.
+- Resource discovery's preference order (`godot4` name checked before
+  `godot3-server`) is a fixed default, not configurable except via the
+  full `IMPULSOR_HUB_GODOT_PATH` override (i.e. there's no "prefer Godot 3
+  by default" setting short of always passing the override) — acceptable
+  for M2's explicitly-non-intelligent scope, flagged here in case a future
+  milestone wants a per-project pinned engine version instead.
+- All other limitations from §7 (original M2) and from `M1_REPORT.md`
+  remain unchanged and are not repeated here.
+
+### 12.7 M2 HARDENING — Definition of Done
+
+- [x] Suite estándar funciona sin Godot instalado (87 passed, 8 skipped, 0 failed).
+- [x] Ausencia de Godot produce SKIP donde corresponda, no falsos FAIL.
+- [x] Tests reales de Godot siguen existiendo (`@pytest.mark.real_godot`, 8 tests).
+- [x] Godot 3 continúa funcionando (re-verified explicitly, §12.4).
+- [x] Godot 4 real fue probado (official 4.2.2-stable, checksum-verified, §12.2).
+- [x] Detección Godot 3/4 es determinista (§12.3, tested).
+- [x] Override manual de executable sigue funcionando (§12.3, tested).
+- [x] Repair loop sigue funcionando (unchanged; real E2E Scenario D).
+- [x] KEEP gating sigue funcionando (unchanged; real E2E Scenario C KEEP).
+- [x] ROLLBACK sigue funcionando (real E2E Scenarios C/D rollback verified).
+- [x] Los tests M1 siguen pasando (64/64, part of the 95).
+- [x] Frontend compila (`tsc -b` + `vite build` clean).
+- [x] M2_REPORT.md actualizado (this section).
+- [x] M3 NO iniciado.
