@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS task_run (
     stdout_path           TEXT,
     stderr_path           TEXT,
     failure_reason        TEXT,
-    disposition           TEXT NOT NULL DEFAULT 'pending'
+    disposition           TEXT NOT NULL DEFAULT 'pending',
+    validation_status     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS file_change (

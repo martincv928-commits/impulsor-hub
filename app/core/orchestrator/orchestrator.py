@@ -1,21 +1,26 @@
-"""Task execution pipeline (SPEC sections 3, 9, 15; CLAUDE_M1 Checkpoints C-E).
+"""Task execution pipeline (SPEC sections 3, 9, 15; M2 SPEC sections 5-12).
 
 `local project -> task -> safe baseline -> Claude Code executor ->
-actual Git inspection -> manifest -> user KEEP or ROLLBACK`
+independent file verification -> [Godot validation -> repair loop] ->
+manifest -> user KEEP or ROLLBACK`
 
 This module is the only place that wires adapters (via the router),
 policy enforcement, event logging and task/task_run persistence together.
 The API layer only calls functions here; it never talks to adapters
-directly.
+directly. The orchestrator only ever calls the generic `ValidatorAdapter`
+interface -- it has no import of GodotAdapter and no idea Godot exists
+(M2 SPEC section 1).
 """
 from __future__ import annotations
 
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.adapters.ai.base import ExecuteRequest
+from app.adapters.ai.base import ExecuteOutcome, ExecuteRequest
+from app.adapters.validator.base import ValidationIssue, ValidationResult, ValidationStatus
 from app.adapters.vcs.base import (
     CheckpointRef,
     RepositoryNotFoundError,
@@ -23,13 +28,19 @@ from app.adapters.vcs.base import (
     VcsNotAvailableError,
 )
 from app.core.events.events import log_event
-from app.core.permissions.policy import impulsor_metadata_dir
+from app.core.permissions.policy import (
+    RESULT_SCHEMA_INSTRUCTION,
+    build_repair_envelope,
+    impulsor_metadata_dir,
+)
 from app.core.router.router import ResourceRouter
 from app.database.models import EventSeverity, RunDisposition, Task, TaskRunStatus, TaskStatus
 from app.projects import service as projects_service
 from app.tasks import service as tasks_service
 
 DEFAULT_TIMEOUT_SECONDS = 600
+DEFAULT_VALIDATION_TIMEOUT_SECONDS = 120
+MAX_REPAIR_ATTEMPTS = 2
 
 _project_locks: dict[str, threading.Lock] = {}
 _project_locks_guard = threading.Lock()
@@ -53,12 +64,17 @@ def _project_lock(project_id: str) -> threading.Lock:
         return _project_locks[project_id]
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def run_task(
     conn: sqlite3.Connection,
     *,
     task_id: str,
     router: ResourceRouter,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    validation_timeout_seconds: int = DEFAULT_VALIDATION_TIMEOUT_SECONDS,
 ) -> Task:
     """Execute the full pipeline synchronously for `task_id`.
 
@@ -78,6 +94,8 @@ def run_task(
     workspace = projects_service.project_root(project)
     vcs = router.select_vcs()
     ai_executor = router.select_ai_executor()
+    validator = router.select_validator()
+    project_wants_validation = project.project_type == "godot" and validator.supports(workspace)
 
     if tasks_service.has_active_task(conn, project_id=project.id) and task.status not in (
         TaskStatus.LOCKING,
@@ -164,128 +182,149 @@ def run_task(
             task_run_id=task_run.id,
             payload={"checkpoint_id": checkpoint.id, "mechanism": ref.mechanism},
         )
+        # The checkpoint above is the ONLY one created for this task's entire
+        # lifecycle -- repairs (below) never create a new one. It is the sole
+        # source of ROLLBACK and of the final manifest, however many repair
+        # attempts happen (M2 SPEC sections 11-12).
 
         task = tasks_service.transition_task(conn, task_id, TaskStatus.RUNNING)
-        from datetime import datetime, timezone
-
-        tasks_service.update_task_run(
-            conn, task_run.id, status=TaskRunStatus.RUNNING, started_at=datetime.now(timezone.utc).isoformat()
-        )
-        log_event(
-            conn,
-            type="task.execution_started",
-            severity=EventSeverity.INFO,
-            project_id=project.id,
-            task_id=task_id,
-            task_run_id=task_run.id,
-        )
+        tasks_service.update_task_run(conn, task_run.id, status=TaskRunStatus.RUNNING, started_at=_now())
         conn.commit()  # must be visible before the (potentially minutes-long) blocking call below
 
-        outcome = ai_executor.execute(
-            ExecuteRequest(
-                task_id=task_id,
-                run_id=task_run.id,
-                workspace=workspace,
-                objective=task.objective,
-                timeout_seconds=timeout_seconds,
-            )
-        )
-
         logs_dir = impulsor_metadata_dir(workspace) / "logs" / task_run.id
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        stdout_path = logs_dir / "stdout.log"
-        stderr_path = logs_dir / "stderr.log"
-        stdout_path.write_text(outcome.stdout)
-        stderr_path.write_text(outcome.stderr)
-
-        ended_at = datetime.now(timezone.utc).isoformat()
-        log_event(
+        outcome = _execute_attempt(
             conn,
-            type="task.execution_finished",
-            severity=EventSeverity.INFO,
-            project_id=project.id,
-            task_id=task_id,
+            project=project,
+            task=task,
             task_run_id=task_run.id,
-            payload={"run_status": outcome.run_status, "exit_code": outcome.exit_code, "warnings": outcome.warnings},
+            ai_executor=ai_executor,
+            workspace=workspace,
+            objective=task.objective,
+            timeout_seconds=timeout_seconds,
+            logs_dir=logs_dir,
+            attempt=0,
+            kind="initial",
         )
-        if outcome.malformed_result_raw is not None:
-            log_event(
-                conn,
-                type="task.malformed_executor_result",
-                severity=EventSeverity.WARNING,
-                project_id=project.id,
-                task_id=task_id,
-                task_run_id=task_run.id,
-                payload={"raw": outcome.malformed_result_raw[:2000]},
-            )
-
-        task = tasks_service.transition_task(conn, task_id, TaskStatus.VERIFYING)
-        # Compared against the pre-task checkpoint snapshot's actual bytes
-        # (see GitAdapter.compute_change_manifest), not another `git status`
-        # snapshot -- that's what lets a re-edit of an already-dirty file be
-        # detected as task-attributable (SPEC 15 / M1_REPORT.md §7.1 fix).
-        manifest = vcs.compute_change_manifest(workspace, ref)
 
         claimed_paths: dict[str, bool] = {}
-        if outcome.structured_result is not None:
-            for p in outcome.structured_result.files_claimed_created:
-                claimed_paths[p] = True
-            for p in outcome.structured_result.files_claimed_modified:
-                claimed_paths[p] = True
-            for p in outcome.structured_result.files_claimed_deleted:
-                claimed_paths[p] = True
+        _accumulate_claims(claimed_paths, outcome)
 
-        observed_paths = {e.path for e in manifest.entries}
-        entries_to_persist = []
-        for entry in manifest.entries:
-            entries_to_persist.append(
-                {
-                    "path": entry.path,
-                    "change_type": entry.change_type,
-                    "additions": entry.additions,
-                    "deletions": entry.deletions,
-                    "claimed_by_executor": entry.path in claimed_paths,
-                    "observed_by_vcs": True,
-                }
-            )
-        discrepant_claimed_only = sorted(set(claimed_paths) - observed_paths)
-        for path in discrepant_claimed_only:
-            entries_to_persist.append(
-                {
-                    "path": path,
-                    "change_type": "unknown",
-                    "additions": None,
-                    "deletions": None,
-                    "claimed_by_executor": True,
-                    "observed_by_vcs": False,
-                }
-            )
-        tasks_service.record_file_changes(conn, task_run_id=task_run.id, entries=entries_to_persist)
+        task = tasks_service.transition_task(conn, task_id, TaskStatus.VERIFYING)
 
-        if discrepant_claimed_only or (observed_paths - set(claimed_paths)):
+        final_validation: Optional[ValidationResult] = None
+        repair_attempts_used = 0
+        final_outcome = outcome
+
+        if project_wants_validation and outcome.run_status == "completed":
+            health = validator.health_check()
             log_event(
                 conn,
-                type="task.claim_discrepancy",
-                severity=EventSeverity.WARNING,
+                type="validator.detected" if health.get("available") else "validator.unavailable",
+                severity=EventSeverity.INFO if health.get("available") else EventSeverity.WARNING,
                 project_id=project.id,
                 task_id=task_id,
                 task_run_id=task_run.id,
-                payload={
-                    "claimed_but_not_observed": discrepant_claimed_only,
-                    "observed_but_not_claimed": sorted(observed_paths - set(claimed_paths)),
-                },
+                payload={"validator": "godot", "health": health},
             )
 
-        run_status, task_status, failure_reason = _final_statuses(outcome)
+            attempt = 0
+            while True:
+                manifest = vcs.compute_change_manifest(workspace, ref)
+                validation_result = validator.validate(
+                    workspace, run_id=task_run.id, timeout_seconds=validation_timeout_seconds
+                )
+                final_validation = validation_result
+                _log_validation_event(conn, project=project, task_id=task_id, task_run_id=task_run.id, attempt=attempt, result=validation_result)
+
+                if validation_result.status == ValidationStatus.PASS:
+                    break
+                if validation_result.status in (ValidationStatus.ERROR, ValidationStatus.TIMEOUT):
+                    break  # validator infra issue, not a repairable code problem
+                if attempt >= MAX_REPAIR_ATTEMPTS:
+                    log_event(
+                        conn,
+                        type="repair.exhausted",
+                        severity=EventSeverity.WARNING,
+                        project_id=project.id,
+                        task_id=task_id,
+                        task_run_id=task_run.id,
+                        payload={"max_repair_attempts": MAX_REPAIR_ATTEMPTS},
+                    )
+                    break
+
+                attempt += 1
+                repair_attempts_used = attempt
+                modified_files = sorted({e.path for e in manifest.entries})
+                repair_prompt = build_repair_envelope(
+                    task_id=task_id,
+                    workspace=workspace,
+                    objective=task.objective,
+                    attempt=attempt,
+                    max_attempts=MAX_REPAIR_ATTEMPTS,
+                    validator_name=validation_result.validator,
+                    validation_status=validation_result.status.value,
+                    errors=[_format_issue(e) for e in validation_result.errors],
+                    warnings=[_format_issue(w) for w in validation_result.warnings],
+                    modified_files=modified_files,
+                ) + "\n" + RESULT_SCHEMA_INSTRUCTION
+                log_event(
+                    conn,
+                    type="repair.started",
+                    severity=EventSeverity.INFO,
+                    project_id=project.id,
+                    task_id=task_id,
+                    task_run_id=task_run.id,
+                    payload={"attempt": attempt, "error_count": len(validation_result.errors)},
+                )
+                conn.commit()
+
+                final_outcome = _execute_attempt(
+                    conn,
+                    project=project,
+                    task=task,
+                    task_run_id=task_run.id,
+                    ai_executor=ai_executor,
+                    workspace=workspace,
+                    objective=task.objective,
+                    timeout_seconds=timeout_seconds,
+                    logs_dir=logs_dir,
+                    attempt=attempt,
+                    kind="repair",
+                    full_prompt_override=repair_prompt,
+                )
+                _accumulate_claims(claimed_paths, final_outcome)
+                log_event(
+                    conn,
+                    type="repair.finished",
+                    severity=EventSeverity.INFO,
+                    project_id=project.id,
+                    task_id=task_id,
+                    task_run_id=task_run.id,
+                    payload={"attempt": attempt, "run_status": final_outcome.run_status},
+                )
+                # Loop back: re-observe real changes, then re-validate --
+                # regardless of whether the repair's own self-report was
+                # clean, since Godot has authority over its own domain.
+
+        # Final manifest/claims: ALWAYS checkpoint vs final state, computed
+        # once here -- never an incremental "vs last repair" diff (M2 SPEC
+        # section 12). For a non-Godot project this is exactly M1's manifest.
+        manifest = vcs.compute_change_manifest(workspace, ref)
+        _persist_manifest_and_discrepancies(
+            conn, project=project, task_id=task_id, task_run_id=task_run.id, manifest=manifest, claimed_paths=claimed_paths
+        )
+
+        run_status, task_status, failure_reason, validation_status_value = _final_statuses(
+            final_outcome, validation=final_validation, repair_attempts_used=repair_attempts_used
+        )
         tasks_service.update_task_run(
             conn,
             task_run.id,
             status=run_status,
-            ended_at=ended_at,
-            structured_result=(outcome.structured_result.model_dump() if outcome.structured_result else None),
-            stdout_path=str(stdout_path),
-            stderr_path=str(stderr_path),
+            ended_at=_now(),
+            structured_result=(final_outcome.structured_result.model_dump() if final_outcome.structured_result else None),
             failure_reason=failure_reason,
+            validation_status=validation_status_value,
         )
         task = tasks_service.transition_task(conn, task_id, task_status)
         log_event(
@@ -295,30 +334,222 @@ def run_task(
             project_id=project.id,
             task_id=task_id,
             task_run_id=task_run.id,
-            payload={"final_status": task_status.value},
+            payload={"final_status": task_status.value, "validation_status": validation_status_value, "repair_attempts_used": repair_attempts_used},
         )
         return task
     finally:
         lock.release()
 
 
-def _final_statuses(outcome) -> tuple[TaskRunStatus, TaskStatus, Optional[str]]:
-    if outcome.run_status == "timed_out":
-        return TaskRunStatus.TIMED_OUT, TaskStatus.FAILED, outcome.failure_reason
-    if outcome.run_status == "cancelled":
-        return TaskRunStatus.CANCELLED, TaskStatus.CANCELLED, outcome.failure_reason
-    if outcome.run_status == "failed":
-        return TaskRunStatus.FAILED, TaskStatus.FAILED, outcome.failure_reason
-    # run_status == "completed" at the process level; still not verified
-    # success unless we got a conforming, self-reported-successful result.
+def _execute_attempt(
+    conn: sqlite3.Connection,
+    *,
+    project,
+    task,
+    task_run_id: str,
+    ai_executor,
+    workspace: Path,
+    objective: str,
+    timeout_seconds: int,
+    logs_dir: Path,
+    attempt: int,
+    kind: str,
+    full_prompt_override: Optional[str] = None,
+) -> ExecuteOutcome:
+    """Run one executor invocation (the initial execution, or one repair
+    attempt) and log/persist everything about it. Returns the outcome;
+    callers decide what it means for the pipeline."""
+    log_event(
+        conn,
+        type="task.execution_started",
+        severity=EventSeverity.INFO,
+        project_id=project.id,
+        task_id=task.id,
+        task_run_id=task_run_id,
+        payload={"attempt": attempt, "kind": kind},
+    )
+    conn.commit()
+
+    outcome = ai_executor.execute(
+        ExecuteRequest(
+            task_id=task.id,
+            run_id=task_run_id,
+            workspace=workspace,
+            objective=objective,
+            timeout_seconds=timeout_seconds,
+            full_prompt_override=full_prompt_override,
+        )
+    )
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = logs_dir / f"attempt_{attempt}_stdout.log"
+    stderr_path = logs_dir / f"attempt_{attempt}_stderr.log"
+    stdout_path.write_text(outcome.stdout)
+    stderr_path.write_text(outcome.stderr)
+    tasks_service.update_task_run(conn, task_run_id, stdout_path=str(stdout_path), stderr_path=str(stderr_path))
+
+    log_event(
+        conn,
+        type="task.execution_finished",
+        severity=EventSeverity.INFO,
+        project_id=project.id,
+        task_id=task.id,
+        task_run_id=task_run_id,
+        payload={
+            "attempt": attempt,
+            "kind": kind,
+            "run_status": outcome.run_status,
+            "exit_code": outcome.exit_code,
+            "warnings": outcome.warnings,
+            "stdout_path": str(stdout_path),
+            "stderr_path": str(stderr_path),
+        },
+    )
+    if outcome.malformed_result_raw is not None:
+        log_event(
+            conn,
+            type="task.malformed_executor_result",
+            severity=EventSeverity.WARNING,
+            project_id=project.id,
+            task_id=task.id,
+            task_run_id=task_run_id,
+            payload={"attempt": attempt, "raw": outcome.malformed_result_raw[:2000]},
+        )
+    conn.commit()
+    return outcome
+
+
+def _accumulate_claims(claimed_paths: dict[str, bool], outcome: ExecuteOutcome) -> None:
     if outcome.structured_result is None:
-        return TaskRunStatus.FAILED, TaskStatus.FAILED, "Executor returned no valid structured result"
+        return
+    for p in outcome.structured_result.files_claimed_created:
+        claimed_paths[p] = True
+    for p in outcome.structured_result.files_claimed_modified:
+        claimed_paths[p] = True
+    for p in outcome.structured_result.files_claimed_deleted:
+        claimed_paths[p] = True
+
+
+def _persist_manifest_and_discrepancies(
+    conn: sqlite3.Connection, *, project, task_id: str, task_run_id: str, manifest, claimed_paths: dict[str, bool]
+) -> None:
+    observed_paths = {e.path for e in manifest.entries}
+    entries_to_persist = []
+    for entry in manifest.entries:
+        entries_to_persist.append(
+            {
+                "path": entry.path,
+                "change_type": entry.change_type,
+                "additions": entry.additions,
+                "deletions": entry.deletions,
+                "claimed_by_executor": entry.path in claimed_paths,
+                "observed_by_vcs": True,
+            }
+        )
+    discrepant_claimed_only = sorted(set(claimed_paths) - observed_paths)
+    for path in discrepant_claimed_only:
+        entries_to_persist.append(
+            {
+                "path": path,
+                "change_type": "unknown",
+                "additions": None,
+                "deletions": None,
+                "claimed_by_executor": True,
+                "observed_by_vcs": False,
+            }
+        )
+    tasks_service.record_file_changes(conn, task_run_id=task_run_id, entries=entries_to_persist)
+
+    if discrepant_claimed_only or (observed_paths - set(claimed_paths)):
+        log_event(
+            conn,
+            type="task.claim_discrepancy",
+            severity=EventSeverity.WARNING,
+            project_id=project.id,
+            task_id=task_id,
+            task_run_id=task_run_id,
+            payload={
+                "claimed_but_not_observed": discrepant_claimed_only,
+                "observed_but_not_claimed": sorted(observed_paths - set(claimed_paths)),
+            },
+        )
+
+
+def _log_validation_event(conn: sqlite3.Connection, *, project, task_id: str, task_run_id: str, attempt: int, result: ValidationResult) -> None:
+    type_by_status = {
+        ValidationStatus.PASS: "validation.passed",
+        ValidationStatus.FAIL: "validation.failed",
+        ValidationStatus.ERROR: "validation.error",
+        ValidationStatus.TIMEOUT: "validation.timeout",
+    }
+    severity = EventSeverity.INFO if result.status == ValidationStatus.PASS else EventSeverity.WARNING
+    log_event(
+        conn,
+        type=type_by_status[result.status],
+        severity=severity,
+        project_id=project.id,
+        task_id=task_id,
+        task_run_id=task_run_id,
+        payload={
+            "attempt": attempt,
+            "validator": result.validator,
+            "status": result.status.value,
+            "summary": result.summary,
+            "duration_ms": result.duration_ms,
+            "error_count": len(result.errors),
+            "errors": [_issue_dict(e) for e in result.errors[:20]],
+            "warning_count": len(result.warnings),
+        },
+    )
+    conn.commit()
+
+
+def _issue_dict(issue: ValidationIssue) -> dict:
+    return {"file": issue.file, "line": issue.line, "message": issue.message}
+
+
+def _format_issue(issue: ValidationIssue) -> str:
+    loc = f"{issue.file}:{issue.line}" if issue.file and issue.line else (issue.file or "")
+    return f"{loc}: {issue.message}" if loc else issue.message
+
+
+def _final_statuses(
+    outcome: ExecuteOutcome, *, validation: Optional[ValidationResult], repair_attempts_used: int
+) -> tuple[TaskRunStatus, TaskStatus, Optional[str], Optional[str]]:
+    """Returns (task_run_status, task_status, failure_reason, validation_status_value)."""
+    if outcome.run_status == "timed_out":
+        return TaskRunStatus.TIMED_OUT, TaskStatus.FAILED, outcome.failure_reason, None
+    if outcome.run_status == "cancelled":
+        return TaskRunStatus.CANCELLED, TaskStatus.CANCELLED, outcome.failure_reason, None
+    if outcome.run_status == "failed":
+        return TaskRunStatus.FAILED, TaskStatus.FAILED, outcome.failure_reason, None
+
+    if validation is not None:
+        # An external validator was applicable and ran: it has authority
+        # over the task's technical outcome (M2 SPEC section 5) -- a PASS
+        # is decisive even if the *last* executor self-report was malformed,
+        # since the manifest/discrepancy machinery already captured whatever
+        # was claimed across every attempt independent of this gate.
+        if validation.status == ValidationStatus.PASS:
+            return TaskRunStatus.COMPLETED, TaskStatus.COMPLETED, None, "pass"
+        if validation.status == ValidationStatus.FAIL:
+            reason = f"Validation failed after {repair_attempts_used} repair attempt(s); repair attempts exhausted"
+            return TaskRunStatus.FAILED, TaskStatus.FAILED, reason, "fail"
+        # ERROR / TIMEOUT: distinct from a code FAIL -- the validator itself
+        # didn't produce a verdict (M2 SPEC section 9D).
+        reason = f"Validator {validation.status.value}: {validation.summary}"
+        return TaskRunStatus.FAILED, TaskStatus.FAILED, reason, validation.status.value
+
+    # No validator applicable (non-Godot project, or Godot project whose
+    # initial execution didn't even complete): identical to M1.
+    if outcome.structured_result is None:
+        return TaskRunStatus.FAILED, TaskStatus.FAILED, "Executor returned no valid structured result", None
     if outcome.structured_result.status != "completed":
-        return TaskRunStatus.FAILED, TaskStatus.FAILED, "Executor self-reported a non-completed status"
-    return TaskRunStatus.COMPLETED, TaskStatus.COMPLETED, None
+        return TaskRunStatus.FAILED, TaskStatus.FAILED, "Executor self-reported a non-completed status", None
+    return TaskRunStatus.COMPLETED, TaskStatus.COMPLETED, None, None
 
 
-def keep_task_run(conn: sqlite3.Connection, *, task_run_id: str) -> None:
+def keep_task_run(conn: sqlite3.Connection, *, task_run_id: str, override: bool = False) -> None:
     task_run = tasks_service.get_task_run(conn, task_run_id)
     if task_run is None:
         raise OrchestratorError(f"Unknown task_run: {task_run_id}", event_type="run.not_found")
@@ -326,11 +557,25 @@ def keep_task_run(conn: sqlite3.Connection, *, task_run_id: str) -> None:
         raise OrchestratorError(
             f"Task run {task_run_id} already has disposition {task_run.disposition}", event_type="run.disposition_conflict"
         )
+    validation_blocks_keep = task_run.validation_status is not None and task_run.validation_status != "pass"
+    if validation_blocks_keep and not override:
+        raise OrchestratorError(
+            f"Cannot KEEP: validation status is '{task_run.validation_status}', not 'pass'. "
+            "An explicit override is required to keep changes that failed validation.",
+            event_type="run.keep_blocked_by_validation",
+        )
     tasks_service.update_task_run(conn, task_run_id, disposition=RunDisposition.KEPT)
     checkpoint = tasks_service.get_checkpoint_for_run(conn, task_run_id=task_run_id)
     if checkpoint is not None:
         tasks_service.set_checkpoint_restore_status(conn, checkpoint.id, "kept")
-    log_event(conn, type="task_run.kept", severity=EventSeverity.INFO, task_run_id=task_run_id)
+    event_type = "task_run.kept_with_override" if (validation_blocks_keep and override) else "task_run.kept"
+    log_event(
+        conn,
+        type=event_type,
+        severity=EventSeverity.WARNING if event_type == "task_run.kept_with_override" else EventSeverity.INFO,
+        task_run_id=task_run_id,
+        payload={"validation_status": task_run.validation_status, "override": override},
+    )
 
 
 def rollback_task_run(conn: sqlite3.Connection, *, task_run_id: str, router: ResourceRouter) -> None:
@@ -350,6 +595,8 @@ def rollback_task_run(conn: sqlite3.Connection, *, task_run_id: str, router: Res
     workspace = projects_service.project_root(project)  # type: ignore[arg-type]
     vcs = router.select_vcs()
 
+    # Always the ORIGINAL pre-task checkpoint (never a repair's state) --
+    # there is only ever one checkpoint per task_run (M2 SPEC section 11).
     ref = CheckpointRef(mechanism=checkpoint.mechanism, reference=checkpoint.reference)
     try:
         vcs.restore_checkpoint(workspace, ref)

@@ -25,6 +25,21 @@ def _default_db_path() -> Path:
 
 _lock = threading.Lock()
 
+# Additive column migrations for databases created before this column
+# existed. CREATE TABLE IF NOT EXISTS (schema.sql) only helps fresh
+# databases; existing M1 databases need an explicit ALTER TABLE. Deliberately
+# minimal (one column, no new tables) per M2 SPEC section 8.
+_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("task_run", "validation_status", "ALTER TABLE task_run ADD COLUMN validation_status TEXT"),
+]
+
+
+def _apply_column_migrations(conn: sqlite3.Connection) -> None:
+    for table, column, ddl in _COLUMN_MIGRATIONS:
+        existing_columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing_columns:
+            conn.execute(ddl)
+
 
 def init_db(db_path: Path | str | None = None) -> None:
     db_path = Path(db_path) if db_path is not None else _default_db_path()
@@ -33,6 +48,7 @@ def init_db(db_path: Path | str | None = None) -> None:
     try:
         with _lock:
             conn.executescript(_SCHEMA_PATH.read_text())
+            _apply_column_migrations(conn)
             conn.commit()
     finally:
         conn.close()

@@ -56,6 +56,7 @@ export interface TaskRun {
   stderr_path: string | null;
   failure_reason: string | null;
   disposition: "pending" | "kept" | "rolled_back";
+  validation_status: "pass" | "fail" | "error" | "timeout" | null;
 }
 
 export interface FileChange {
@@ -114,7 +115,11 @@ export const api = {
   listTaskRuns: (taskId: string) => request<TaskRun[]>(`/tasks/${taskId}/runs`),
   getTaskRun: (id: string) => request<TaskRun>(`/task-runs/${id}`),
   getTaskRunChanges: (id: string) => request<FileChange[]>(`/task-runs/${id}/changes`),
-  keepRun: (id: string) => request<{ disposition: string }>(`/task-runs/${id}/keep`, { method: "POST" }),
+  keepRun: (id: string, override?: boolean) =>
+    request<{ disposition: string; override: boolean }>(`/task-runs/${id}/keep`, {
+      method: "POST",
+      body: JSON.stringify({ override: override ?? false }),
+    }),
   rollbackRun: (id: string) => request<{ disposition: string }>(`/task-runs/${id}/rollback`, { method: "POST" }),
   cancelRun: (id: string) => request<{ signalled: boolean }>(`/task-runs/${id}/cancel`, { method: "POST" }),
 

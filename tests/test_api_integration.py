@@ -48,7 +48,7 @@ def test_full_task_flow_through_api(client):
 
     resp = c.get(f"/api/projects/{project['id']}/resources")
     assert resp.status_code == 200
-    assert {r["adapter_key"] for r in resp.json()} == {"git", "claude_code"}
+    assert {r["adapter_key"] for r in resp.json()} == {"git", "claude_code", "godot"}
 
     resp = c.post(f"/api/projects/{project['id']}/tasks", json={"objective": "add a file"})
     assert resp.status_code == 200

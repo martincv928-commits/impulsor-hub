@@ -21,6 +21,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _detect_project_type(root: Path) -> str:
+    """M2 SPEC section 3: detect `type = godot` via project.godot at the
+    project root. Anything else stays 'generic' and keeps the plain M1
+    pipeline (no universal detection system needed yet)."""
+    if (root / "project.godot").is_file():
+        return "godot"
+    return "generic"
+
+
 def _row_to_project(row: sqlite3.Row) -> Project:
     return Project(
         id=row["id"],
@@ -53,19 +62,20 @@ def add_project(conn: sqlite3.Connection, *, root_path: str, name: Optional[str]
     project_id = str(uuid.uuid4())
     now = _now()
     display_name = name.strip() if name and name.strip() else resolved.name
+    project_type = _detect_project_type(resolved)
     conn.execute(
         """
         INSERT INTO project (id, name, root_path, project_type, created_at, updated_at, status)
-        VALUES (?, ?, ?, 'generic', ?, ?, 'active')
+        VALUES (?, ?, ?, ?, ?, ?, 'active')
         """,
-        (project_id, display_name, str(resolved), now, now),
+        (project_id, display_name, str(resolved), project_type, now, now),
     )
     log_event(
         conn,
         type="project.added",
         severity=EventSeverity.INFO,
         project_id=project_id,
-        payload={"root_path": str(resolved)},
+        payload={"root_path": str(resolved), "project_type": project_type},
     )
     row = conn.execute("SELECT * FROM project WHERE id = ?", (project_id,)).fetchone()
     return _row_to_project(row)

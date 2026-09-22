@@ -101,14 +101,18 @@ def get_task_run_changes(run_id: str) -> list[FileChange]:
         return tasks_service.list_file_changes(conn, task_run_id=run_id)
 
 
+class KeepRunRequest(BaseModel):
+    override: bool = False
+
+
 @router.post("/task-runs/{run_id}/keep")
-def keep_run(run_id: str) -> dict:
+def keep_run(run_id: str, payload: KeepRunRequest = KeepRunRequest()) -> dict:
     with get_connection() as conn:
         try:
-            orchestrator.keep_task_run(conn, task_run_id=run_id)
+            orchestrator.keep_task_run(conn, task_run_id=run_id, override=payload.override)
         except orchestrator.OrchestratorError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"task_run_id": run_id, "disposition": "kept"}
+    return {"task_run_id": run_id, "disposition": "kept", "override": payload.override}
 
 
 @router.post("/task-runs/{run_id}/rollback")

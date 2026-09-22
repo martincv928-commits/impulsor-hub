@@ -36,7 +36,7 @@ from typing import Any, Optional
 from pydantic import ValidationError
 
 from app.adapters.ai.base import AIExecutorAdapter, ExecuteOutcome, ExecuteRequest
-from app.core.permissions.policy import build_task_envelope
+from app.core.permissions.policy import RESULT_SCHEMA_INSTRUCTION, build_task_envelope
 from app.database.models import ExecutorResult
 
 _DISALLOWED_GIT_TOOLS = [
@@ -52,23 +52,6 @@ _DISALLOWED_GIT_TOOLS = [
     "Bash(git filter-branch *)",
     "Bash(git reflog *)",
 ]
-
-_RESULT_SCHEMA_INSTRUCTION = """
-When you are finished, respond with ONLY a single JSON object (no prose, no markdown fences) matching exactly this schema:
-{
-  "task_id": "<the TASK_ID above>",
-  "status": "completed" | "failed",
-  "summary": "<short human summary of what you did>",
-  "files_claimed_modified": ["<relative path>", ...],
-  "files_claimed_created": ["<relative path>", ...],
-  "files_claimed_deleted": ["<relative path>", ...],
-  "commands_executed": ["<command>", ...],
-  "warnings": ["<warning>", ...],
-  "recommended_validation": ["<suggested follow-up check>", ...]
-}
-All paths must be relative to WORKSPACE. Do not include any text before or after the JSON object.
-"""
-
 
 class ClaudeCodeAdapter(AIExecutorAdapter):
     adapter_key = "claude_code"
@@ -122,9 +105,13 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
         return ["code_edit", "shell_exec", "structured_result"]
 
     def execute(self, request: ExecuteRequest) -> ExecuteOutcome:
-        prompt = build_task_envelope(
-            task_id=request.task_id, workspace=request.workspace, objective=request.objective
-        ) + "\n" + _RESULT_SCHEMA_INSTRUCTION
+        prompt = request.full_prompt_override or (
+            build_task_envelope(
+                task_id=request.task_id, workspace=request.workspace, objective=request.objective
+            )
+            + "\n"
+            + RESULT_SCHEMA_INSTRUCTION
+        )
 
         args = [
             "claude",

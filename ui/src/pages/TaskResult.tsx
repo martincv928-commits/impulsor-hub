@@ -2,11 +2,22 @@ import { useEffect, useState } from "react";
 import { api, EventItem, FileChange, Task, TaskRun } from "../api/client";
 
 const ACTIVE_STATUSES = new Set(["VALIDATING", "READY", "LOCKING", "CHECKPOINTING", "RUNNING", "VERIFYING"]);
+const VALIDATION_EVENT_TYPES = new Set(["validation.passed", "validation.failed", "validation.error", "validation.timeout"]);
 
 function changeClass(t: string) {
   if (t === "created") return "diff-created";
   if (t === "deleted") return "diff-deleted";
   return "diff-modified";
+}
+
+function attemptLabel(attempt: number): string {
+  return attempt === 0 ? "Attempt 0 (initial)" : `Repair ${attempt}`;
+}
+
+function validationBadgeClass(status: string): string {
+  if (status === "pass") return "good";
+  if (status === "fail") return "bad";
+  return "warn"; // error | timeout
 }
 
 export default function TaskResultPage({ taskId, onBack }: { taskId: string; onBack: () => void }) {
@@ -16,6 +27,7 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
   const [events, setEvents] = useState<EventItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOverride, setConfirmOverride] = useState(false);
 
   const load = async () => {
     const t = await api.getTask(taskId);
@@ -46,6 +58,14 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
 
   const claimedNotObserved = changes.filter((c) => c.claimed_by_executor && !c.observed_by_vcs);
   const observedNotClaimed = changes.filter((c) => !c.claimed_by_executor && c.observed_by_vcs);
+
+  const validationEvents = events
+    .filter((e) => VALIDATION_EVENT_TYPES.has(e.type))
+    .sort((a, b) => (a.payload.attempt as number) - (b.payload.attempt as number));
+  const hasValidator = run?.validation_status != null || validationEvents.length > 0;
+  const validationPassed = run?.validation_status === "pass";
+  const validationBlocksKeep = run != null && run.validation_status != null && run.validation_status !== "pass";
+  const canKeep = canDispose && (!validationBlocksKeep || confirmOverride);
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -110,18 +130,62 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
         )}
       </div>
 
+      {hasValidator && (
+        <div className="card">
+          <h3>Validation</h3>
+          {validationEvents.map((e) => {
+            const status = e.payload.status as string;
+            const attempt = e.payload.attempt as number;
+            const errorCount = (e.payload.error_count as number) ?? 0;
+            return (
+              <div key={e.id} className="row" style={{ marginBottom: 6 }}>
+                <span>
+                  {attemptLabel(attempt)} — {e.payload.validator as string}
+                </span>
+                <span className={`badge ${validationBadgeClass(status)}`}>
+                  {status.toUpperCase()}
+                  {status === "fail" && errorCount > 0 ? ` (${errorCount} error${errorCount === 1 ? "" : "s"})` : ""}
+                </span>
+              </div>
+            );
+          })}
+          {run?.validation_status && (
+            <p style={{ marginTop: 8 }}>
+              Final: <strong className={validationPassed ? "" : "discrepancy"}>
+                {validationPassed ? "VALIDATED" : run.validation_status.toUpperCase()}
+              </strong>
+            </p>
+          )}
+        </div>
+      )}
+
       {run && (
         <div className="card">
           <h3>Disposition</h3>
           <p className="muted">
             Current: <strong>{run.disposition}</strong>
           </p>
+          {validationBlocksKeep && run.disposition === "pending" && !isActive && (
+            <div style={{ marginBottom: 10 }}>
+              <p className="discrepancy">
+                Validation did not pass ({run.validation_status}). KEEP is blocked unless you explicitly override.
+              </p>
+              <label className="muted" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" checked={confirmOverride} onChange={(e) => setConfirmOverride(e.target.checked)} />
+                I understand validation failed and want to keep these changes anyway
+              </label>
+            </div>
+          )}
           <div className="row">
             <button className="danger" disabled={!canDispose || busy} onClick={() => act(() => api.rollbackRun(run.id))}>
               ROLLBACK
             </button>
-            <button className="primary" disabled={!canDispose || busy} onClick={() => act(() => api.keepRun(run.id))}>
-              KEEP CHANGES
+            <button
+              className="primary"
+              disabled={!canKeep || busy}
+              onClick={() => act(() => api.keepRun(run.id, validationBlocksKeep && confirmOverride))}
+            >
+              KEEP CHANGES{validationBlocksKeep && confirmOverride ? " (override)" : ""}
             </button>
           </div>
           {isActive && (

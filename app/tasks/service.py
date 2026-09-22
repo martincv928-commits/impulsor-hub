@@ -70,6 +70,7 @@ def _row_to_task_run(row: sqlite3.Row) -> TaskRun:
         stderr_path=row["stderr_path"],
         failure_reason=row["failure_reason"],
         disposition=RunDisposition(row["disposition"]),
+        validation_status=row["validation_status"],
     )
 
 
@@ -184,6 +185,7 @@ def update_task_run(conn: sqlite3.Connection, run_id: str, **fields: Any) -> Tas
         "stderr_path": lambda v: v,
         "failure_reason": lambda v: v,
         "disposition": lambda v: v.value if isinstance(v, RunDisposition) else v,
+        "validation_status": lambda v: v,
     }
     set_clauses = []
     params: list[Any] = []

@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from app.core.router.router import ResourceRouter
 from app.database.models import CostType, Resource, ResourceType
 
-_RESOURCE_IDS = {"git": "resource-git", "claude_code": "resource-claude-code"}
-_RESOURCE_TYPES = {"git": ResourceType.VCS, "claude_code": ResourceType.AI_EXECUTOR}
-_RESOURCE_DISPLAY = {"git": "Git", "claude_code": "Claude Code CLI"}
-_RESOURCE_COST = {"git": CostType.FREE, "claude_code": CostType.SUBSCRIPTION}
+_RESOURCE_IDS = {"git": "resource-git", "claude_code": "resource-claude-code", "godot": "resource-godot"}
+_RESOURCE_TYPES = {"git": ResourceType.VCS, "claude_code": ResourceType.AI_EXECUTOR, "godot": ResourceType.TOOL}
+_RESOURCE_DISPLAY = {"git": "Git", "claude_code": "Claude Code CLI", "godot": "Godot"}
+_RESOURCE_COST = {"git": CostType.FREE, "claude_code": CostType.SUBSCRIPTION, "godot": CostType.FREE}
 
 
 def _now() -> str:

@@ -149,6 +149,7 @@ class TaskRun(BaseModel):
     stderr_path: Optional[str] = None
     failure_reason: Optional[str] = None
     disposition: RunDisposition = RunDisposition.PENDING
+    validation_status: Optional[str] = None  # pass | fail | error | timeout | null (no validator applicable)
 
 
 class FileChange(BaseModel):

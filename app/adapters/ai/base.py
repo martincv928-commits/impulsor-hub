@@ -16,6 +16,11 @@ class ExecuteRequest:
     workspace: Path
     objective: str
     timeout_seconds: int
+    # When set (M2 repair loop), the adapter sends this prompt verbatim
+    # instead of building the normal task envelope from `objective` --
+    # lets the orchestrator (via policy.build_repair_envelope) control
+    # repair framing without the adapter knowing anything about repairs.
+    full_prompt_override: Optional[str] = None
 
 
 @dataclass
