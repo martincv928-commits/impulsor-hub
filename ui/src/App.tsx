@@ -4,6 +4,8 @@ import ProjectPage from "./pages/Project";
 import NewTaskPage from "./pages/NewTask";
 import TaskResultPage from "./pages/TaskResult";
 import ResourcesPage from "./pages/Resources";
+import { DEMO_MODE } from "./api/client";
+import { DEMO_NOTICE } from "./api/demoData";
 
 export type View =
   | { name: "projects" }
@@ -16,7 +18,9 @@ export default function App() {
   const [view, setView] = useState<View>({ name: "projects" });
 
   return (
-    <div className="app-shell">
+    <div className="app-root">
+      {DEMO_MODE && <div className="demo-banner">{DEMO_NOTICE}</div>}
+      <div className="app-shell">
       <nav className="sidebar">
         <h1>Impulsor Hub</h1>
         <button
@@ -54,6 +58,7 @@ export default function App() {
         )}
         {view.name === "resources" && <ResourcesPage />}
       </main>
+      </div>
     </div>
   );
 }
