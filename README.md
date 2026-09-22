@@ -1,12 +1,16 @@
-# Impulsor Hub — Milestone 1
+# Impulsor Hub — Milestone 2
 
 Local-first orchestration layer that lets a user add an existing local
 project, run a direct task through the Claude Code CLI, independently
-inspect the real Git changes, and safely KEEP or ROLLBACK the result.
+inspect the real Git changes, and safely KEEP or ROLLBACK the result. For
+Godot projects, changes are also automatically validated headlessly, with
+an automatic repair loop when validation fails.
 
 See `docs/IMPULSOR_HUB_SPEC_V0.1.md` (product/technical contract),
-`docs/CLAUDE_M1.md` (execution brief) and `M1_REPORT.md` (what M1 actually
-delivers, how it was tested, and known limitations).
+`docs/CLAUDE_M1.md` / `M1_REPORT.md` (Milestone 1: local project → task →
+safe baseline → Claude Code → independent Git verification → KEEP/
+ROLLBACK) and `M2_REPORT.md` (Milestone 2: the Godot validator adapter,
+the validation + repair loop, and known limitations).
 
 ## Prerequisites
 
@@ -14,6 +18,11 @@ delivers, how it was tested, and known limitations).
 - Node.js 18+ (tested on Node 22) and npm
 - `git` CLI
 - `claude` CLI (Claude Code), authenticated (`claude auth status`)
+- A Godot executable, only for Godot-project validation (optional —
+  everything else works without it; Godot projects just skip validation
+  and behave like M1 if it's missing). Tested against Godot 3.5.2
+  (`apt-get install godot3-server` on Debian/Ubuntu). Auto-detected on
+  PATH, or set `IMPULSOR_HUB_GODOT_PATH` to a specific executable.
 - Rust + `cargo` only if you intend to build the Tauri desktop shell
   (`ui/npm run build` + `tauri` — see "Known limitations" in
   `M1_REPORT.md` for why this wasn't build-verified in the dev sandbox)
@@ -98,13 +107,14 @@ it → New Task → describe an objective → Run.
 
 ```text
 app/
-  core/{orchestrator,router,permissions,events}/  pipeline, resource
+  core/{orchestrator,router,permissions,events}/  pipeline (incl. validation/
+                                                    repair loop), resource
                                                     selection, policy, events
-  adapters/{ai,vcs,tools}/                         Claude Code + Git adapters
+  adapters/{ai,vcs,validator,tools}/               Claude Code, Git, Godot adapters
   projects/, tasks/                                persistence + services
   database/                                        SQLite schema + Pydantic models
   api/                                              FastAPI app + routers
 ui/                                                 React + TypeScript + Tauri
-tests/                                              pytest suite (56 tests)
+tests/                                              pytest suite (91 tests)
 docs/                                                spec, execution brief, E2E screenshots
 ```
