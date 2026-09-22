@@ -77,6 +77,38 @@ def test_execute_parses_conforming_structured_result(monkeypatch, tmp_path: Path
     assert outcome.structured_result.files_claimed_modified == ["a.py"]
 
 
+def test_execute_extracts_json_from_prose_prefixed_fenced_block(monkeypatch, tmp_path: Path):
+    """Regression test for a real observation against the live `claude` CLI:
+    despite the envelope saying 'no text before or after the JSON object',
+    the model sometimes prefixes a sentence of prose before a ```json
+    fence. Extraction should still succeed (and still fully validate)."""
+    adapter = ClaudeCodeAdapter()
+    payload = {
+        "task_id": "TASK-1",
+        "status": "completed",
+        "summary": "did it",
+        "files_claimed_modified": ["notes.txt"],
+        "files_claimed_created": [],
+        "files_claimed_deleted": [],
+    }
+    result_text = (
+        "Only notes.txt was touched; everything else was left alone.\n\n"
+        f"```json\n{json.dumps(payload)}\n```"
+    )
+    envelope = json.dumps(
+        {"type": "result", "subtype": "success", "is_error": False, "result": result_text, "permission_denials": []}
+    )
+    fake = _FakePopen(stdout=envelope, stderr="", returncode=0)
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: fake)
+
+    outcome = adapter.execute(
+        ExecuteRequest(task_id="TASK-1", run_id="run-1", workspace=tmp_path, objective="x", timeout_seconds=30)
+    )
+    assert outcome.run_status == "completed"
+    assert outcome.structured_result is not None
+    assert outcome.structured_result.files_claimed_modified == ["notes.txt"]
+
+
 def test_execute_flags_malformed_result_text(monkeypatch, tmp_path: Path):
     adapter = ClaudeCodeAdapter()
     envelope = json.dumps(

@@ -8,3 +8,4 @@ ui/src-tauri/target/
 *.db
 .impulsor/
 .DS_Store
+ui/tsconfig.tsbuildinfo
