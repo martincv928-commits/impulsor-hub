@@ -13,9 +13,13 @@ from app.api.routers import tasks as tasks_router
 from tests.fakes import FakeAIExecutorAdapter, FakeRouter
 
 
+TEST_AGENT_TOKEN = "test-agent-token-do-not-use-in-prod"
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path: Path, fixture_repo: Path):
     monkeypatch.setenv("IMPULSOR_HUB_DB_PATH", str(tmp_path / "api_test.db"))
+    monkeypatch.setenv("IMPULSOR_HUB_AGENT_TOKEN", TEST_AGENT_TOKEN)
 
     fake_ai = FakeAIExecutorAdapter(apply_fn=lambda ws: (_write(ws), [], []))
     fake_router = FakeRouter(fake_ai)
@@ -24,6 +28,7 @@ def client(monkeypatch, tmp_path: Path, fixture_repo: Path):
     monkeypatch.setattr(tasks_router, "get_router", lambda: fake_router)
 
     with TestClient(api_main.app) as c:
+        c.headers["Authorization"] = f"Bearer {TEST_AGENT_TOKEN}"
         yield c, fixture_repo, fake_ai
 
 

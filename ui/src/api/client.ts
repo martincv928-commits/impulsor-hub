@@ -13,9 +13,30 @@ export type { Project, Resource, Task, ExecutorResult, TaskRun, FileChange, Even
 
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
+declare global {
+  interface Window {
+    // Injected inline by app/api/main.py's `GET /` handler when the Agent
+    // serves this build itself (see app/core/security.py). Absent in the
+    // Vite dev server, where VITE_AGENT_TOKEN (a dev-only .env value) is
+    // used instead -- a developer running the two processes separately
+    // must set it to match IMPULSOR_HUB_AGENT_TOKEN on the backend.
+    __IMPULSOR_AGENT_TOKEN__?: string;
+  }
+}
+
+export function agentToken(): string | undefined {
+  return typeof window !== "undefined" && window.__IMPULSOR_AGENT_TOKEN__
+    ? window.__IMPULSOR_AGENT_TOKEN__
+    : import.meta.env.VITE_AGENT_TOKEN;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = agentToken();
   const resp = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...options,
   });
   if (!resp.ok) {

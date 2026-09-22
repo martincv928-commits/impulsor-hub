@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { api, Resource } from "../api/client";
 
 function statusBadge(r: Resource) {
-  if (r.availability !== "available") return <span className="badge bad">unavailable</span>;
-  if (r.auth_state === "not_authenticated") return <span className="badge bad">not authenticated</span>;
-  if (r.auth_state === "unknown") return <span className="badge warn">unknown auth</span>;
-  return <span className="badge good">healthy</span>;
+  if (r.availability !== "available") return <span className="badge bad">○ No encontrado</span>;
+  if (r.adapter_key === "claude_code" && r.auth_state === "not_authenticated") {
+    return <span className="badge warn">● Instalado, no autenticado</span>;
+  }
+  if (r.adapter_key === "claude_code" && r.auth_state === "unknown") {
+    return <span className="badge warn">● Estado de autenticación desconocido</span>;
+  }
+  return <span className="badge good">● Disponible</span>;
 }
 
 export default function ResourcesPage() {
@@ -26,10 +30,10 @@ export default function ResourcesPage() {
 
   return (
     <div>
-      <h2>Resources</h2>
-      <p className="muted">Detection and health for the two M1 resources: Git and the Claude Code CLI.</p>
+      <h2>Recursos de este equipo</h2>
+      <p className="muted">Detección real: cada recurso se comprueba en este equipo, nunca se simula.</p>
       <button className="secondary" onClick={refresh} disabled={loading}>
-        {loading ? "Checking..." : "Re-check"}
+        {loading ? "Comprobando..." : "Volver a comprobar"}
       </button>
       <div style={{ marginTop: 12 }}>
         {resources.map((r) => (
@@ -37,16 +41,15 @@ export default function ResourcesPage() {
             <div className="row">
               <div>
                 <strong>{r.display_name}</strong>
-                <div className="muted">
-                  {r.type} · {r.version ?? "version unknown"} · cost: {r.cost_type}
-                </div>
+                <div className="muted">Versión: {r.version ?? "desconocida"}</div>
               </div>
               {statusBadge(r)}
             </div>
-            <div className="muted" style={{ marginTop: 6 }}>
-              capabilities: {r.capabilities.join(", ") || "none"}
-              {r.checked_at && <> · checked {new Date(r.checked_at).toLocaleTimeString()}</>}
-            </div>
+            {r.checked_at && (
+              <div className="muted" style={{ marginTop: 6 }}>
+                Comprobado {new Date(r.checked_at).toLocaleTimeString()}
+              </div>
+            )}
           </div>
         ))}
       </div>

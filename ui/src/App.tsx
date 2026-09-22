@@ -6,6 +6,7 @@ import TaskResultPage from "./pages/TaskResult";
 import ResourcesPage from "./pages/Resources";
 import { DEMO_MODE } from "./api/client";
 import DemoApp from "./demo/DemoApp";
+import AgentGate from "./components/AgentGate";
 
 export type View =
   | { name: "projects" }
@@ -27,46 +28,51 @@ export default function App() {
   }
 
   return (
-    <div className="app-root">
-      <div className="app-shell">
-      <nav className="sidebar">
-        <h1>Impulsor Hub</h1>
-        <button
-          className={`nav-item ${view.name === "projects" ? "active" : ""}`}
-          onClick={() => setView({ name: "projects" })}
-        >
-          Projects
-        </button>
-        <button
-          className={`nav-item ${view.name === "resources" ? "active" : ""}`}
-          onClick={() => setView({ name: "resources" })}
-        >
-          Resources
-        </button>
-      </nav>
-      <main className="main">
-        {view.name === "projects" && <ProjectsPage onOpenProject={(id) => setView({ name: "project", projectId: id })} />}
-        {view.name === "project" && (
-          <ProjectPage
-            projectId={view.projectId}
-            onNewTask={() => setView({ name: "newTask", projectId: view.projectId })}
-            onOpenTask={(taskId) => setView({ name: "taskResult", taskId })}
-            onBack={() => setView({ name: "projects" })}
-          />
-        )}
-        {view.name === "newTask" && (
-          <NewTaskPage
-            projectId={view.projectId}
-            onCreated={(taskId) => setView({ name: "taskResult", taskId })}
-            onCancel={() => setView({ name: "project", projectId: view.projectId })}
-          />
-        )}
-        {view.name === "taskResult" && (
-          <TaskResultPage taskId={view.taskId} onBack={() => setView({ name: "projects" })} />
-        )}
-        {view.name === "resources" && <ResourcesPage />}
-      </main>
+    <AgentGate>
+      <div className="app-root">
+        <div className="app-shell">
+        <nav className="sidebar">
+          <h1>Impulsor Hub</h1>
+          <button
+            className={`nav-item ${view.name === "projects" ? "active" : ""}`}
+            onClick={() => setView({ name: "projects" })}
+          >
+            Proyectos
+          </button>
+          <button
+            className={`nav-item ${view.name === "resources" ? "active" : ""}`}
+            onClick={() => setView({ name: "resources" })}
+          >
+            Recursos
+          </button>
+          <div className="muted" style={{ marginTop: "auto", paddingTop: 16, fontSize: 12 }}>
+            ESTE EQUIPO <span className="badge good">● Conectado</span>
+          </div>
+        </nav>
+        <main className="main">
+          {view.name === "projects" && <ProjectsPage onOpenProject={(id) => setView({ name: "project", projectId: id })} />}
+          {view.name === "project" && (
+            <ProjectPage
+              projectId={view.projectId}
+              onNewTask={() => setView({ name: "newTask", projectId: view.projectId })}
+              onOpenTask={(taskId) => setView({ name: "taskResult", taskId })}
+              onBack={() => setView({ name: "projects" })}
+            />
+          )}
+          {view.name === "newTask" && (
+            <NewTaskPage
+              projectId={view.projectId}
+              onCreated={(taskId) => setView({ name: "taskResult", taskId })}
+              onCancel={() => setView({ name: "project", projectId: view.projectId })}
+            />
+          )}
+          {view.name === "taskResult" && (
+            <TaskResultPage taskId={view.taskId} onBack={() => setView({ name: "projects" })} />
+          )}
+          {view.name === "resources" && <ResourcesPage />}
+        </main>
+        </div>
       </div>
-    </div>
+    </AgentGate>
   );
 }

@@ -41,6 +41,8 @@ body {
   border-right: 1px solid var(--border);
   padding: 16px 12px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar h1 { font-size: 16px; margin: 4px 8px 16px; }
@@ -126,6 +128,8 @@ input[type="text"], textarea {
 .diff-deleted { color: var(--danger); }
 
 .discrepancy { color: var(--warn); }
+
+.result-line.ok { color: var(--good); font-weight: 600; }
 
 table { width: 100%; border-collapse: collapse; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }

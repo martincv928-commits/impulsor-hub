@@ -38,6 +38,7 @@ export default function DemoApp() {
 
   const project = view.name === "project" ? state.projects.find((p) => p.id === view.projectId) : undefined;
   const task = view.name === "task" ? state.tasks.find((t) => t.id === view.taskId) : undefined;
+  const taskProject = task ? state.projects.find((p) => p.id === task.projectId) : undefined;
 
   let title = TITLES[view.name];
   if (view.name === "project" && project) title = project.name;
@@ -67,12 +68,16 @@ export default function DemoApp() {
             />
           </>
         )}
-        {view.name === "task" && task && (
+        {view.name === "task" && task && taskProject && (
           <>
             <button className="dm-back" onClick={() => setView({ name: "project", projectId: task.projectId })}>
               ← Volver al proyecto
             </button>
-            <TaskExecutionPage task={task} />
+            <TaskExecutionPage
+              task={task}
+              project={taskProject}
+              onTryAnother={() => setView({ name: "project", projectId: task.projectId })}
+            />
           </>
         )}
         {view.name === "resources" && <ResourcesPage />}

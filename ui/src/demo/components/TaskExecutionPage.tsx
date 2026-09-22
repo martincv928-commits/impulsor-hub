@@ -1,4 +1,4 @@
-import { DemoTask } from "../types";
+import { DemoProject, DemoTask } from "../types";
 import { demoStore } from "../store";
 import StepList from "./StepList";
 
@@ -6,7 +6,15 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function TaskExecutionPage({ task }: { task: DemoTask }) {
+export default function TaskExecutionPage({
+  task,
+  project,
+  onTryAnother,
+}: {
+  task: DemoTask;
+  project: DemoProject;
+  onTryAnother: () => void;
+}) {
   if (task.running) {
     return (
       <div>
@@ -33,11 +41,35 @@ export default function TaskExecutionPage({ task }: { task: DemoTask }) {
   return (
     <div>
       <div className="dm-result-banner">
+        <span className="dm-badge warn" style={{ marginBottom: 8 }}>
+          SIMULACIÓN
+        </span>
         <p className="dm-h2" style={{ margin: "4px 0" }}>
           Resultado
         </p>
         <p className="dm-result-line ok">✓ Tarea completada</p>
         {task.validated !== null && <p className="dm-result-line ok">{task.validated ? "✓ Validación superada" : "✗ Validación falló"}</p>}
+      </div>
+
+      <div className="dm-card">
+        <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+          Esta tarea es una demostración. No se modificó ningún proyecto real y no se consumieron
+          recursos de IA.
+        </p>
+        <p className="dm-card-sub" style={{ marginTop: 10, marginBottom: 2 }}>
+          Proyecto
+        </p>
+        <p style={{ margin: "0 0 8px" }}>{project.name} (DEMO)</p>
+        <p className="dm-card-sub" style={{ marginBottom: 2 }}>
+          Ejecución
+        </p>
+        <p style={{ margin: "0 0 8px" }}>Simulada</p>
+        <p className="dm-card-sub" style={{ marginBottom: 2 }}>
+          Recursos
+        </p>
+        <p style={{ margin: 0 }}>Claude Code — Simulado</p>
+        {project.type === "godot" && <p style={{ margin: 0 }}>Godot — Simulado</p>}
+        <p style={{ margin: 0 }}>Git — Simulado</p>
       </div>
 
       <div className="dm-card">
@@ -100,6 +132,10 @@ export default function TaskExecutionPage({ task }: { task: DemoTask }) {
           )}
         </div>
       )}
+
+      <button className="dm-btn secondary" onClick={onTryAnother}>
+        PROBAR OTRA SIMULACIÓN
+      </button>
 
       <details className="dm-disclosure">
         <summary>Ver detalles técnicos</summary>

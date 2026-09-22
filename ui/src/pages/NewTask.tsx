@@ -29,21 +29,20 @@ export default function NewTaskPage({
 
   return (
     <div>
-      <h2>New Task</h2>
+      <h2>¿Qué quieres hacer?</h2>
       <div className="card">
-        <label className="muted">Objective</label>
         <textarea
           rows={4}
-          placeholder="Describe what you want the AI executor to do in this project..."
+          placeholder="Describe el cambio que quieres hacer en este proyecto..."
           value={objective}
           onChange={(e) => setObjective(e.target.value)}
         />
         <div className="row" style={{ marginTop: 12 }}>
           <button className="secondary" onClick={onCancel} disabled={submitting}>
-            Cancel
+            Cancelar
           </button>
           <button className="primary" onClick={handleRun} disabled={!objective.trim() || submitting}>
-            {submitting ? "Starting..." : "Run"}
+            {submitting ? "Iniciando..." : "EJECUTAR"}
           </button>
         </div>
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
