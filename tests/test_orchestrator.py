@@ -159,6 +159,85 @@ def test_rollback_restores_pre_task_state_including_dirty_work(db_conn, dirty_fi
     assert updated.disposition == RunDisposition.ROLLED_BACK
 
 
+def test_dirty_file_re_edit_is_detected_with_no_false_discrepancy(db_conn, dirty_fixture_repo):
+    """§7.1 fix at pipeline level: when Claude re-edits an already-dirty
+    tracked file *and declares it*, the manifest must show it as observed
+    (not just claimed), so no false claim-vs-reality discrepancy is raised."""
+    project, task = _make_task(db_conn, dirty_fixture_repo, objective="edit notes and add a file")
+
+    def apply(workspace: Path):
+        with (workspace / "committed.txt").open("a") as f:
+            f.write("AI added this line\n")
+        (workspace / "new_by_ai.txt").write_text("hi\n")
+        return (["new_by_ai.txt"], ["committed.txt"], [])
+
+    fake_ai = FakeAIExecutorAdapter(apply_fn=apply)
+    router = FakeRouter(fake_ai)
+    orchestrator.run_task(db_conn, task_id=task.id, router=router)
+    run = tasks_service.list_task_runs(db_conn, task_id=task.id)[0]
+
+    changes = {c.path: c for c in tasks_service.list_file_changes(db_conn, task_run_id=run.id)}
+    assert changes["committed.txt"].change_type == "modified"
+    assert changes["committed.txt"].claimed_by_executor is True
+    assert changes["committed.txt"].observed_by_vcs is True
+    assert changes["new_by_ai.txt"].observed_by_vcs is True
+
+    events = __import__("app.core.events.events", fromlist=["list_events"]).list_events(db_conn, task_id=task.id)
+    assert not any(e["type"] == "task.claim_discrepancy" for e in events)
+
+
+def test_keep_after_modifying_previously_dirty_file(db_conn, dirty_fixture_repo):
+    project, task = _make_task(db_conn, dirty_fixture_repo, objective="edit notes")
+
+    def apply(workspace: Path):
+        with (workspace / "committed.txt").open("a") as f:
+            f.write("AI added this line\n")
+        return ([], ["committed.txt"], [])
+
+    fake_ai = FakeAIExecutorAdapter(apply_fn=apply)
+    router = FakeRouter(fake_ai)
+    orchestrator.run_task(db_conn, task_id=task.id, router=router)
+    run = tasks_service.list_task_runs(db_conn, task_id=task.id)[0]
+
+    orchestrator.keep_task_run(db_conn, task_run_id=run.id)
+
+    kept_content = (dirty_fixture_repo / "committed.txt").read_text()
+    assert "user edit before task" in kept_content  # user's baseline survives
+    assert "AI added this line" in kept_content  # task's accepted change survives
+    assert (dirty_fixture_repo / "untracked_before.txt").exists()  # untouched pre-existing work survives
+    updated = tasks_service.get_task_run(db_conn, run.id)
+    assert updated.disposition == RunDisposition.KEPT
+
+
+def test_rollback_after_modifying_previously_dirty_file_preserves_baseline_byte_for_byte(
+    db_conn, dirty_fixture_repo
+):
+    project, task = _make_task(db_conn, dirty_fixture_repo, objective="edit notes and add a file")
+    baseline_bytes = (dirty_fixture_repo / "committed.txt").read_bytes()
+    untracked_baseline_bytes = (dirty_fixture_repo / "untracked_before.txt").read_bytes()
+
+    def apply(workspace: Path):
+        with (workspace / "committed.txt").open("ab") as f:
+            f.write(b"AI added this line\n")
+        (workspace / "ai_created.py").write_text("x = 1\n")
+        return (["ai_created.py"], ["committed.txt"], [])
+
+    fake_ai = FakeAIExecutorAdapter(apply_fn=apply)
+    router = FakeRouter(fake_ai)
+    orchestrator.run_task(db_conn, task_id=task.id, router=router)
+    run = tasks_service.list_task_runs(db_conn, task_id=task.id)[0]
+
+    # Sanity: the manifest did detect the re-edit before we roll it back.
+    changes = {c.path for c in tasks_service.list_file_changes(db_conn, task_run_id=run.id)}
+    assert "committed.txt" in changes
+
+    orchestrator.rollback_task_run(db_conn, task_run_id=run.id, router=router)
+
+    assert (dirty_fixture_repo / "committed.txt").read_bytes() == baseline_bytes
+    assert (dirty_fixture_repo / "untracked_before.txt").read_bytes() == untracked_baseline_bytes
+    assert not (dirty_fixture_repo / "ai_created.py").exists()
+
+
 def test_keep_then_rollback_is_rejected(db_conn, fixture_repo):
     project, task = _make_task(db_conn, fixture_repo)
     fake_ai = FakeAIExecutorAdapter(apply_fn=lambda ws: ([], [], []))

@@ -1,0 +1,16 @@
+Real filesystem verification after ROLLBACK (§7.1 fix E2E scenario)
+=====================================================================
+
+notes.txt content after rollback (must equal pre-task dirty content):
+  line1
+  user's own uncommitted edit
+
+ai_new_file.txt (AI-created during the task): absent (correctly removed)
+
+scratch_before.txt (pre-existing untracked file): unchanged
+  pre-existing untracked scratch file
+
+git status --porcelain after rollback:
+   M notes.txt
+  ?? .impulsor/
+  ?? scratch_before.txt

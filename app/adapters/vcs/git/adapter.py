@@ -13,21 +13,28 @@ Rationale:
   (minus `.git` and `.impulsor`) gives an exact, easy-to-verify baseline
   and an exact, easy-to-verify restore, independent of git plumbing edge
   cases.
-- git itself is still used for `status`/`diff` (the *observation* half of
-  the pipeline — SPEC 3.10-3.11), since that is what "Git-observed changes"
-  means in the spec. Checkpointing and observing are deliberately separate
-  concerns.
+- git itself is still used for `status` (dirty-baseline detection, shown to
+  the user before a run starts). The change *manifest* (SPEC 3.10-3.11),
+  however, is computed by comparing file content directly against the
+  checkpoint snapshot (sha256 hash + line-level diff), not by diffing
+  `git status` codes before/after. Diffing status codes cannot distinguish
+  a file that was already dirty at checkpoint time from one the task
+  edited further while it stayed dirty (both show the same code, e.g.
+  `" M"`, before and after) — a real gap found via a live end-to-end run
+  and fixed here; see M1_REPORT.md §7.1/§8.
 
 All git invocations use argument arrays via subprocess (never shell=True)
 and are restricted to read-only / non-history-mutating subcommands.
 """
 from __future__ import annotations
 
+import difflib
+import hashlib
 import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from app.adapters.vcs.base import (
     ChangeManifest,
@@ -43,9 +50,10 @@ from app.adapters.vcs.base import (
 
 _GIT_TIMEOUT_SECONDS = 30
 _IGNORED_TOP_LEVEL_DIRS = {".git", ".impulsor"}
+_HASH_CHUNK_SIZE = 1024 * 1024
 
 # Only ever these read-only subcommands are executed by this adapter.
-_ALLOWED_SUBCOMMANDS = {"--version", "rev-parse", "status", "diff"}
+_ALLOWED_SUBCOMMANDS = {"--version", "rev-parse", "status"}
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -171,29 +179,39 @@ class GitAdapter(VcsAdapter):
         except OSError as exc:
             raise RollbackError(f"Failed to restore checkpoint: {exc}") from exc
 
-    def compute_change_manifest(
-        self, workspace: Path, pre_status: VcsStatus, post_status: VcsStatus
-    ) -> ChangeManifest:
-        pre_map = {e["path"]: e["status_code"] for e in pre_status.entries}
-        post_map = {e["path"]: e["status_code"] for e in post_status.entries}
+    def compute_change_manifest(self, workspace: Path, checkpoint: CheckpointRef) -> ChangeManifest:
+        if checkpoint.mechanism != "filesystem_snapshot":
+            raise RollbackError(f"Unsupported checkpoint mechanism: {checkpoint.mechanism}")
+        snapshot_root = Path(checkpoint.reference)
+        if not snapshot_root.is_dir():
+            raise RollbackError(f"Checkpoint snapshot missing: {snapshot_root}")
 
-        touched_paths = sorted(set(pre_map) | set(post_map))
+        snapshot_paths = _relative_file_set(snapshot_root)
+        current_paths = _relative_file_set(workspace, exclude_top_level=_IGNORED_TOP_LEVEL_DIRS)
+
         entries: list[FileChangeEntry] = []
-        for path in touched_paths:
-            pre_code = pre_map.get(path)
-            post_code = post_map.get(path)
-            if pre_code == post_code:
-                continue  # unchanged since before the task; not this task's work
-            change_type = _classify_change(pre_code, post_code)
-            additions, deletions = _numstat_for_path(workspace, path, change_type)
-            entries.append(
-                FileChangeEntry(
-                    path=path,
-                    change_type=change_type,
-                    additions=additions,
-                    deletions=deletions,
-                )
-            )
+        for rel_path in sorted(current_paths - snapshot_paths):
+            additions, deletions = _diff_line_counts(None, workspace / rel_path)
+            entries.append(FileChangeEntry(path=rel_path, change_type="created", additions=additions, deletions=deletions))
+
+        for rel_path in sorted(snapshot_paths - current_paths):
+            additions, deletions = _diff_line_counts(snapshot_root / rel_path, None)
+            entries.append(FileChangeEntry(path=rel_path, change_type="deleted", additions=additions, deletions=deletions))
+
+        for rel_path in sorted(snapshot_paths & current_paths):
+            before = snapshot_root / rel_path
+            after = workspace / rel_path
+            before_hash = _file_sha256(before)
+            after_hash = _file_sha256(after)
+            # A hash that couldn't be computed (broken symlink, permission
+            # error) is never treated as "equal" -- when in doubt, report
+            # the path as changed rather than silently hiding it.
+            if before_hash is not None and before_hash == after_hash:
+                continue  # bytes unchanged since the checkpoint -- not this task's work,
+                          # even if `git status` still shows it dirty relative to HEAD
+            additions, deletions = _diff_line_counts(before, after)
+            entries.append(FileChangeEntry(path=rel_path, change_type="modified", additions=additions, deletions=deletions))
+
         return ChangeManifest(entries=entries)
 
 
@@ -230,30 +248,42 @@ def _prune_empty_dirs(root: Path, exclude_top_level: set[str]) -> None:
             pass
 
 
-def _classify_change(pre_code: str | None, post_code: str | None) -> str:
-    if pre_code is None and post_code is not None:
-        return "created" if "?" in post_code else "modified"
-    if pre_code is not None and post_code is None:
-        return "deleted"
-    if post_code and "D" in post_code:
-        return "deleted"
-    return "modified"
+def _file_sha256(path: Path) -> Optional[str]:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(_HASH_CHUNK_SIZE), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None  # e.g. a broken symlink -- caller treats this as "changed"
 
 
-def _numstat_for_path(workspace: Path, path: str, change_type: str) -> tuple[int | None, int | None]:
-    target = workspace / path
-    if change_type == "created":
-        if target.is_file():
-            try:
-                with target.open("rb") as f:
-                    lines = sum(1 for _ in f)
-                return lines, 0
-            except OSError:
-                return None, None
+def _read_lines(path: Optional[Path]) -> Optional[list[str]]:
+    if path is None:
+        return []
+    try:
+        return path.read_text(errors="strict").splitlines(keepends=True)
+    except (UnicodeDecodeError, OSError):
+        return None  # binary or unreadable: line-level diff isn't meaningful
+
+
+def _diff_line_counts(
+    before_path: Optional[Path], after_path: Optional[Path]
+) -> tuple[Optional[int], Optional[int]]:
+    """Additions/deletions attributable strictly to the delta between these
+    two file versions (checkpoint vs. current), independent of git's own
+    diff against HEAD -- so a re-edit of an already-dirty file counts only
+    the task's own lines, not the user's pre-existing dirty lines too."""
+    before_lines = _read_lines(before_path)
+    after_lines = _read_lines(after_path)
+    if before_lines is None or after_lines is None:
         return None, None
-    proc = _run_git(["diff", "--numstat", "--", path], cwd=workspace)
-    if proc.returncode == 0 and proc.stdout.strip():
-        parts = proc.stdout.strip().split("\t")
-        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-            return int(parts[0]), int(parts[1])
-    return None, None
+    matcher = difflib.SequenceMatcher(None, before_lines, after_lines, autojunk=False)
+    additions = deletions = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("replace", "delete"):
+            deletions += i2 - i1
+        if tag in ("replace", "insert"):
+            additions += j2 - j1
+    return additions, deletions

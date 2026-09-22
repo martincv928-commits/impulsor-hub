@@ -220,8 +220,11 @@ def run_task(
             )
 
         task = tasks_service.transition_task(conn, task_id, TaskStatus.VERIFYING)
-        post_status = vcs.status(workspace)
-        manifest = vcs.compute_change_manifest(workspace, pre_status, post_status)
+        # Compared against the pre-task checkpoint snapshot's actual bytes
+        # (see GitAdapter.compute_change_manifest), not another `git status`
+        # snapshot -- that's what lets a re-edit of an already-dirty file be
+        # detected as task-attributable (SPEC 15 / M1_REPORT.md §7.1 fix).
+        manifest = vcs.compute_change_manifest(workspace, ref)
 
         claimed_paths: dict[str, bool] = {}
         if outcome.structured_result is not None:

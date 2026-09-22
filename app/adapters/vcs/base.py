@@ -89,9 +89,11 @@ class VcsAdapter(ABC):
         without destroying any work that existed at checkpoint time."""
 
     @abstractmethod
-    def compute_change_manifest(
-        self, workspace: Path, pre_status: VcsStatus, post_status: VcsStatus
-    ) -> ChangeManifest:
-        """Derive the set of changes attributable to whatever happened
-        between `pre_status` and `post_status` (i.e. during task execution),
-        excluding any pre-existing dirty state that didn't change."""
+    def compute_change_manifest(self, workspace: Path, checkpoint: CheckpointRef) -> ChangeManifest:
+        """Derive the set of changes attributable to task execution by
+        comparing actual file content against the pre-task checkpoint
+        snapshot (not by diffing `git status` codes, which cannot
+        distinguish a file that was already dirty at checkpoint time from
+        one the task edited further while it stayed dirty). A file whose
+        bytes are unchanged since the checkpoint is excluded even if it is
+        still `git`-dirty relative to HEAD."""

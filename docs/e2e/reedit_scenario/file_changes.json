@@ -1,0 +1,22 @@
+[
+    {
+        "id": "8dc0b5f2-407d-4d36-a68b-d887dbba6583",
+        "task_run_id": "e042f6e6-d04f-4523-b159-4e02530c6430",
+        "path": "ai_new_file.txt",
+        "change_type": "created",
+        "additions": 1,
+        "deletions": 0,
+        "claimed_by_executor": true,
+        "observed_by_vcs": true
+    },
+    {
+        "id": "d746d4b7-2ce8-4c27-86aa-abf66757626a",
+        "task_run_id": "e042f6e6-d04f-4523-b159-4e02530c6430",
+        "path": "notes.txt",
+        "change_type": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "claimed_by_executor": true,
+        "observed_by_vcs": true
+    }
+]

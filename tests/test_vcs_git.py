@@ -127,45 +127,119 @@ def test_rollback_is_noop_for_untouched_clean_repo(fixture_repo: Path):
     assert status.is_clean is True
 
 
-def test_change_manifest_excludes_pre_existing_dirty_state(dirty_fixture_repo: Path):
+def test_change_manifest_excludes_untouched_pre_existing_dirty_state(dirty_fixture_repo: Path):
+    """dirty tracked file, sin modificación adicional -> excluido del manifest."""
     adapter = GitAdapter()
-    pre_status = adapter.status(dirty_fixture_repo)
+    ref = adapter.create_checkpoint(dirty_fixture_repo, _checkpoint_dir(dirty_fixture_repo))
 
     (dirty_fixture_repo / "new_by_ai.txt").write_text("line1\nline2\n")
 
-    post_status = adapter.status(dirty_fixture_repo)
-    manifest = adapter.compute_change_manifest(dirty_fixture_repo, pre_status, post_status)
+    manifest = adapter.compute_change_manifest(dirty_fixture_repo, ref)
 
     paths = {e.path: e for e in manifest.entries}
     assert "new_by_ai.txt" in paths
     assert paths["new_by_ai.txt"].change_type == "created"
-    # Pre-existing dirty file untouched during "task" must not appear.
+    assert paths["new_by_ai.txt"].additions == 2
+    # Pre-existing dirty tracked file, untouched during the task, must not appear.
     assert "committed.txt" not in paths
+    # Pre-existing untracked file, untouched during the task, must not appear either.
     assert "untracked_before.txt" not in paths
 
 
-def test_change_manifest_detects_modification_of_pre_existing_file(dirty_fixture_repo: Path):
+def test_change_manifest_detects_modification_of_pre_existing_dirty_file(dirty_fixture_repo: Path):
+    """§7.1 fix: a dirty tracked file that Claude edits *again* during the
+    task must be reported as a task-attributable change, even though its
+    `git status` code (' M') never changes."""
     adapter = GitAdapter()
-    pre_status = adapter.status(dirty_fixture_repo)
+    ref = adapter.create_checkpoint(dirty_fixture_repo, _checkpoint_dir(dirty_fixture_repo))
+    baseline_content = (dirty_fixture_repo / "committed.txt").read_text()
 
-    # AI further edits the file that was already dirty before the task.
     with (dirty_fixture_repo / "committed.txt").open("a") as f:
         f.write("AI added this line\n")
 
-    post_status = adapter.status(dirty_fixture_repo)
-    manifest = adapter.compute_change_manifest(dirty_fixture_repo, pre_status, post_status)
-    # status_code for committed.txt is the same (' M' before and after edit->still modified),
-    # so this documents the known limitation: same-status re-edits of an
-    # already-dirty file are not distinguished from the pre-existing edit.
+    manifest = adapter.compute_change_manifest(dirty_fixture_repo, ref)
+
+    paths = {e.path: e for e in manifest.entries}
+    assert "committed.txt" in paths
+    assert paths["committed.txt"].change_type == "modified"
+    # Only the task's own added line counts -- not the user's pre-existing dirty line too.
+    assert paths["committed.txt"].additions == 1
+    assert paths["committed.txt"].deletions == 0
+    assert baseline_content != (dirty_fixture_repo / "committed.txt").read_text()
+
+
+def test_change_manifest_excludes_untouched_pre_existing_untracked_file(dirty_fixture_repo: Path):
+    """untracked preexistente, sin modificar -> excluido del manifest."""
+    adapter = GitAdapter()
+    ref = adapter.create_checkpoint(dirty_fixture_repo, _checkpoint_dir(dirty_fixture_repo))
+
+    (dirty_fixture_repo / "committed.txt").write_text("only the tracked file changes\n")
+
+    manifest = adapter.compute_change_manifest(dirty_fixture_repo, ref)
     paths = {e.path for e in manifest.entries}
-    assert "committed.txt" not in paths
+    assert "untracked_before.txt" not in paths
+
+
+def test_change_manifest_detects_modification_of_pre_existing_untracked_file(dirty_fixture_repo: Path):
+    """untracked preexistente, modificado durante la tarea -> detectado."""
+    adapter = GitAdapter()
+    ref = adapter.create_checkpoint(dirty_fixture_repo, _checkpoint_dir(dirty_fixture_repo))
+
+    with (dirty_fixture_repo / "untracked_before.txt").open("a") as f:
+        f.write("AI appended to the untracked file\n")
+
+    manifest = adapter.compute_change_manifest(dirty_fixture_repo, ref)
+    paths = {e.path: e for e in manifest.entries}
+    assert "untracked_before.txt" in paths
+    assert paths["untracked_before.txt"].change_type == "modified"
+    assert paths["untracked_before.txt"].additions == 1
+
+
+def test_change_manifest_detects_new_file_created_during_task(fixture_repo: Path):
+    """archivo nuevo creado durante la tarea -> 'created'."""
+    adapter = GitAdapter()
+    ref = adapter.create_checkpoint(fixture_repo, _checkpoint_dir(fixture_repo))
+
+    (fixture_repo / "new_module.py").write_text("def f():\n    return 1\n")
+
+    manifest = adapter.compute_change_manifest(fixture_repo, ref)
+    paths = {e.path: e for e in manifest.entries}
+    assert paths["new_module.py"].change_type == "created"
+    assert paths["new_module.py"].additions == 2
+    assert paths["new_module.py"].deletions == 0
+
+
+def test_change_manifest_detects_file_deleted_during_task(fixture_repo: Path):
+    """archivo eliminado durante la tarea -> 'deleted'."""
+    adapter = GitAdapter()
+    ref = adapter.create_checkpoint(fixture_repo, _checkpoint_dir(fixture_repo))
+
+    (fixture_repo / "committed.txt").unlink()
+
+    manifest = adapter.compute_change_manifest(fixture_repo, ref)
+    paths = {e.path: e for e in manifest.entries}
+    assert paths["committed.txt"].change_type == "deleted"
 
 
 def test_ai_created_then_deleted_by_ai_nets_to_no_change(fixture_repo: Path):
     adapter = GitAdapter()
-    pre_status = adapter.status(fixture_repo)
+    ref = adapter.create_checkpoint(fixture_repo, _checkpoint_dir(fixture_repo))
     (fixture_repo / "temp.txt").write_text("x")
     (fixture_repo / "temp.txt").unlink()
-    post_status = adapter.status(fixture_repo)
-    manifest = adapter.compute_change_manifest(fixture_repo, pre_status, post_status)
+    manifest = adapter.compute_change_manifest(fixture_repo, ref)
     assert manifest.entries == []
+
+
+def test_change_manifest_reports_broken_symlink_as_changed_instead_of_crashing(fixture_repo: Path):
+    """A path whose content can't be hashed (e.g. a symlink that pointed
+    somewhere valid at checkpoint time but is now broken) must never crash
+    verification -- report it as changed rather than silently equal."""
+    adapter = GitAdapter()
+    (fixture_repo / "link.txt").symlink_to(fixture_repo / "committed.txt")
+    ref = adapter.create_checkpoint(fixture_repo, _checkpoint_dir(fixture_repo))
+
+    (fixture_repo / "committed.txt").unlink()  # breaks link.txt's target
+
+    manifest = adapter.compute_change_manifest(fixture_repo, ref)
+    paths = {e.path for e in manifest.entries}
+    assert "link.txt" in paths
