@@ -1,57 +1,50 @@
-"""Claude Code CLI AI executor adapter (SPEC sections 7, 12-13; CLAUDE_M1 Checkpoint D).
+"""Google Gemini CLI AI executor adapter.
 
-Invocation contract (verified against the actual `claude` CLI available in
-this environment, `claude --help` / `claude doctor` / `claude auth status`):
+Invocation contract verified against the actual official `gemini` CLI
+(`@google/gemini-cli` on npm, `0.60.0` installed in this environment and
+inspected directly via `--help` and its README; nothing here is guessed):
 
-- Detection: `claude --version` (no API call).
-- Health/auth: `claude doctor` + `claude auth status --json` (no API call,
-  so health checks never "consume unnecessary work" per CLAUDE_M1
-  Checkpoint B).
-- Execution: `claude -p <prompt> --output-format json --permission-mode
-  acceptEdits --permission-prompts none --disallowedTools <git history
-  subcommands> --strict-mcp-config`, run with `cwd=workspace` and never via
-  a shell (argument array, no string interpolation into a shell command —
-  SPEC line 189).
-- `--disallowedTools` is a real, CLI-enforced guardrail (not just prompt
-  text) against `git commit/reset/rebase/stash/checkout/switch/branch/
-  push/clean/filter-branch/reflog`, backing the envelope's RULES section
-  with something Hub does not have to trust the model to obey.
-
-Known limitation (documented again in M1_REPORT.md): this does not run the
-CLI inside an OS-level sandbox/jail, so the *workspace-boundary* rule
-(as opposed to the git-history rule) is enforced by prompt instruction +
-default tool cwd-scoping + Hub-side post-hoc Git verification, not by a
-hard OS boundary. SPEC 10 asks for boundary enforcement "where technically
-possible" within M1; full sandboxing is flagged as future work.
+- Detection: `gemini --version` (no API call).
+- Health/auth: zero-API-call, zero-prompt check -- either `GEMINI_API_KEY`
+  or `GOOGLE_API_KEY` is set (the CLI's own documented API-key auth path),
+  or `~/.gemini/oauth_creds.json` exists (the real cached-credentials path
+  for its "Sign in with Google" OAuth flow, confirmed by grepping the
+  installed bundle for that literal filename -- not guessed). Actually
+  invoking `gemini -p ...` to "check" auth would risk triggering a real
+  request or an interactive login prompt, so this adapter never does that
+  just to report status (observed directly: with no auth configured, a
+  headless `gemini -p` call prints "Please set an Auth method..." and
+  exits cleanly with no hang and no API call -- but that string match is
+  fragile/undocumented, so health_check relies on the documented
+  env-var/cache-file signals instead).
+- Execution: `gemini -p <prompt> -o text --approval-mode auto_edit`, run
+  with `cwd=workspace` (the CLI has no explicit --cd/--directory flag;
+  like ClaudeCodeAdapter it is scoped by process cwd). `--approval-mode
+  auto_edit` auto-approves file edits without an interactive prompt --
+  there is no terminal to answer one here.
+- Official auth mechanisms (from the installed CLI's own README, verified
+  directly): "Sign in with Google" (interactive OAuth, a personal Google
+  account, free tier) or `GEMINI_API_KEY`/`GOOGLE_API_KEY` (Google AI
+  Studio, has a free tier). Neither is performed by this adapter --
+  exactly like ClaudeCodeAdapter never runs `claude login` itself.
 """
 from __future__ import annotations
 
-import json
+import os
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.adapters.ai.base import AIExecutorAdapter, ExecuteOutcome, ExecuteRequest
-from app.adapters.ai.result_parsing import parse_executor_result as _parse_executor_result
+from app.adapters.ai.result_parsing import parse_executor_result
 from app.core.permissions.policy import RESULT_SCHEMA_INSTRUCTION, build_task_envelope
 
-_DISALLOWED_GIT_TOOLS = [
-    "Bash(git commit *)",
-    "Bash(git reset *)",
-    "Bash(git rebase *)",
-    "Bash(git stash *)",
-    "Bash(git checkout *)",
-    "Bash(git switch *)",
-    "Bash(git branch *)",
-    "Bash(git push *)",
-    "Bash(git clean *)",
-    "Bash(git filter-branch *)",
-    "Bash(git reflog *)",
-]
+_OAUTH_CREDS_PATH = Path.home() / ".gemini" / "oauth_creds.json"
 
-class ClaudeCodeAdapter(AIExecutorAdapter):
-    adapter_key = "claude_code"
+
+class GeminiAdapter(AIExecutorAdapter):
+    adapter_key = "gemini"
 
     def __init__(self) -> None:
         self._processes: dict[str, subprocess.Popen] = {}
@@ -60,7 +53,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
     def detect(self) -> dict[str, Any]:
         try:
             proc = subprocess.run(
-                ["claude", "--version"], capture_output=True, text=True, timeout=10, check=False
+                ["gemini", "--version"], capture_output=True, text=True, timeout=10, check=False
             )
         except FileNotFoundError:
             return {"available": False, "version": None}
@@ -77,20 +70,9 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 "version": None,
                 "authenticated": "unknown",
             }
-        auth_state = "unknown"
-        try:
-            auth_proc = subprocess.run(
-                ["claude", "auth", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            )
-            if auth_proc.returncode == 0:
-                payload = json.loads(auth_proc.stdout)
-                auth_state = "authenticated" if payload.get("loggedIn") else "not_authenticated"
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-            auth_state = "unknown"
+        has_api_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        has_oauth_cache = _OAUTH_CREDS_PATH.is_file()
+        auth_state = "authenticated" if (has_api_key or has_oauth_cache) else "not_authenticated"
         return {
             "status": "healthy" if auth_state == "authenticated" else "degraded",
             "available": True,
@@ -110,20 +92,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             + RESULT_SCHEMA_INSTRUCTION
         )
 
-        args = [
-            "claude",
-            "-p",
-            prompt,
-            "--output-format",
-            "json",
-            "--permission-mode",
-            "acceptEdits",
-            "--permission-prompts",
-            "none",
-            "--strict-mcp-config",
-            "--disallowedTools",
-            *_DISALLOWED_GIT_TOOLS,
-        ]
+        args = ["gemini", "-p", prompt, "-o", "text", "--approval-mode", "auto_edit"]
 
         try:
             popen = subprocess.Popen(
@@ -131,6 +100,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 cwd=str(request.workspace),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
         except FileNotFoundError:
@@ -140,7 +110,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 stdout="",
                 stderr="",
                 structured_result=None,
-                failure_reason="claude executable not found",
+                failure_reason="gemini executable not found",
             )
 
         with self._lock:
@@ -199,44 +169,22 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 stdout=stdout,
                 stderr=stderr,
                 structured_result=None,
-                failure_reason=f"claude CLI exited with code {exit_code}",
+                failure_reason=f"gemini CLI exited with code {exit_code}",
             )
 
-        try:
-            envelope = json.loads(stdout)
-        except json.JSONDecodeError as exc:
+        if not stdout.strip():
             return ExecuteOutcome(
                 run_status="failed",
                 exit_code=exit_code,
                 stdout=stdout,
                 stderr=stderr,
                 structured_result=None,
-                malformed_result_raw=stdout,
-                failure_reason=f"claude CLI did not return valid JSON: {exc}",
+                failure_reason="gemini CLI produced no output",
             )
 
+        structured_result, malformed_raw = parse_executor_result(stdout, request.task_id)
         warnings: list[str] = []
-        if envelope.get("is_error"):
-            failure_reason = f"claude CLI reported error subtype={envelope.get('subtype')}"
-            return ExecuteOutcome(
-                run_status="failed",
-                exit_code=exit_code,
-                stdout=stdout,
-                stderr=stderr,
-                structured_result=None,
-                failure_reason=failure_reason,
-            )
-
-        denials = envelope.get("permission_denials") or []
-        if denials:
-            warnings.append(f"{len(denials)} tool call(s) were denied by permission policy")
-
-        result_text = envelope.get("result")
-        structured_result: Optional[ExecutorResult] = None
-        malformed_raw: Optional[str] = None
-        if isinstance(result_text, str):
-            structured_result, malformed_raw = _parse_executor_result(result_text, request.task_id)
-        if structured_result is None and malformed_raw is not None:
+        if structured_result is None:
             warnings.append("Executor result did not conform to the required JSON schema")
 
         return ExecuteOutcome(

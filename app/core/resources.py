@@ -14,10 +14,37 @@ from datetime import datetime, timezone
 from app.core.router.router import ResourceRouter
 from app.database.models import CostType, Resource, ResourceType
 
-_RESOURCE_IDS = {"git": "resource-git", "claude_code": "resource-claude-code", "godot": "resource-godot"}
-_RESOURCE_TYPES = {"git": ResourceType.VCS, "claude_code": ResourceType.AI_EXECUTOR, "godot": ResourceType.TOOL}
-_RESOURCE_DISPLAY = {"git": "Git", "claude_code": "Claude Code CLI", "godot": "Godot"}
-_RESOURCE_COST = {"git": CostType.FREE, "claude_code": CostType.SUBSCRIPTION, "godot": CostType.FREE}
+_RESOURCE_IDS = {
+    "git": "resource-git",
+    "claude_code": "resource-claude-code",
+    "codex": "resource-codex",
+    "gemini": "resource-gemini",
+    "godot": "resource-godot",
+}
+_RESOURCE_TYPES = {
+    "git": ResourceType.VCS,
+    "claude_code": ResourceType.AI_EXECUTOR,
+    "codex": ResourceType.AI_EXECUTOR,
+    "gemini": ResourceType.AI_EXECUTOR,
+    "godot": ResourceType.TOOL,
+}
+_RESOURCE_DISPLAY = {
+    "git": "Git",
+    "claude_code": "Claude Code CLI",
+    "codex": "Codex CLI",
+    "gemini": "Gemini CLI",
+    "godot": "Godot",
+}
+_RESOURCE_COST = {
+    "git": CostType.FREE,
+    "claude_code": CostType.SUBSCRIPTION,
+    # Codex/Gemini's actual cost depends entirely on how the operator
+    # authenticates (a free personal login vs. a billed API key) -- not
+    # knowable from here, so this is genuinely unknown, not fabricated.
+    "codex": CostType.UNKNOWN,
+    "gemini": CostType.UNKNOWN,
+    "godot": CostType.FREE,
+}
 
 
 def _now() -> str:
@@ -46,7 +73,7 @@ def refresh_resources(conn: sqlite3.Connection, router: ResourceRouter) -> list[
         health = adapter.health_check()
         capabilities = adapter.capabilities() if hasattr(adapter, "capabilities") else []
         availability = "available" if health.get("available") else "unavailable"
-        auth_state = health.get("authenticated") if key == "claude_code" else None
+        auth_state = health.get("authenticated") if _RESOURCE_TYPES[key] == ResourceType.AI_EXECUTOR else None
         now = _now()
         resource_id = _RESOURCE_IDS[key]
         conn.execute(

@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { api, Project, Resource } from "../api/client";
 
-export function claudeUnavailableReason(resources: Resource[]): string | null {
-  const claude = resources.find((r) => r.adapter_key === "claude_code");
-  if (!claude || claude.availability !== "available") return "Claude Code no está disponible en este equipo.";
-  if (claude.auth_state === "not_authenticated") return "Claude Code está instalado pero no autenticado en este equipo.";
+// M2.8: the Hub is not dependent on any single AI vendor -- this gates on
+// whichever provider is currently ACTIVE (app/core/router/router.py's
+// selectable registry), not a hardcoded "claude_code".
+export function activeProviderUnavailableReason(resources: Resource[], activeProvider: string): string | null {
+  const provider = resources.find((r) => r.adapter_key === activeProvider);
+  if (!provider || provider.availability !== "available") {
+    return `${provider?.display_name ?? activeProvider} no está disponible en este equipo.`;
+  }
+  if (provider.auth_state === "not_authenticated") {
+    return `${provider.display_name} está instalado pero no autenticado en este equipo.`;
+  }
+  if (provider.auth_state === "unknown") {
+    return `${provider.display_name}: estado de autenticación desconocido.`;
+  }
   return null;
 }
 
@@ -24,10 +34,12 @@ export default function NewTaskPage({
   const [submitting, setSubmitting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [resources, setResources] = useState<Resource[] | null>(null);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
 
   useEffect(() => {
     api.getProject(projectId).then(setProject);
     api.projectResources(projectId).then(setResources);
+    api.getAiProvider().then((r) => setActiveProvider(r.active));
   }, [projectId]);
 
   const handleRun = async () => {
@@ -43,7 +55,8 @@ export default function NewTaskPage({
     }
   };
 
-  const blockedReason = resources ? claudeUnavailableReason(resources) : null;
+  const blockedReason =
+    resources && activeProvider ? activeProviderUnavailableReason(resources, activeProvider) : null;
   const godotUnavailable =
     resources && project?.project_type === "godot" && !resources.find((r) => r.adapter_key === "godot" && r.availability === "available");
 

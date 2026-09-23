@@ -1,57 +1,45 @@
-"""Claude Code CLI AI executor adapter (SPEC sections 7, 12-13; CLAUDE_M1 Checkpoint D).
+"""OpenAI Codex CLI AI executor adapter.
 
-Invocation contract (verified against the actual `claude` CLI available in
-this environment, `claude --help` / `claude doctor` / `claude auth status`):
+Invocation contract verified against the actual official `codex` CLI
+(`@openai/codex` on npm, `codex-cli 0.156.1` installed in this environment
+and inspected directly via `--help`; nothing here is guessed):
 
-- Detection: `claude --version` (no API call).
-- Health/auth: `claude doctor` + `claude auth status --json` (no API call,
-  so health checks never "consume unnecessary work" per CLAUDE_M1
-  Checkpoint B).
-- Execution: `claude -p <prompt> --output-format json --permission-mode
-  acceptEdits --permission-prompts none --disallowedTools <git history
-  subcommands> --strict-mcp-config`, run with `cwd=workspace` and never via
-  a shell (argument array, no string interpolation into a shell command —
-  SPEC line 189).
-- `--disallowedTools` is a real, CLI-enforced guardrail (not just prompt
-  text) against `git commit/reset/rebase/stash/checkout/switch/branch/
-  push/clean/filter-branch/reflog`, backing the envelope's RULES section
-  with something Hub does not have to trust the model to obey.
-
-Known limitation (documented again in M1_REPORT.md): this does not run the
-CLI inside an OS-level sandbox/jail, so the *workspace-boundary* rule
-(as opposed to the git-history rule) is enforced by prompt instruction +
-default tool cwd-scoping + Hub-side post-hoc Git verification, not by a
-hard OS boundary. SPEC 10 asks for boundary enforcement "where technically
-possible" within M1; full sandboxing is flagged as future work.
+- Detection: `codex --version` (no API call).
+- Health/auth: `codex login status` -- real, documented subcommand,
+  non-interactive, exits 0 when logged in and non-zero with "Not logged
+  in" on stdout otherwise (observed directly). No API call.
+- Execution: `codex exec` -- the CLI's own documented non-interactive
+  mode (`codex exec --help`: "Run Codex non-interactively"). Uses
+  `--sandbox workspace-write --approve-for-me` (auto-approves edits
+  within the workspace instead of prompting -- there is no interactive
+  terminal to answer prompts here, mirroring ClaudeCodeAdapter's
+  `--permission-mode acceptEdits --permission-prompts none`) and
+  `-o/--output-last-message <file>` to capture the agent's final
+  response text, which is where the required ExecutorResult JSON lives
+  (per the same RESULT_SCHEMA_INSTRUCTION every provider is given).
+- Official auth mechanisms (from `codex login --help`, also verified
+  directly): `codex login` (ChatGPT account OAuth, interactive browser
+  flow) or `codex login --with-api-key` (reads OPENAI_API_KEY from
+  stdin, non-interactive). Neither is performed by this adapter --
+  authentication is the operator's responsibility, done once outside
+  Impulsor Hub, exactly like ClaudeCodeAdapter never runs `claude login`
+  itself.
 """
 from __future__ import annotations
 
-import json
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.adapters.ai.base import AIExecutorAdapter, ExecuteOutcome, ExecuteRequest
-from app.adapters.ai.result_parsing import parse_executor_result as _parse_executor_result
+from app.adapters.ai.result_parsing import parse_executor_result
 from app.core.permissions.policy import RESULT_SCHEMA_INSTRUCTION, build_task_envelope
 
-_DISALLOWED_GIT_TOOLS = [
-    "Bash(git commit *)",
-    "Bash(git reset *)",
-    "Bash(git rebase *)",
-    "Bash(git stash *)",
-    "Bash(git checkout *)",
-    "Bash(git switch *)",
-    "Bash(git branch *)",
-    "Bash(git push *)",
-    "Bash(git clean *)",
-    "Bash(git filter-branch *)",
-    "Bash(git reflog *)",
-]
 
-class ClaudeCodeAdapter(AIExecutorAdapter):
-    adapter_key = "claude_code"
+class CodexAdapter(AIExecutorAdapter):
+    adapter_key = "codex"
 
     def __init__(self) -> None:
         self._processes: dict[str, subprocess.Popen] = {}
@@ -60,7 +48,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
     def detect(self) -> dict[str, Any]:
         try:
             proc = subprocess.run(
-                ["claude", "--version"], capture_output=True, text=True, timeout=10, check=False
+                ["codex", "--version"], capture_output=True, text=True, timeout=10, check=False
             )
         except FileNotFoundError:
             return {"available": False, "version": None}
@@ -79,17 +67,14 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             }
         auth_state = "unknown"
         try:
-            auth_proc = subprocess.run(
-                ["claude", "auth", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
+            status_proc = subprocess.run(
+                ["codex", "login", "status"], capture_output=True, text=True, timeout=15, check=False
             )
-            if auth_proc.returncode == 0:
-                payload = json.loads(auth_proc.stdout)
-                auth_state = "authenticated" if payload.get("loggedIn") else "not_authenticated"
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            if status_proc.returncode == 0:
+                auth_state = "authenticated"
+            elif "not logged in" in (status_proc.stdout + status_proc.stderr).lower():
+                auth_state = "not_authenticated"
+        except (subprocess.TimeoutExpired, FileNotFoundError):
             auth_state = "unknown"
         return {
             "status": "healthy" if auth_state == "authenticated" else "degraded",
@@ -110,37 +95,37 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             + RESULT_SCHEMA_INSTRUCTION
         )
 
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", prefix="codex-last-message-", delete=False
+        ) as tmp:
+            output_path = Path(tmp.name)
+
         args = [
-            "claude",
-            "-p",
+            "codex",
+            "exec",
             prompt,
-            "--output-format",
-            "json",
-            "--permission-mode",
-            "acceptEdits",
-            "--permission-prompts",
-            "none",
-            "--strict-mcp-config",
-            "--disallowedTools",
-            *_DISALLOWED_GIT_TOOLS,
+            "--sandbox",
+            "workspace-write",
+            "--approve-for-me",
+            "--cd",
+            str(request.workspace),
+            "--output-last-message",
+            str(output_path),
         ]
 
         try:
             popen = subprocess.Popen(
-                args,
-                cwd=str(request.workspace),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
         except FileNotFoundError:
+            output_path.unlink(missing_ok=True)
             return ExecuteOutcome(
                 run_status="failed",
                 exit_code=None,
                 stdout="",
                 stderr="",
                 structured_result=None,
-                failure_reason="claude executable not found",
+                failure_reason="codex executable not found",
             )
 
         with self._lock:
@@ -155,6 +140,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             except subprocess.TimeoutExpired:
                 popen.kill()
                 stdout, stderr = popen.communicate()
+            output_path.unlink(missing_ok=True)
             return ExecuteOutcome(
                 run_status="timed_out",
                 exit_code=popen.returncode,
@@ -168,6 +154,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 self._processes.pop(request.run_id, None)
 
         if popen.returncode == -15 or popen.returncode == -9:
+            output_path.unlink(missing_ok=True)
             return ExecuteOutcome(
                 run_status="cancelled",
                 exit_code=popen.returncode,
@@ -177,8 +164,17 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 failure_reason="Execution was cancelled",
             )
 
+        try:
+            last_message = output_path.read_text() if output_path.is_file() else ""
+        finally:
+            output_path.unlink(missing_ok=True)
+
         return self._interpret_cli_output(
-            request=request, exit_code=popen.returncode, stdout=stdout or "", stderr=stderr or ""
+            request=request,
+            exit_code=popen.returncode,
+            stdout=stdout or "",
+            stderr=stderr or "",
+            last_message=last_message,
         )
 
     def cancel(self, run_id: str) -> bool:
@@ -190,7 +186,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
         return True
 
     def _interpret_cli_output(
-        self, *, request: ExecuteRequest, exit_code: int, stdout: str, stderr: str
+        self, *, request: ExecuteRequest, exit_code: int, stdout: str, stderr: str, last_message: str
     ) -> ExecuteOutcome:
         if exit_code != 0:
             return ExecuteOutcome(
@@ -199,44 +195,22 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 stdout=stdout,
                 stderr=stderr,
                 structured_result=None,
-                failure_reason=f"claude CLI exited with code {exit_code}",
+                failure_reason=f"codex exec exited with code {exit_code}",
             )
 
-        try:
-            envelope = json.loads(stdout)
-        except json.JSONDecodeError as exc:
+        if not last_message.strip():
             return ExecuteOutcome(
                 run_status="failed",
                 exit_code=exit_code,
                 stdout=stdout,
                 stderr=stderr,
                 structured_result=None,
-                malformed_result_raw=stdout,
-                failure_reason=f"claude CLI did not return valid JSON: {exc}",
+                failure_reason="codex exec produced no final message (--output-last-message was empty)",
             )
 
+        structured_result, malformed_raw = parse_executor_result(last_message, request.task_id)
         warnings: list[str] = []
-        if envelope.get("is_error"):
-            failure_reason = f"claude CLI reported error subtype={envelope.get('subtype')}"
-            return ExecuteOutcome(
-                run_status="failed",
-                exit_code=exit_code,
-                stdout=stdout,
-                stderr=stderr,
-                structured_result=None,
-                failure_reason=failure_reason,
-            )
-
-        denials = envelope.get("permission_denials") or []
-        if denials:
-            warnings.append(f"{len(denials)} tool call(s) were denied by permission policy")
-
-        result_text = envelope.get("result")
-        structured_result: Optional[ExecutorResult] = None
-        malformed_raw: Optional[str] = None
-        if isinstance(result_text, str):
-            structured_result, malformed_raw = _parse_executor_result(result_text, request.task_id)
-        if structured_result is None and malformed_raw is not None:
+        if structured_result is None:
             warnings.append("Executor result did not conform to the required JSON schema")
 
         return ExecuteOutcome(

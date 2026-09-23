@@ -8,6 +8,14 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at  TEXT NOT NULL
 );
 
+-- Small persisted key/value store. First use: the operator's chosen
+-- active AI provider (app/core/router/router.py), so the choice survives
+-- a process restart instead of resetting to the default every time.
+CREATE TABLE IF NOT EXISTS hub_setting (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS project (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,

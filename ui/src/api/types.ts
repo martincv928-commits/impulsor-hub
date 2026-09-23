@@ -87,6 +87,8 @@ export interface ApiClient {
   getProject: (id: string) => Promise<Project>;
   projectResources: (id: string) => Promise<Resource[]>;
   getResources: () => Promise<Resource[]>;
+  getAiProvider: () => Promise<{ active: string; available: string[] }>;
+  setAiProvider: (provider: string) => Promise<{ active: string }>;
 
   listTasks: (projectId: string) => Promise<Task[]>;
   createTask: (projectId: string, objective: string) => Promise<Task>;

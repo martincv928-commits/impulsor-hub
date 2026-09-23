@@ -54,6 +54,9 @@ const realApi: ApiClient = {
   getProject: (id: string) => request<Project>(`/projects/${id}`),
   projectResources: (id: string) => request<Resource[]>(`/projects/${id}/resources`),
   getResources: () => request<Resource[]>("/resources"),
+  getAiProvider: () => request<{ active: string; available: string[] }>("/settings/ai-provider"),
+  setAiProvider: (provider: string) =>
+    request<{ active: string }>("/settings/ai-provider", { method: "POST", body: JSON.stringify({ provider }) }),
 
   listTasks: (projectId: string) => request<Task[]>(`/projects/${projectId}/tasks`),
   createTask: (projectId: string, objective: string) =>

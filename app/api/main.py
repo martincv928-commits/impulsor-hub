@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import os
 
-from app.api.routers import agent, cloud_session, preview, projects, resources, tasks, testgame, webexport
+from app.api.routers import agent, cloud_session, preview, projects, resources, settings, tasks, testgame, webexport
 from app.core.security import get_or_create_agent_token, require_agent_token
 from app.database.db import init_db
 
@@ -44,6 +44,7 @@ app.add_middleware(
 _AUTH = [Depends(require_agent_token)]
 app.include_router(projects.router, dependencies=_AUTH)
 app.include_router(resources.router, dependencies=_AUTH)
+app.include_router(settings.router, dependencies=_AUTH)
 app.include_router(tasks.router, dependencies=_AUTH)
 app.include_router(preview.router, dependencies=_AUTH)
 app.include_router(testgame.router, dependencies=_AUTH)
