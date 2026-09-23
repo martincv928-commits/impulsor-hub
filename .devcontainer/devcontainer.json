@@ -1,0 +1,15 @@
+{
+  "name": "Impulsor Hub Cloud Workspace",
+  "build": {
+    "dockerfile": "../docker/Dockerfile.cloud-agent",
+    "context": ".."
+  },
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Impulsor Hub",
+      "onAutoForward": "notify"
+    }
+  },
+  "postStartCommand": "(nohup uvicorn app.api.main:app --host 0.0.0.0 --port 8000 > /tmp/impulsor-hub.log 2>&1 &) ; sleep 1"
+}
