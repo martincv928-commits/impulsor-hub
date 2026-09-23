@@ -8,6 +8,7 @@ import {
   Task,
   TaskRun,
 } from "./types";
+import { activeToken, apiBaseUrl } from "./workspaceMode";
 
 export type { Project, Resource, Task, ExecutorResult, TaskRun, FileChange, EventItem };
 
@@ -16,23 +17,22 @@ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 declare global {
   interface Window {
     // Injected inline by app/api/main.py's `GET /` handler when the Agent
-    // serves this build itself (see app/core/security.py). Absent in the
-    // Vite dev server, where VITE_AGENT_TOKEN (a dev-only .env value) is
-    // used instead -- a developer running the two processes separately
-    // must set it to match IMPULSOR_HUB_AGENT_TOKEN on the backend.
+    // serves this build itself, LOCAL mode only (see app/core/security.py
+    // and app/api/main.py's Cloud-mode carve-out). Absent in the Vite dev
+    // server, where VITE_AGENT_TOKEN (a dev-only .env value) is used
+    // instead -- a developer running the two processes separately must
+    // set it to match IMPULSOR_HUB_AGENT_TOKEN on the backend.
     __IMPULSOR_AGENT_TOKEN__?: string;
   }
 }
 
-export function agentToken(): string | undefined {
-  return typeof window !== "undefined" && window.__IMPULSOR_AGENT_TOKEN__
-    ? window.__IMPULSOR_AGENT_TOKEN__
-    : import.meta.env.VITE_AGENT_TOKEN;
-}
+// Re-exported for callers that only dealt with local-mode tokens before
+// M2.7; new code should prefer workspaceMode's mode-aware activeToken().
+export const agentToken = activeToken;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = agentToken();
-  const resp = await fetch(`/api${path}`, {
+  const token = activeToken();
+  const resp = await fetch(`${apiBaseUrl()}/api${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

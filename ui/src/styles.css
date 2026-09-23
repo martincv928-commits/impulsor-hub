@@ -88,6 +88,19 @@ button.primary {
 }
 button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
+a.primary {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+
 button.secondary {
   background: transparent;
   border: 1px solid var(--border);
@@ -133,3 +146,67 @@ input[type="text"], textarea {
 
 table { width: 100%; border-collapse: collapse; }
 td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+
+/* M2.7 SPEC section I: real (non-demo) app must work down to 320px width
+   in Android Chrome -- collapse the sidebar into a hamburger drawer below
+   768px instead of the fixed-width side column used on desktop. */
+.app-header { display: none; }
+
+@media (max-width: 767px) {
+  body { overflow-x: hidden; }
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .app-header h1 { font-size: 16px; margin: 0; flex: 1; }
+  .hamburger {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 22px;
+    line-height: 1;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 20;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 78vw;
+    max-width: 300px;
+    z-index: 21;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar > h1 { display: none; } /* shown in .app-header instead on mobile */
+
+  .main {
+    padding: 14px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .row { flex-wrap: wrap; }
+
+  table, .diff-line { font-size: 12.5px; }
+  td, th { padding: 5px 4px; }
+}

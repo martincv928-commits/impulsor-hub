@@ -6,7 +6,8 @@ import TaskResultPage from "./pages/TaskResult";
 import ResourcesPage from "./pages/Resources";
 import { DEMO_MODE } from "./api/client";
 import DemoApp from "./demo/DemoApp";
-import AgentGate from "./components/AgentGate";
+import WorkspaceGate from "./components/WorkspaceGate";
+import { isCloudMode } from "./api/workspaceMode";
 
 export type View =
   | { name: "projects" }
@@ -17,6 +18,8 @@ export type View =
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "projects" });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const cloud = isCloudMode();
 
   // DEMO_MODE renders an entirely separate, mobile-first UI tree backed by
   // DemoTaskEngine (see ui/src/demo/) instead of this real-mode app. See
@@ -27,26 +30,38 @@ export default function App() {
     return <DemoApp />;
   }
 
+  const goto = (v: View) => {
+    setView(v);
+    setDrawerOpen(false);
+  };
+
   return (
-    <AgentGate>
+    <WorkspaceGate>
       <div className="app-root">
+        <header className="app-header">
+          <button className="hamburger" aria-label="Menú" onClick={() => setDrawerOpen(true)}>
+            ☰
+          </button>
+          <h1>Impulsor Hub</h1>
+        </header>
+        {drawerOpen && <div className="sidebar-overlay" onClick={() => setDrawerOpen(false)} />}
         <div className="app-shell">
-        <nav className="sidebar">
+        <nav className={`sidebar ${drawerOpen ? "open" : ""}`}>
           <h1>Impulsor Hub</h1>
           <button
             className={`nav-item ${view.name === "projects" ? "active" : ""}`}
-            onClick={() => setView({ name: "projects" })}
+            onClick={() => goto({ name: "projects" })}
           >
             Proyectos
           </button>
           <button
             className={`nav-item ${view.name === "resources" ? "active" : ""}`}
-            onClick={() => setView({ name: "resources" })}
+            onClick={() => goto({ name: "resources" })}
           >
             Recursos
           </button>
           <div className="muted" style={{ marginTop: "auto", paddingTop: 16, fontSize: 12 }}>
-            ESTE EQUIPO <span className="badge good">● Conectado</span>
+            {cloud ? "WORKSPACE REMOTO" : "ESTE EQUIPO"} <span className="badge good">● Conectado</span>
           </div>
         </nav>
         <main className="main">
@@ -74,6 +89,6 @@ export default function App() {
         </main>
         </div>
       </div>
-    </AgentGate>
+    </WorkspaceGate>
   );
 }

@@ -8,6 +8,7 @@ token like every other router (see app/core/security.py).
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -19,7 +20,12 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 @router.get("/status")
 def agent_status() -> dict:
-    return {"agent": "impulsor-agent", "version": "0.1.0", "connected": True}
+    # A deployment is a Cloud Agent purely by virtue of having the cloud
+    # access code configured (M2.7 SPEC section F) -- there is no separate
+    # "cloud build," the exact same code serves both (section D principle:
+    # don't fork the backend, don't duplicate the pipeline).
+    mode = "cloud" if os.environ.get("IMPULSOR_HUB_CLOUD_ACCESS_CODE") else "local"
+    return {"agent": "impulsor-agent", "version": "0.1.0", "connected": True, "mode": mode}
 
 
 def _run_native_folder_dialog() -> Optional[str]:

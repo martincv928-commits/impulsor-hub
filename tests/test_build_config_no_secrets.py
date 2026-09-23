@@ -27,3 +27,14 @@ def test_launcher_py_never_hardcodes_a_token():
     launcher = REPO_ROOT / "app" / "launcher.py"
     text = launcher.read_text()
     assert "IMPULSOR_HUB_AGENT_TOKEN" not in text
+
+
+_ACCESS_CODE_SUSPICIOUS = re.compile(r"IMPULSOR_HUB_CLOUD_ACCESS_CODE\s*[:=]\s*['\"a-zA-Z0-9_\-]{4,}")
+
+
+def test_cloud_agent_dockerfile_never_hardcodes_the_access_code_or_a_token():
+    dockerfile = REPO_ROOT / "docker" / "Dockerfile.cloud-agent"
+    text = dockerfile.read_text()
+    assert not _SUSPICIOUS.search(text)
+    assert not _ACCESS_CODE_SUSPICIOUS.search(text)
+    assert "ENV IMPULSOR_HUB_CLOUD_ACCESS_CODE" not in text

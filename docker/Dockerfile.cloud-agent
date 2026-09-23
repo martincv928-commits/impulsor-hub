@@ -1,0 +1,76 @@
+# Cloud Agent (M2.7 SPEC section D): the EXACT SAME app/ package as the
+# local Agent (docker/Dockerfile.backend), not a second implementation --
+# it only differs by what's baked into the image (Godot + its Web export
+# templates, since a cloud server has no user's PC to provide them) and
+# by which env vars are set at deploy time (IMPULSOR_HUB_CLOUD_ACCESS_CODE
+# switches app/api/main.py's own /api/agent/status + token-bootstrap
+# behavior into Cloud mode -- see app/core/security.py and
+# app/api/routers/cloud_session.py). No orchestrator/executor/validator
+# code is duplicated here.
+#
+# NOT container-build-verified in this sandbox (no Docker daemon
+# available here, same constraint noted for docker/Dockerfile.backend
+# since M2 and for the Tauri desktop shell since M1) -- reviewed by hand.
+# Godot itself and its export templates follow the same official-binary +
+# checksum-verify discipline used throughout this project (see
+# M2_REPORT.md section 12.2): only github.com/godotengine/godot releases,
+# verified against that release's own SHA512-SUMS.txt.
+
+FROM node:20-slim AS ui-build
+WORKDIR /src
+COPY ui/package*.json ./
+RUN npm install
+COPY ui .
+RUN npx vite build
+
+FROM python:3.11-slim AS cloud-agent
+
+# git: GitAdapter (checkpoints, change manifest).
+# nodejs/npm: the `claude` CLI. curl/unzip: Godot + template download below.
+# The libX11/libgl1/fontconfig family: Godot's Linux binary dynamically
+# links against these even under --headless -- absent, it fails to start
+# at all, not just to render.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl unzip ca-certificates \
+      libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libxext6 \
+      libgl1 libglu1-mesa fontconfig \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && apt-get purge -y curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG GODOT_VERSION=4.2.2-stable
+ARG GODOT_SHA512=4c0294f437b97cf14f848d921ed028cb6e100ebbfcf6480f2d50292d001221cf29cda73f0a96a8c0e80b145b65cdbf7e422252dbbe17e79d883753e500306276
+ARG GODOT_TEMPLATES_SHA512=a0c810c984a282f5874a991652be5603a7c8be4a0e47849df9d4cf9f44f2b7f2b864aaa1febec29a6a77a1784d45fedcb82173a99a39bc7ae03323de9e0d5cea
+
+RUN set -eux; \
+    cd /tmp; \
+    base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"; \
+    curl -fsSLO "${base}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"; \
+    echo "${GODOT_SHA512}  Godot_v${GODOT_VERSION}_linux.x86_64.zip" | sha512sum -c -; \
+    unzip -q "Godot_v${GODOT_VERSION}_linux.x86_64.zip"; \
+    mv "Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot4; \
+    chmod +x /usr/local/bin/godot4; \
+    curl -fsSLO "${base}/Godot_v${GODOT_VERSION}_export_templates.tpz"; \
+    echo "${GODOT_TEMPLATES_SHA512}  Godot_v${GODOT_VERSION}_export_templates.tpz" | sha512sum -c -; \
+    mkdir -p "/root/.local/share/godot/export_templates/${GODOT_VERSION}"; \
+    unzip -q "Godot_v${GODOT_VERSION}_export_templates.tpz" -d /tmp/templates; \
+    mv /tmp/templates/templates/* "/root/.local/share/godot/export_templates/${GODOT_VERSION}/"; \
+    rm -rf /tmp/*.zip /tmp/*.tpz /tmp/templates
+
+WORKDIR /srv/impulsor-hub
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+COPY fixtures ./fixtures
+COPY --from=ui-build /src/dist ./ui/dist
+
+EXPOSE 8000
+# IMPULSOR_HUB_CLOUD_ACCESS_CODE must be set at deploy time (a hosting
+# platform's own secret-manager UI/env var -- never in this Dockerfile,
+# never committed). Without it, this same image behaves exactly like the
+# local Agent, just reachable at whatever host/port it's bound to.
+CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

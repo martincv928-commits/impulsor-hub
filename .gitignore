@@ -10,3 +10,4 @@ ui/src-tauri/target/
 .DS_Store
 ui/tsconfig.tsbuildinfo
 /workspaces/
+.godot/

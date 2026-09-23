@@ -4,8 +4,10 @@ import {
   PreviewStatus,
   projectPreviewStatus,
   startProjectPreview,
+  startProjectWebexport,
   stopProjectPreview,
 } from "../api/agentClient";
+import { apiBaseUrl, isCloudMode } from "../api/workspaceMode";
 
 const TYPE_LABEL: Record<string, string> = { godot: "Godot", generic: "Otro" };
 const TEST_GAME_NAME = "Impulsor Hub Test Game (prueba)";
@@ -33,7 +35,10 @@ export default function ProjectPage({
   const [resources, setResources] = useState<Resource[]>([]);
   const [preview, setPreview] = useState<PreviewStatus>("not_started");
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [webPreviewUrl, setWebPreviewUrl] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cloud = isCloudMode();
 
   useEffect(() => {
     api.getProject(projectId).then(setProject);
@@ -52,6 +57,21 @@ export default function ProjectPage({
 
   const handleStartPreview = async () => {
     setPreviewError(null);
+    if (cloud) {
+      // M2.7 SPEC section M: a desktop Godot window on a server is not a
+      // valid mobile preview -- cloud mode exports to Web instead and
+      // hands back a static, browser-openable URL (no process to poll).
+      setExporting(true);
+      try {
+        const { url } = await startProjectWebexport(projectId);
+        setWebPreviewUrl(`${apiBaseUrl()}${url}`);
+      } catch (e) {
+        setPreviewError(String(e));
+      } finally {
+        setExporting(false);
+      }
+      return;
+    }
     try {
       await startProjectPreview(projectId);
       setPreview("running");
@@ -83,14 +103,17 @@ export default function ProjectPage({
         ← Proyectos
       </button>
       <h2>{project.name}</h2>
-      <span className="badge good">{isTestGame ? "PROYECTO REAL DE PRUEBA" : "PROYECTO REAL"}</span>
+      <span className="badge good">
+        {isTestGame ? `PROYECTO REAL DE PRUEBA${cloud ? " — CLOUD" : ""}` : "PROYECTO REAL"}
+      </span>
       <p className="muted" style={{ marginTop: 8 }}>
         Detectado: {TYPE_LABEL[project.project_type] ?? "Otro"}
       </p>
       {isTestGame && (
         <p className="muted">
-          Esta copia sí contiene archivos reales en tu computadora. Los cambios realizados aquí son
-          reales, pero puedes restaurarlos.
+          {cloud
+            ? "Estos archivos existen realmente en tu workspace remoto. Puedes modificarlos, conservarlos o restaurarlos."
+            : "Esta copia sí contiene archivos reales en tu computadora. Los cambios realizados aquí son reales, pero puedes restaurarlos."}
         </p>
       )}
 
@@ -107,7 +130,20 @@ export default function ProjectPage({
 
       {project.project_type === "godot" && (
         <div className="card">
-          {preview === "running" ? (
+          {cloud ? (
+            webPreviewUrl ? (
+              <>
+                <p className="muted">Preview Web listo.</p>
+                <a className="primary" href={webPreviewUrl} target="_blank" rel="noreferrer">
+                  ABRIR PREVIEW
+                </a>
+              </>
+            ) : (
+              <button className="primary" disabled={exporting} onClick={handleStartPreview}>
+                {exporting ? "Exportando..." : "PROBAR ESTADO ACTUAL"}
+              </button>
+            )
+          ) : preview === "running" ? (
             <>
               <p>Godot se está ejecutando...</p>
               <button className="secondary" onClick={handleStopPreview}>

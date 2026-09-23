@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api, EventItem, FileChange, Project, Task, TaskRun } from "../api/client";
-import { previewStatus as fetchPreviewStatus, PreviewStatus, startPreview, stopPreview } from "../api/agentClient";
+import {
+  previewStatus as fetchPreviewStatus,
+  PreviewStatus,
+  startPreview,
+  startRunWebexport,
+  stopPreview,
+} from "../api/agentClient";
+import { apiBaseUrl, isCloudMode } from "../api/workspaceMode";
 
 const ACTIVE_STATUSES = new Set(["VALIDATING", "READY", "LOCKING", "CHECKPOINTING", "RUNNING", "VERIFYING"]);
 const VALIDATION_EVENT_TYPES = new Set(["validation.passed", "validation.failed", "validation.error", "validation.timeout"]);
@@ -32,7 +39,11 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
   const [confirmOverride, setConfirmOverride] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [preview, setPreview] = useState<PreviewStatus>("not_started");
+  const [webPreviewUrl, setWebPreviewUrl] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cloud = isCloudMode();
 
   const load = async () => {
     const t = await api.getTask(taskId);
@@ -97,7 +108,19 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
 
   const handleStartPreview = async () => {
     if (!run) return;
-    setError(null);
+    setPreviewError(null);
+    if (cloud) {
+      setExporting(true);
+      try {
+        const { url } = await startRunWebexport(run.id);
+        setWebPreviewUrl(`${apiBaseUrl()}${url}`);
+      } catch (e) {
+        setPreviewError(String(e));
+      } finally {
+        setExporting(false);
+      }
+      return;
+    }
     try {
       await startPreview(run.id);
       setPreview("running");
@@ -195,7 +218,20 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
           <p className="muted" style={{ marginBottom: 8 }}>
             Prueba el resultado en el motor real de Godot.
           </p>
-          {preview === "running" ? (
+          {cloud ? (
+            webPreviewUrl ? (
+              <>
+                <p className="muted">Preview Web listo.</p>
+                <a className="primary" href={webPreviewUrl} target="_blank" rel="noreferrer">
+                  ABRIR PREVIEW
+                </a>
+              </>
+            ) : (
+              <button className="primary" disabled={exporting} onClick={handleStartPreview}>
+                {exporting ? "Exportando..." : "PROBAR RESULTADO"}
+              </button>
+            )
+          ) : preview === "running" ? (
             <>
               <p>Godot se está ejecutando...</p>
               <button className="secondary" onClick={handleStopPreview}>
@@ -207,6 +243,7 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
               PROBAR RESULTADO
             </button>
           )}
+          {previewError && <p style={{ color: "var(--danger)" }}>{previewError}</p>}
         </div>
       )}
 
