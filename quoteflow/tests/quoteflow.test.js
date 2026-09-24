@@ -210,3 +210,55 @@ test('separa conceptos seguidos sin conector explícito (habla corrida/dictado)'
   assert.deepEqual([it(r, 2).qtyMilli, it(r, 2).unit, it(r, 2).priceCents], [3000, 'litro', 1200]);
   assertClean(r);
 });
+
+/* ---------- respaldo / restauración ---------- */
+function fakeStorage() {
+  const store = {};
+  return {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; },
+  };
+}
+
+function freshStorage() {
+  delete require.cache[require.resolve('../src/storage.js')];
+  globalThis.localStorage = fakeStorage();
+  delete globalThis.QF.storage;
+  require('../src/storage.js');
+  return globalThis.QF.storage;
+}
+
+test('respaldo: exporta y restaura sin perder la estructura', () => {
+  const DB1 = freshStorage();
+  DB1.saveSettings(Object.assign({}, DB1.getSettings(), { businessName: 'Limpieza Express', ivaRateBp: 1600 }));
+  let catalog = CAT.upsert([], { desc: 'Jabón Ariel', unit: 'litro', priceCents: 1400 }, 1);
+  DB1.saveCatalog(catalog);
+  const folio = DB1.nextFolio();
+  DB1.saveQuote({ id: 'q1', folio, client: 'Pedro', items: [{ id: 'i1', desc: 'Jabón Ariel', qtyMilli: 20000, unit: 'litro', priceCents: 1400 }], discount: { type: 'pct', value: 0 }, ivaMode: 'mas', ivaRateBp: 1600, validityDays: 15, notes: '', status: 'GENERADA', updatedAt: 1 });
+  const backup = DB1.exportBackup();
+  assert.equal(backup.app, 'QuoteFlow');
+  assert.equal(backup.quotes.length, 1);
+
+  // "otro dispositivo": storage vacío, se restaura ahí
+  const DB2 = freshStorage();
+  assert.equal(DB2.getQuotes().length, 0);
+  const err = DB2.validateBackup(backup);
+  assert.equal(err, null);
+  DB2.restoreBackup(backup);
+  assert.equal(DB2.getSettings().businessName, 'Limpieza Express');
+  assert.equal(DB2.getCatalog().length, 1);
+  const restored = DB2.getQuotes();
+  assert.equal(restored.length, 1);
+  assert.deepEqual(restored[0].items, backup.quotes[0].items);
+  assert.equal(DB2.nextFolio(), 'COT-0002'); // el folio siguiente continúa donde iba, no se reinicia
+});
+
+test('respaldo: rechaza archivos que no son de QuoteFlow o están incompletos', () => {
+  const DB1 = freshStorage();
+  assert.match(DB1.validateBackup(null), /válido/);
+  assert.match(DB1.validateBackup({ foo: 1 }), /no es un respaldo/);
+  assert.match(DB1.validateBackup({ app: 'QuoteFlow', backupVersion: 1, settings: {}, catalog: [] }), /cotizaciones/);
+  assert.match(DB1.validateBackup({ app: 'QuoteFlow', backupVersion: 1, settings: {}, catalog: [], quotes: [{ id: 'x' }] }), /incompleta/);
+  assert.match(DB1.validateBackup({ app: 'QuoteFlow', backupVersion: 99, settings: {}, catalog: [], quotes: [] }), /más nueva/);
+});

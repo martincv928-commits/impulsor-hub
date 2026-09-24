@@ -19,6 +19,7 @@
     showAll: false,
     confirmDelete: false,
     listening: null,
+    pendingBackup: null,
   };
 
   /* ---------- utilidades ---------- */
@@ -427,6 +428,18 @@
         <p class="hint">Productos recordados: ${S.catalog.length}. Tus cotizaciones y datos se guardan solo en este dispositivo.</p>
         <button class="btn primary block" type="submit">Guardar</button>
       </form>
+      <div class="section-h"><h2>Respaldo</h2></div>
+      <div class="stack">
+        <p class="hint">Guarda un archivo con tu configuración, catálogo e historial. Sirve para recuperarlos si cambias de teléfono o borras los datos del navegador.</p>
+        <button class="btn block" data-act="backup-export">Descargar respaldo</button>
+        <label class="btn block ghost" for="backup-file" style="cursor:pointer">Restaurar desde archivo</label>
+        <input id="backup-file" type="file" accept="application/json,.json" hidden>
+        ${S.pendingBackup ? `
+          <div class="confirm-row">Esto reemplaza tu configuración, catálogo e historial actuales por los del archivo (${S.pendingBackup.quotes.length} cotizaciones, ${S.pendingBackup.catalog.length} productos).
+            <button class="btn danger" data-act="restore-yes">Restaurar</button>
+            <button class="btn" data-act="restore-no">Cancelar</button>
+          </div>` : ''}
+      </div>
       <div style="height:24px"></div>`;
   }
 
@@ -449,6 +462,24 @@
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  function readBackupFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try {
+        data = JSON.parse(reader.result);
+      } catch (e) {
+        return toast('Ese archivo no es un respaldo válido de QuoteFlow.');
+      }
+      const err = DB.validateBackup(data);
+      if (err) return toast(err);
+      S.pendingBackup = data;
+      render();
+    };
+    reader.onerror = () => toast('No se pudo leer el archivo.');
+    reader.readAsText(file);
   }
 
   /* ---------- eventos ---------- */
@@ -526,6 +557,23 @@
         return;
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
+      case 'backup-export': {
+        const data = DB.exportBackup();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const stamp = new Date().toISOString().slice(0, 10);
+        SHARE.download(blob, `QuoteFlow_respaldo_${stamp}.json`);
+        toast('Respaldo descargado');
+        return;
+      }
+      case 'restore-yes': {
+        DB.restoreBackup(S.pendingBackup);
+        S.settings = DB.getSettings();
+        S.catalog = DB.getCatalog();
+        S.pendingBackup = null;
+        toast('Datos restaurados');
+        return go('home');
+      }
+      case 'restore-no': S.pendingBackup = null; return render();
     }
   });
 
@@ -533,6 +581,7 @@
   app.addEventListener('change', (e) => {
     if (S.view === 'editor') onEditorChange(e);
     if (e.target.id === 's-logo' && e.target.files[0]) readLogo(e.target.files[0]);
+    if (e.target.id === 'backup-file' && e.target.files[0]) readBackupFile(e.target.files[0]);
   });
   app.addEventListener('submit', (e) => {
     e.preventDefault();
