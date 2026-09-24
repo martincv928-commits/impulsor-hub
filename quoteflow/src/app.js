@@ -1,0 +1,556 @@
+/* UI de QuoteFlow. Solo presentación y flujo: el parser, cálculos, PDF,
+ * persistencia, voz y compartir viven en sus propios módulos. */
+(function () {
+  'use strict';
+  const { money: M, catalog: CAT, storage: DB, pdf: PDF, voice: VOICE, share: SHARE } = window.QF;
+  const interpreter = window.QF.getInterpreter();
+  const app = document.getElementById('app');
+
+  const UNITS = ['pieza', 'servicio', 'litro', 'metro', 'm²', 'kg', 'caja', 'paquete', 'hora', 'juego', 'rollo', 'bolsa', 'galón', 'bulto', 'lote', 'día'];
+  const EXAMPLE = 'Cotiza a Constructora López 5 cámaras a 1850 cada una, instalación 3500 y 100 metros de cable a 12.50, más IVA, vigencia 15 días.';
+
+  const S = {
+    view: 'home',
+    quote: null,
+    interp: null,
+    settings: DB.getSettings(),
+    catalog: DB.getCatalog(),
+    writeOpen: false,
+    showAll: false,
+    confirmDelete: false,
+    listening: null,
+  };
+
+  /* ---------- utilidades ---------- */
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = (c) => M.format(c, S.settings.currency);
+  const uid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const icon = {
+    mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    pen: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>',
+  };
+
+  let toastTimer;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (el.hidden = true), 3200);
+  }
+
+  function go(view) {
+    S.view = view;
+    S.confirmDelete = false;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function dateStr(ts) {
+    return new Date(ts).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function totalsOf(q) {
+    return M.computeTotals(q);
+  }
+
+  /* ---------- inicio ---------- */
+  function viewHome() {
+    const quotes = DB.getQuotes();
+    const shown = S.showAll ? quotes : quotes.slice(0, 12);
+    const name = S.settings.businessName;
+    return `
+      <header class="top">
+        <div class="brand">QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</div>
+        <span class="spacer"></span>
+        <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
+      </header>
+      ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
+      <section class="hero">
+        <button class="mic" data-act="speak" aria-label="Hablar cotización">${icon.mic}</button>
+        <div class="mic-label">Hablar</div>
+        <p>Di algo como: “Cotiza a Pedro 20 litros de jabón a 14 pesos, más IVA”.</p>
+      </section>
+      <section class="write">
+        ${S.writeOpen ? `
+          <label class="lbl" for="free-text">Escribe la cotización</label>
+          <textarea id="free-text" placeholder="${esc(EXAMPLE)}"></textarea>
+          <div class="row">
+            <button class="btn ghost" data-act="fill-example">Usar ejemplo</button>
+            <span class="spacer"></span>
+            <button class="btn primary" data-act="interpret">Interpretar</button>
+          </div>` : `<button class="btn block" data-act="write">${icon.pen} Escribir cotización</button>`}
+      </section>
+      <div class="section-h"><h2>Cotizaciones recientes</h2>${quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
+      <div class="list">
+        ${shown.length ? shown.map((q) => `
+          <button class="qrow" data-act="open" data-id="${q.id}">
+            <span class="client">${esc(q.client || 'Sin cliente')}</span>
+            <span class="total num">${fmt(totalsOf(q).total)}</span>
+            <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+            <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+          </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
+      </div>`;
+  }
+
+  /* ---------- voz ---------- */
+  function startVoice() {
+    if (!VOICE.supported()) {
+      S.writeOpen = true;
+      render();
+      document.getElementById('free-text').focus();
+      toast('Este navegador no tiene dictado. Usa el micrófono de tu teclado.');
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'listen';
+    overlay.innerHTML = `
+      <div class="row"><span class="pulse"></span><b>Escuchando…</b></div>
+      <div class="transcript empty-t" id="tr">Habla con naturalidad. Toca “Listo” al terminar.</div>
+      <div class="row"><button class="btn" id="v-cancel">Cancelar</button><span class="spacer"></span><button class="btn primary" id="v-done">Listo</button></div>`;
+    document.body.appendChild(overlay);
+    const tr = overlay.querySelector('#tr');
+    let last = '';
+    let cancelled = false;
+    const close = () => { overlay.remove(); S.listening = null; };
+    try {
+      S.listening = VOICE.start({
+        onText: (t) => { last = t; tr.textContent = t; tr.classList.remove('empty-t'); },
+        onEnd: (finalText) => {
+          close();
+          if (cancelled) return;
+          const text = (finalText || last).trim();
+          if (text) interpretText(text);
+          else toast('No se escuchó nada. Intenta de nuevo.');
+        },
+        onError: (code) => {
+          close();
+          S.writeOpen = true;
+          render();
+          toast(code === 'not-allowed' || code === 'service-not-allowed'
+            ? 'Permite el micrófono para dictar, o usa el micrófono del teclado.'
+            : 'No se pudo usar el dictado (' + code + '). Escribe o usa el teclado.');
+        },
+      });
+    } catch (e) {
+      close();
+      toast('No se pudo iniciar el dictado.');
+      return;
+    }
+    overlay.querySelector('#v-done').onclick = () => S.listening && S.listening.stop();
+    overlay.querySelector('#v-cancel').onclick = () => { cancelled = true; S.listening && S.listening.abort(); close(); };
+  }
+
+  /* ---------- interpretación ---------- */
+  async function interpretText(text, keep) {
+    const res = await interpreter.interpret(text, { catalog: S.catalog, settings: S.settings });
+    const now = Date.now();
+    const base = keep || { id: uid(), folio: null, status: 'BORRADOR', createdAt: now, conditions: S.settings.conditions };
+    S.quote = Object.assign({}, base, res.quote, { sourceText: text, updatedAt: now });
+    if (keep && !res.quote.client) S.quote.client = keep.client;
+    S.interp = res;
+    S.writeOpen = false;
+    go('editor');
+  }
+
+  /* ---------- editor ---------- */
+  function itemMissing(it) {
+    return { qty: it.qtyMilli === null || it.qtyMilli === undefined, price: it.priceCents === null || it.priceCents === undefined, desc: !String(it.desc || '').trim() };
+  }
+
+  function itemHtml(it) {
+    const miss = itemMissing(it);
+    const warn = miss.qty || miss.price || miss.desc || (it.candidates && it.candidates.length);
+    const tag = it.priceSource === 'catalogo'
+      ? `<span class="tag ${it.flags && it.flags.includes('precio_catalogo_aprox') ? 'warn' : ''}">Precio del catálogo${it.catalogName ? ': ' + esc(it.catalogName) : ''}</span>`
+      : '';
+    const amt = M.lineAmount(it);
+    return `
+      <div class="card item ${warn ? 'warn' : ''}" data-item="${it.id}">
+        <div class="desc-row">
+          <input id="d-${it.id}" data-k="desc" value="${esc(it.desc)}" placeholder="Concepto" list="cat-list" class="${miss.desc ? 'missing' : ''}" aria-label="Concepto">
+          <button class="x-btn" data-act="del-item" data-id="${it.id}" aria-label="Eliminar concepto">×</button>
+        </div>
+        ${it.candidates && it.candidates.length ? `
+          <div class="hint">¿Cuál producto? Coincide con varios del catálogo:</div>
+          <div class="chips">${it.candidates.map((c, i) => `<button class="chip" data-act="pick" data-id="${it.id}" data-i="${i}">${esc(c.name)} · ${fmt(c.priceCents)}${c.unit ? '/' + esc(c.unit) : ''}</button>`).join('')}</div>` : ''}
+        <div class="grid">
+          <div><label for="q-${it.id}">Cantidad</label><input id="q-${it.id}" data-k="qty" inputmode="decimal" value="${esc(M.milliToStr(it.qtyMilli))}" placeholder="?" class="num ${miss.qty ? 'missing' : ''}"></div>
+          <div><label for="u-${it.id}">Unidad</label><input id="u-${it.id}" data-k="unit" value="${esc(it.unit)}" list="unit-list" placeholder="pieza"></div>
+          <div><label for="p-${it.id}">Precio unit.</label><input id="p-${it.id}" data-k="price" inputmode="decimal" value="${esc(M.centsToStr(it.priceCents))}" placeholder="$?" class="num ${miss.price ? 'missing' : ''}"></div>
+        </div>
+        <div class="foot"><span>${tag}</span><span class="amount num" id="amt-${it.id}">${amt === null ? '<span class="muted">Importe —</span>' : fmt(amt)}</span></div>
+      </div>`;
+  }
+
+  function viewEditor() {
+    const q = S.quote;
+    const r = S.interp;
+    const confLabel = { alta: 'Todo claro', media: 'Revisa lo marcado', baja: 'Faltan datos: complétalos' };
+    const d = q.discount || { type: 'pct', value: 0 };
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">${q.folio ? `<span class="mono">${esc(q.folio)}</span>` : 'Nueva cotización'}</div>
+        <span class="spacer"></span>
+        <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+      </header>
+      <div class="stack">
+        ${r ? `
+          <div class="banner ${r.confidence}">
+            <div class="head">${r.confidence === 'alta' ? '✓' : '!'} ${confLabel[r.confidence]}</div>
+            ${r.doubtful.length || r.unparsed.length ? `<ul>${r.doubtful.map((x) => `<li>${esc(x.message)}</li>`).join('')}${r.unparsed.map((u) => `<li>No se entendió: “${esc(u)}”</li>`).join('')}</ul>` : ''}
+            <details>
+              <summary>Texto original</summary>
+              <textarea id="src-text" style="margin-top:8px;min-height:80px">${esc(q.sourceText || '')}</textarea>
+              <button class="btn" data-act="reinterpret" style="margin-top:8px">Volver a interpretar</button>
+            </details>
+          </div>` : ''}
+        <div class="field"><label for="client">Cliente</label><input id="client" data-q="client" value="${esc(q.client)}" placeholder="Nombre del cliente" class="${q.client ? '' : 'missing'}"></div>
+        <div>
+          <div class="lbl">Conceptos</div>
+          <div class="stack" id="items">${q.items.map(itemHtml).join('')}</div>
+          <button class="btn block ghost" data-act="add-item" style="margin-top:10px">+ Agregar concepto</button>
+        </div>
+        <div class="field">
+          <label>IVA</label>
+          <div class="seg" role="group" aria-label="IVA">
+            ${[['mas', 'Más IVA'], ['incluido', 'IVA incluido'], ['sin', 'Sin IVA']].map(([k, l]) => `<button data-act="iva" data-v="${k}" aria-pressed="${q.ivaMode === k}">${l}</button>`).join('')}
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label for="iva-rate">Tasa IVA %</label><input id="iva-rate" data-q="ivaRate" inputmode="decimal" class="num" value="${esc(M.centsToStr(q.ivaRateBp).replace(/\.00$/, ''))}"></div>
+          <div class="field"><label for="validity">Vigencia (días)</label><input id="validity" data-q="validity" inputmode="numeric" class="num" value="${esc(q.validityDays)}"></div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label for="disc">Descuento</label><input id="disc" data-q="disc" inputmode="decimal" class="num" value="${d.value ? esc(M.centsToStr(d.value).replace(/\.00$/, '')) : ''}" placeholder="0"></div>
+          <div class="field"><label>Tipo</label><div class="seg two" role="group" aria-label="Tipo de descuento">
+            <button data-act="disc-type" data-v="pct" aria-pressed="${d.type !== 'amount'}">%</button>
+            <button data-act="disc-type" data-v="amount" aria-pressed="${d.type === 'amount'}">$</button>
+          </div></div>
+        </div>
+        <div class="field"><label for="notes">Notas</label><textarea id="notes" data-q="notes" style="min-height:64px" placeholder="Opcional">${esc(q.notes)}</textarea></div>
+        <div class="field"><label for="conditions">Condiciones</label><textarea id="conditions" data-q="conditions" style="min-height:64px">${esc(q.conditions)}</textarea></div>
+        ${q.folio ? (S.confirmDelete
+          ? `<div class="confirm-row">¿Eliminar esta cotización? <button class="btn danger" data-act="delete-yes">Eliminar</button><button class="btn" data-act="delete-no">No</button></div>`
+          : `<button class="btn ghost danger" data-act="delete">Eliminar cotización</button>`) : ''}
+      </div>
+      <datalist id="cat-list">${S.catalog.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      <datalist id="unit-list">${UNITS.map((u) => `<option value="${u}">`).join('')}</datalist>
+      <div class="dock"><div class="dock-in">
+        <div class="totals num" id="totals">${totalsHtml()}</div>
+        <div class="actions">
+          <button class="btn" data-act="save">Guardar</button>
+          <button class="btn primary" data-act="generate">Generar PDF</button>
+        </div>
+      </div></div>`;
+  }
+
+  function totalsHtml() {
+    const q = S.quote;
+    const t = totalsOf(q);
+    const rate = M.centsToStr(q.ivaRateBp).replace(/\.00$/, '');
+    let rows = `<span class="muted">Subtotal</span><span>${fmt(t.subtotal)}</span>`;
+    if (t.discount) rows += `<span class="muted">Descuento</span><span>-${fmt(t.discount)}</span>`;
+    if (q.ivaMode === 'mas') rows += `<span class="muted">IVA ${rate}%</span><span>${fmt(t.iva)}</span>`;
+    if (q.ivaMode === 'incluido') rows += `<span class="muted">IVA ${rate}% incluido</span><span>${fmt(t.iva)}</span>`;
+    rows += `<span class="t">TOTAL</span><span class="t">${fmt(t.total)}</span>`;
+    if (t.incomplete) rows += `<span class="muted" style="grid-column:1/-1;font-size:12px">${t.incomplete} concepto(s) sin cantidad o precio no se suman.</span>`;
+    return rows;
+  }
+
+  function refreshTotals() {
+    const el = document.getElementById('totals');
+    if (el) el.innerHTML = totalsHtml();
+  }
+
+  function findItem(id) {
+    return S.quote.items.find((i) => i.id === id);
+  }
+
+  function applyCatalog(it) {
+    const f = CAT.find(S.catalog, it.desc);
+    if (f.match && (it.priceCents === null || it.priceCents === undefined)) {
+      it.priceCents = f.match.priceCents;
+      it.priceSource = 'catalogo';
+      it.catalogName = f.match.name;
+      it.flags = [f.exact ? 'precio_catalogo' : 'precio_catalogo_aprox'];
+      if (f.match.unit) it.unit = f.match.unit;
+      return true;
+    }
+    return false;
+  }
+
+  function onEditorInput(e) {
+    const t = e.target;
+    const q = S.quote;
+    const card = t.closest('[data-item]');
+    if (card && t.dataset.k) {
+      const it = findItem(card.dataset.item);
+      const k = t.dataset.k;
+      if (k === 'desc') it.desc = t.value;
+      if (k === 'unit') it.unit = t.value;
+      if (k === 'qty') it.qtyMilli = M.toMilli(t.value);
+      if (k === 'price') { it.priceCents = M.toCents(t.value); it.priceSource = 'manual'; }
+      if (k === 'qty' || k === 'price') {
+        t.classList.toggle('missing', (k === 'qty' ? it.qtyMilli : it.priceCents) === null);
+        const amt = M.lineAmount(it);
+        document.getElementById('amt-' + it.id).innerHTML = amt === null ? '<span class="muted">Importe —</span>' : fmt(amt);
+      }
+      refreshTotals();
+      return;
+    }
+    const f = t.dataset.q;
+    if (!f) return;
+    if (f === 'client') { q.client = t.value; t.classList.toggle('missing', !t.value.trim()); }
+    if (f === 'notes') q.notes = t.value;
+    if (f === 'conditions') q.conditions = t.value;
+    if (f === 'validity') q.validityDays = parseInt(t.value, 10) || 0;
+    if (f === 'ivaRate') q.ivaRateBp = M.toBp(t.value) || 0;
+    if (f === 'disc') q.discount = { type: (q.discount && q.discount.type) || 'pct', value: M.toCents(t.value) || 0 };
+    refreshTotals();
+  }
+
+  function onEditorChange(e) {
+    const t = e.target;
+    const card = t.closest('[data-item]');
+    if (card && t.dataset.k === 'desc') {
+      const it = findItem(card.dataset.item);
+      it.candidates = [];
+      if (applyCatalog(it)) { render(); toast('Precio tomado del catálogo: ' + fmt(it.priceCents)); }
+    }
+  }
+
+  function validate(q) {
+    if (!q.items.length) return 'Agrega al menos un concepto.';
+    const bad = q.items.filter((it) => { const m = itemMissing(it); return m.qty || m.price || m.desc; });
+    if (bad.length) return 'Completa cantidad y precio de: ' + bad.map((b) => b.desc || 'concepto sin nombre').join(', ');
+    if (!String(q.client || '').trim()) return 'Escribe el nombre del cliente.';
+    return null;
+  }
+
+  function persist(status) {
+    const q = S.quote;
+    const now = Date.now();
+    if (!q.folio) q.folio = DB.nextFolio();
+    q.status = status;
+    q.updatedAt = now;
+    if (status === 'GENERADA') q.generatedAt = now;
+    q.items.forEach((it) => { it.candidates = []; });
+    q.totals = totalsOf(q);
+    DB.saveQuote(q);
+    let cat = S.catalog;
+    q.items.forEach((it) => { cat = CAT.upsert(cat, it, now); });
+    S.catalog = cat;
+    DB.saveCatalog(cat);
+  }
+
+  /* ---------- resumen / compartir ---------- */
+  function viewSummary() {
+    const q = S.quote;
+    const t = totalsOf(q);
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title mono">${esc(q.folio)}</div>
+        <span class="spacer"></span>
+        <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+      </header>
+      <section class="summary">
+        <div class="muted">${esc(q.client)}</div>
+        <div class="big num">${fmt(t.total)}</div>
+        <div class="muted" style="font-size:14px">${dateStr(q.generatedAt || q.updatedAt)} · vigencia ${esc(q.validityDays)} días</div>
+      </section>
+      <div class="stack">
+        <button class="btn primary block" data-act="share">${icon.share} Compartir PDF</button>
+        <div class="two-col">
+          <button class="btn" data-act="view-pdf">Ver PDF</button>
+          <button class="btn" data-act="download">Descargar</button>
+        </div>
+        <div class="sheet"><table class="num">
+          ${q.items.map((it) => `<tr><td>${esc(M.milliToStr(it.qtyMilli))} ${esc(it.unit)} · ${esc(it.desc)}<div class="muted">${fmt(it.priceCents)} c/u</div></td><td class="r">${fmt(M.lineAmount(it))}</td></tr>`).join('')}
+          <tr><td class="muted">Subtotal</td><td class="r">${fmt(t.subtotal)}</td></tr>
+          ${t.discount ? `<tr><td class="muted">Descuento</td><td class="r">-${fmt(t.discount)}</td></tr>` : ''}
+          ${q.ivaMode !== 'sin' ? `<tr><td class="muted">IVA${q.ivaMode === 'incluido' ? ' incluido' : ''}</td><td class="r">${fmt(t.iva)}</td></tr>` : ''}
+          <tr><td><b>Total</b></td><td class="r"><b>${fmt(t.total)}</b></td></tr>
+        </table></div>
+        <div class="two-col">
+          <button class="btn" data-act="edit">Editar</button>
+          <button class="btn" data-act="new">Nueva cotización</button>
+        </div>
+      </div>`;
+  }
+
+  function makePdf() {
+    if (!window.jspdf) {
+      toast('No se cargó el generador de PDF. Revisa tu conexión y recarga.');
+      return null;
+    }
+    return PDF.blob(S.quote, S.settings);
+  }
+
+  /* ---------- configuración ---------- */
+  function viewSettings() {
+    const s = S.settings;
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">Mi negocio</div>
+      </header>
+      <form class="stack" id="settings-form">
+        <div class="field"><label for="s-name">Nombre comercial</label><input id="s-name" name="businessName" value="${esc(s.businessName)}" placeholder="Ej. Limpieza Express"></div>
+        <div class="field">
+          <label for="s-logo">Logo</label>
+          <div class="row">
+            ${s.logo ? `<img class="logo-prev" src="${s.logo}" alt="Logo actual">` : '<span class="hint">Sin logo</span>'}
+            <span class="spacer"></span>
+            ${s.logo ? '<button type="button" class="btn ghost danger" data-act="logo-remove">Quitar</button>' : ''}
+          </div>
+          <input id="s-logo" type="file" accept="image/*" style="margin-top:8px">
+        </div>
+        <div class="field"><label for="s-phone">Teléfono</label><input id="s-phone" name="phone" type="tel" value="${esc(s.phone)}"></div>
+        <div class="field"><label for="s-email">Correo</label><input id="s-email" name="email" type="email" value="${esc(s.email)}"></div>
+        <div class="field"><label for="s-address">Dirección (opcional)</label><input id="s-address" name="address" value="${esc(s.address)}"></div>
+        <div class="field"><label for="s-rfc">RFC (opcional)</label><input id="s-rfc" name="rfc" value="${esc(s.rfc)}" style="text-transform:uppercase"></div>
+        <div class="two-col">
+          <div class="field"><label for="s-cur">Moneda</label><select id="s-cur" name="currency">${['MXN', 'USD'].map((c) => `<option ${s.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+          <div class="field"><label for="s-iva">IVA predeterminado %</label><input id="s-iva" name="ivaRate" inputmode="decimal" value="${esc(M.centsToStr(s.ivaRateBp).replace(/\.00$/, ''))}"></div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label for="s-ivamode">Si no se menciona IVA</label><select id="s-ivamode" name="ivaMode">${[['mas', 'Más IVA'], ['incluido', 'IVA incluido'], ['sin', 'Sin IVA']].map(([k, l]) => `<option value="${k}" ${s.ivaMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div class="field"><label for="s-val">Vigencia (días)</label><input id="s-val" name="validityDays" inputmode="numeric" value="${esc(s.validityDays)}"></div>
+        </div>
+        <div class="field"><label for="s-cond">Condiciones predeterminadas</label><textarea id="s-cond" name="conditions">${esc(s.conditions)}</textarea></div>
+        <p class="hint">Productos recordados: ${S.catalog.length}. Tus cotizaciones y datos se guardan solo en este dispositivo.</p>
+        <button class="btn primary block" type="submit">Guardar</button>
+      </form>
+      <div style="height:24px"></div>`;
+  }
+
+  function readLogo(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, 400 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * k);
+        c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        S.settings.logo = c.toDataURL('image/png');
+        DB.saveSettings(S.settings);
+        render();
+        toast('Logo guardado');
+      };
+      img.onerror = () => toast('No se pudo leer la imagen.');
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------- eventos ---------- */
+  app.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    const q = S.quote;
+    switch (act) {
+      case 'settings': return go('settings');
+      case 'home': S.writeOpen = false; return go('home');
+      case 'toggle-all': S.showAll = !S.showAll; return render();
+      case 'speak': return startVoice();
+      case 'write': S.writeOpen = true; render(); return document.getElementById('free-text').focus();
+      case 'fill-example': document.getElementById('free-text').value = EXAMPLE; return;
+      case 'interpret': {
+        const text = document.getElementById('free-text').value.trim();
+        if (!text) return toast('Escribe la cotización primero.');
+        return interpretText(text);
+      }
+      case 'reinterpret': {
+        const text = document.getElementById('src-text').value.trim();
+        if (text) return interpretText(text, q);
+        return;
+      }
+      case 'open': {
+        const found = DB.getQuote(b.dataset.id);
+        if (!found) return;
+        S.quote = found;
+        S.interp = null;
+        return go(found.status === 'GENERADA' ? 'summary' : 'editor');
+      }
+      case 'add-item':
+        q.items.push({ id: 'i' + Math.random().toString(36).slice(2, 9), desc: '', qtyMilli: 1000, unit: 'pieza', priceCents: null, flags: [], candidates: [] });
+        render();
+        return document.getElementById('d-' + q.items[q.items.length - 1].id).focus();
+      case 'del-item': q.items = q.items.filter((i) => i.id !== b.dataset.id); return render();
+      case 'pick': {
+        const it = findItem(b.dataset.id);
+        const c = it.candidates[+b.dataset.i];
+        Object.assign(it, { desc: c.name, priceCents: c.priceCents, unit: c.unit || it.unit, priceSource: 'catalogo', catalogName: c.name, candidates: [], flags: ['precio_catalogo'] });
+        return render();
+      }
+      case 'iva': q.ivaMode = b.dataset.v; return render();
+      case 'disc-type': q.discount = { type: b.dataset.v, value: (q.discount && q.discount.value) || 0 }; return render();
+      case 'save': persist('BORRADOR'); toast('Borrador guardado · ' + q.folio); return go('home');
+      case 'generate': {
+        const err = validate(q);
+        if (err) { render(); return toast(err); }
+        persist('GENERADA');
+        return go('summary');
+      }
+      case 'edit': S.interp = null; return go('editor');
+      case 'new': S.writeOpen = false; return go('home');
+      case 'delete': S.confirmDelete = true; return render();
+      case 'delete-no': S.confirmDelete = false; return render();
+      case 'delete-yes': DB.deleteQuote(q.id); toast('Cotización eliminada'); return go('home');
+      case 'share': {
+        const blob = makePdf();
+        if (!blob) return;
+        const r = await SHARE.sharePdf(blob, PDF.filename(q), 'Cotización ' + q.folio, `Cotización ${q.folio} para ${q.client}: total ${fmt(totalsOf(q).total)}`);
+        if (r === 'downloaded') toast('Tu navegador no permite compartir archivos; se descargó el PDF.');
+        return;
+      }
+      case 'download': {
+        const blob = makePdf();
+        if (blob) SHARE.download(blob, PDF.filename(q));
+        return;
+      }
+      case 'view-pdf': {
+        const blob = makePdf();
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        if (!window.open(url, '_blank')) location.href = url;
+        return;
+      }
+      case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
+    }
+  });
+
+  app.addEventListener('input', (e) => { if (S.view === 'editor') onEditorInput(e); });
+  app.addEventListener('change', (e) => {
+    if (S.view === 'editor') onEditorChange(e);
+    if (e.target.id === 's-logo' && e.target.files[0]) readLogo(e.target.files[0]);
+  });
+  app.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const s = S.settings;
+    ['businessName', 'phone', 'email', 'address', 'currency', 'ivaMode', 'conditions'].forEach((k) => (s[k] = String(f.get(k) || '').trim()));
+    s.rfc = String(f.get('rfc') || '').trim().toUpperCase();
+    s.ivaRateBp = M.toBp(f.get('ivaRate')) ?? 1600;
+    s.validityDays = parseInt(f.get('validityDays'), 10) || 15;
+    DB.saveSettings(s);
+    toast('Configuración guardada');
+    go('home');
+  });
+
+  function render() {
+    const views = { home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings };
+    app.innerHTML = views[S.view]();
+  }
+
+  render();
+})();
