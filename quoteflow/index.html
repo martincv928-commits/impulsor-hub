@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#2743B8">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="QuoteFlow">
   <title>QuoteFlow</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@500&family=Public+Sans:wght@400;500;600;700&display=swap">
@@ -17,14 +20,23 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="src/money.js?v=0.1.4"></script>
-  <script src="src/catalog.js?v=0.1.4"></script>
-  <script src="src/parser.js?v=0.1.4"></script>
-  <script src="src/interpreter.js?v=0.1.4"></script>
-  <script src="src/storage.js?v=0.1.4"></script>
-  <script src="src/pdf.js?v=0.1.4"></script>
-  <script src="src/voice.js?v=0.1.4"></script>
-  <script src="src/share.js?v=0.1.4"></script>
-  <script src="src/app.js?v=0.1.4"></script>
+  <script src="src/money.js?v=0.2.0"></script>
+  <script src="src/catalog.js?v=0.2.0"></script>
+  <script src="src/parser.js?v=0.2.0"></script>
+  <script src="src/interpreter.js?v=0.2.0"></script>
+  <script src="src/storage.js?v=0.2.0"></script>
+  <script src="src/pdf.js?v=0.2.0"></script>
+  <script src="src/voice.js?v=0.2.0"></script>
+  <script src="src/share.js?v=0.2.0"></script>
+  <script src="src/app.js?v=0.2.0"></script>
+  <script>
+    // Registra el service worker para poder instalar la app y usarla sin conexión.
+    // Si falla (navegador viejo, http sin https), la app sigue funcionando normal.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
