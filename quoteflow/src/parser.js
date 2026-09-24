@@ -208,10 +208,19 @@
     return { client: '', rest: t, doubtful: false };
   }
 
+  const UNIT_ALT = UNITS.map(([re]) => '(?:' + re.source.split('|').map((b) => b.replace(/^\^/, '').replace(/\$$/, '')).join('|') + ')').join('|');
+
+  // Cierre de un concepto ya completo: número + $/pesos, con o sin calificador ("cada X", "el litro"...).
+  const ITEM_END = '\\d(?:\\s*(?:pesos?|mxn))?(?:\\s+(?:cada\\s+\\S+|c/u|la\\s+\\S+|el\\s+\\S+))?';
+  // Arranque de un concepto nuevo: cantidad + unidad conocida ("3 litros", "5 piezas"...).
+  const ITEM_START = '(?:\\d+(?:\\.\\d+)?|' + NW + ')\\s+(?:' + UNIT_ALT + ')(?:\\b|\\s|$)';
+
   const SPLIT = new RegExp(
     '\\s*[;,]\\s*' +
       '|\\s+y\\s+(?=\\$?\\d|(?:' + NW + ')\\s)' +
-      '|(?<=\\d(?:\\s*(?:pesos?|mxn))?(?:\\s+(?:cada\\s+\\S+|c/u|la\\s+\\S+|el\\s+\\S+))?)\\s+(?:y|m[aá]s|adem[aá]s|tambi[eé]n)\\s+',
+      '|(?<=' + ITEM_END + ')\\s+(?:y|m[aá]s|adem[aá]s|tambi[eé]n)\\s+' +
+      // sin conector explícito: un concepto termina y el siguiente arranca de inmediato (habla corrida/dictado)
+      '|(?<=' + ITEM_END + ')\\s+(?=' + ITEM_START + ')',
     'iu'
   );
 

@@ -199,3 +199,14 @@ test('voz: texto real duplicado del celular se reduce a la frase completa', () =
   // texto normal no se toca
   for (const t of ['dos litros de cloro a 20 y dos litros de jabón a 30', 'Cotiza a Pedro 20 litros de jabón a 14 pesos y 10 litros de suavizante a 18 pesos más IVA']) assert.equal(clean(t), t);
 });
+
+test('separa conceptos seguidos sin conector explícito (habla corrida/dictado)', () => {
+  const r = parse('Cotízame para Telulada 3 litros de cloro a 4 pesos el litro 3 litros de fabuloso a 7 pesos el litro y 3 litros de jabón a 12 pesos el litro');
+  assert.equal(r.quote.client, 'Telulada');
+  assert.equal(r.quote.items.length, 3);
+  assert.deepEqual(descs(r), ['Cloro', 'Fabuloso', 'Jabón']);
+  assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], [3000, 'litro', 400]);
+  assert.deepEqual([it(r, 1).qtyMilli, it(r, 1).unit, it(r, 1).priceCents], [3000, 'litro', 700]);
+  assert.deepEqual([it(r, 2).qtyMilli, it(r, 2).unit, it(r, 2).priceCents], [3000, 'litro', 1200]);
+  assertClean(r);
+});
