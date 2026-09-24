@@ -222,8 +222,38 @@
     },
   };
 
+  /* ---------- soporte (lado cliente): el negocio abre y sigue sus tickets ---------- */
+  const support = {
+    async list(businessId) {
+      const { data, error } = await client().from('support_tickets').select('*').eq('business_id', businessId).order('updated_at', { ascending: false });
+      if (error) throw new Error(friendlyError(error));
+      return data;
+    },
+    async create(businessId, userId, subject, description) {
+      const { data, error } = await client()
+        .from('support_tickets')
+        .insert({ business_id: businessId, user_id: userId, subject, description })
+        .select()
+        .single();
+      if (error) throw new Error(friendlyError(error));
+      if (description) {
+        await client().from('support_ticket_messages').insert({ ticket_id: data.id, author_id: userId, author_role: 'customer', body: description });
+      }
+      return data;
+    },
+    async messages(ticketId) {
+      const { data, error } = await client().from('support_ticket_messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
+      if (error) throw new Error(friendlyError(error));
+      return data;
+    },
+    async reply(ticketId, userId, body) {
+      const { error } = await client().from('support_ticket_messages').insert({ ticket_id: ticketId, author_id: userId, author_role: 'customer', body });
+      if (error) throw new Error(friendlyError(error));
+    },
+  };
+
   QF.cloud = {
-    enabled, client, auth, business, data, settingsFromBusinessRow, looksLikeUuid,
+    enabled, client, auth, business, data, support, settingsFromBusinessRow, looksLikeUuid,
     // expuestos para pruebas de mapeo de datos (no dependen de red)
     _quoteRow: quoteRow, _quoteFromRow: quoteFromRow, _productRow: productRow, _catalogFromRows: catalogFromRows,
   };

@@ -25,6 +25,9 @@
     cloudBusiness: null,
     authMode: 'login',
     authBusy: false,
+    tickets: [],
+    activeTicket: null,
+    ticketMessages: [],
   };
 
   /* ---------- utilidades ---------- */
@@ -132,6 +135,89 @@
     DB.saveCatalog(catalog);
     S.catalog = catalog;
     quotes.forEach((q) => DB.saveQuote(q));
+  }
+
+  /* ---------- soporte (lado cliente) ---------- */
+  function ticketStatusLabel(s) {
+    return { OPEN: 'Abierto', IN_PROGRESS: 'En proceso', WAITING_CUSTOMER: 'Esperando tu respuesta', RESOLVED: 'Resuelto', CLOSED: 'Cerrado' }[s] || s;
+  }
+  const ticketDone = (t) => t.status === 'RESOLVED' || t.status === 'CLOSED';
+
+  function viewSupportList() {
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="settings" aria-label="Volver a configuración">${icon.back}</button>
+        <div class="title">Soporte</div>
+      </header>
+      <div class="stack">
+        <button class="btn primary block" data-act="support-new">+ Nueva solicitud</button>
+        <div class="list">
+          ${S.tickets.length ? S.tickets.map((t) => `
+            <button class="qrow" data-act="support-open" data-id="${t.id}">
+              <span class="client">${esc(t.subject)}</span>
+              <span class="pill ${ticketDone(t) ? 'done' : 'draft'}">${ticketStatusLabel(t.status)}</span>
+              <span class="meta">${dateStr(new Date(t.updated_at).getTime())}</span>
+            </button>`).join('') : '<div class="empty">No has enviado ninguna solicitud de soporte.</div>'}
+        </div>
+      </div>`;
+  }
+
+  function viewSupportNew() {
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="support-home" aria-label="Volver a soporte">${icon.back}</button>
+        <div class="title">Nueva solicitud</div>
+      </header>
+      <form class="stack" id="support-new-form">
+        <div class="field"><label for="t-subject">Asunto</label><input id="t-subject" name="subject" required></div>
+        <div class="field"><label for="t-desc">Cuéntanos qué pasa</label><textarea id="t-desc" name="description" required style="min-height:120px"></textarea></div>
+        <button class="btn primary block" type="submit">Enviar</button>
+      </form>`;
+  }
+
+  function viewSupportTicket() {
+    const t = S.activeTicket;
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="support-home" aria-label="Volver a soporte">${icon.back}</button>
+        <div class="title">${esc(t.subject)}</div>
+        <span class="spacer"></span>
+        <span class="pill ${ticketDone(t) ? 'done' : 'draft'}">${ticketStatusLabel(t.status)}</span>
+      </header>
+      <div class="stack">
+        ${S.ticketMessages.map((m) => `
+          <div class="card">
+            <span class="tag ${m.author_role === 'admin' ? '' : 'warn'}">${m.author_role === 'admin' ? 'Soporte QuoteFlow' : 'Tú'}</span>
+            <div>${esc(m.body).replace(/\n/g, '<br>')}</div>
+            <span class="hint" style="font-size:11px">${dateStr(new Date(m.created_at).getTime())}</span>
+          </div>`).join('')}
+        ${ticketDone(t) ? '' : `
+          <form class="stack" id="support-reply-form">
+            <textarea id="t-reply" name="body" placeholder="Escribe tu respuesta" required style="min-height:80px"></textarea>
+            <button class="btn primary block" type="submit">Enviar</button>
+          </form>`}
+      </div>`;
+  }
+
+  async function openSupportHome() {
+    try {
+      S.tickets = await CLOUD.support.list(S.cloudBusiness.id);
+    } catch (e) {
+      toast(e.message);
+      S.tickets = S.tickets || [];
+    }
+    go('support-list');
+  }
+
+  async function openSupportTicket(id) {
+    S.activeTicket = S.tickets.find((t) => t.id === id);
+    try {
+      S.ticketMessages = await CLOUD.support.messages(id);
+    } catch (e) {
+      toast(e.message);
+      S.ticketMessages = [];
+    }
+    go('support-ticket');
   }
 
   /* ---------- inicio ---------- */
@@ -531,6 +617,7 @@
         <div class="section-h"><h2>Cuenta</h2></div>
         <div class="stack">
           <p class="hint">Sesión iniciada como ${esc(S.cloudSession.user.email)}</p>
+          <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
         </div>` : ''}
       <div class="section-h"><h2>Respaldo</h2></div>
@@ -719,6 +806,9 @@
         await pullAndMerge();
         return go('home');
       }
+      case 'support-home': return openSupportHome();
+      case 'support-new': return go('support-new');
+      case 'support-open': return openSupportTicket(b.dataset.id);
     }
   });
 
@@ -795,6 +885,32 @@
         S.authBusy = false;
         render();
       }
+      return;
+    }
+
+    if (e.target.id === 'support-new-form') {
+      const subject = String(f.get('subject') || '').trim();
+      const description = String(f.get('description') || '').trim();
+      if (!subject) return toast('Escribe un asunto.');
+      try {
+        const t = await CLOUD.support.create(S.cloudBusiness.id, S.cloudSession.user.id, subject, description);
+        toast('Solicitud enviada');
+        S.tickets = [t, ...S.tickets];
+        return openSupportTicket(t.id);
+      } catch (err) {
+        return toast(err.message);
+      }
+    }
+
+    if (e.target.id === 'support-reply-form') {
+      const body = String(f.get('body') || '').trim();
+      if (!body) return;
+      try {
+        await CLOUD.support.reply(S.activeTicket.id, S.cloudSession.user.id, body);
+        return openSupportTicket(S.activeTicket.id);
+      } catch (err) {
+        return toast(err.message);
+      }
     }
   });
 
@@ -802,6 +918,7 @@
     const views = {
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
+      'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket,
     };
     app.innerHTML = views[S.view]();
   }
