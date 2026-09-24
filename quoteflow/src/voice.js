@@ -17,14 +17,26 @@
     rec.interimResults = true;
     let finalText = '';
     let failed = false;
-    rec.onresult = (ev) => {
-      let interim = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const r = ev.results[i];
-        if (r.isFinal) finalText += (finalText ? ' ' : '') + r[0].transcript.trim();
-        else interim += r[0].transcript;
+    // Chrome en Android entrega resultados acumulados ("puedes", "puedes cotizarme", ...):
+    // se reconstruye el texto con todos los resultados y se descartan los prefijos repetidos.
+    function merge(results, onlyFinal) {
+      const parts = [];
+      for (let i = 0; i < results.length; i++) {
+        if (onlyFinal && !results[i].isFinal) continue;
+        const t = results[i][0].transcript.trim();
+        if (!t) continue;
+        const last = parts[parts.length - 1];
+        const a = t.toLowerCase();
+        const b = last ? last.toLowerCase() : '';
+        if (last && a.startsWith(b)) parts[parts.length - 1] = t;
+        else if (last && b.startsWith(a)) continue;
+        else parts.push(t);
       }
-      cb.onText && cb.onText((finalText + ' ' + interim).trim());
+      return parts.join(' ');
+    }
+    rec.onresult = (ev) => {
+      finalText = merge(ev.results, true);
+      cb.onText && cb.onText(merge(ev.results, false));
     };
     rec.onerror = (ev) => {
       if (ev.error === 'no-speech' || ev.error === 'aborted') return;

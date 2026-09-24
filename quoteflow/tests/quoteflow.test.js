@@ -152,3 +152,36 @@ test('limpieza: no borra palabras reales del producto', () => {
   assert.deepEqual(descs(parse('Cotiza a Pedro 2 cables calibre 12 a 30 pesos y dale 5% de descuento')), ['Cables calibre 12']);
   assert.deepEqual(descs(parse('Cotiza a Pedro instalación de cámaras.')), ['Instalación de cámaras']);
 });
+
+test('voz: resultados acumulados de Android no se duplican', () => {
+  let inst;
+  globalThis.webkitSpeechRecognition = class { constructor() { inst = this; } start() {} stop() {} abort() {} };
+  delete require.cache[require.resolve('../src/voice.js')];
+  require('../src/voice.js');
+  let shown = '', final = '';
+  globalThis.QF.voice.start({ onText: (t) => (shown = t), onEnd: (t) => (final = t) });
+  const res = (list) => { const r = list.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: f })); return { resultIndex: 0, results: r }; };
+  const acc = ['puedes', 'puedes cotizarme', 'puedes cotizarme 20', 'puedes cotizarme 20 l de Ariel', 'puedes cotizarme 20 l de Ariel a $12 el litro'];
+  inst.onresult(res(acc.map((t) => [t, true])));
+  inst.onend();
+  assert.equal(final, 'puedes cotizarme 20 l de Ariel a $12 el litro');
+  assert.equal(shown, final);
+  // resultados normales (no acumulados) se concatenan
+  inst.onresult(res([['cotiza a Pedro', true], ['10 focos a 80', true]]));
+  inst.onend();
+  assert.equal(final, 'cotiza a Pedro 10 focos a 80');
+  delete globalThis.webkitSpeechRecognition;
+});
+
+test('dictado: "puedes cotizarme", "cotízame", cliente al final', () => {
+  let r = parse('puedes cotizarme 20 l de Ariel Downey a $12 el litro para Juan Pérez');
+  assert.equal(r.quote.client, 'Juan Pérez');
+  assert.deepEqual(descs(r), ['Ariel Downey']);
+  assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], [20000, 'litro', 1200]);
+  r = parse('Cotízame 20 litros de Ariel a 12 pesos el litro para Pedro más IVA');
+  assert.equal(r.quote.client, 'Pedro');
+  assert.deepEqual(descs(r), ['Ariel']);
+  r = parse('Me puedes hacer una cotización para Pedro de 20 litros de Ariel a 12 pesos');
+  assert.equal(r.quote.client, 'Pedro');
+  assert.deepEqual(descs(r), ['Ariel']);
+});

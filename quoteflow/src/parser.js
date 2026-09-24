@@ -147,7 +147,7 @@
     return { notes: capitalize((m[1] || m[2]).trim()), rest: t.slice(0, m.index) };
   }
 
-  const COMMAND = /^(?:(?:oye|por\s+favor|porfa|hola)[\s,]+)*(?:(?:haz(?:me)?|genera(?:r|me)?|crea(?:r|me)?|prepara(?:r|me)?|necesito|quiero|nueva|elabora(?:r)?)\s+(?:una\s+|la\s+)?cotizaci[oó]n|cotiza(?:r|me|le|ci[oó]n)?)(?=\s|,|:|$)[\s,:]*/iu;
+  const COMMAND = /^(?:(?:oye|por\s+favor|porfa|hola)[\s,]+)*(?:(?:me\s+)?(?:puedes|podr[ií]as|puede|podr[ií]a|quiero\s+que|necesito\s+que)\s+(?:me\s+)?)?(?:(?:haz(?:me)?|hacer(?:me)?|genera(?:r|me)?|crea(?:r|me)?|prepara(?:r|me)?|necesito|quiero|nueva|elabora(?:r)?)\s+(?:una\s+|la\s+)?cotizaci[oó]n|cot[ií]z(?:a|ar|ame|ale|arme|arle|aci[oó]n)?)(?=\s|,|:|$)[\s,:]*/iu;
 
   function isCap(tok) {
     return /^\p{Lu}/u.test(tok);
@@ -199,6 +199,11 @@
     const any = /(?:^|\s)para\s+((?:\p{Lu}[\p{L}.&]*)(?:\s+(?:(?:de|del|la|los|y)\s+)?\p{Lu}[\p{L}.&]*)*)/u.exec(t);
     if (any) {
       return { client: any[1], rest: t.slice(0, any.index) + ' ' + t.slice(any.index + any[0].length), doubtful: false };
+    }
+    const tail = /(?:^|\s)para\s+((?:el\s+|la\s+)?[\p{L}][\p{L}.&]*(?:\s+[\p{L}][\p{L}.&]*){0,3})$/u.exec(t);
+    if (tail && !/\d/.test(tail[1])) {
+      const client = tail[1].replace(/^(?:el|la)\s+/i, '').replace(/(^|\s)(\p{Ll})/gu, (_, x, y) => x + y.toUpperCase());
+      return { client, rest: t.slice(0, tail.index), doubtful: true };
     }
     return { client: '', rest: t, doubtful: false };
   }
