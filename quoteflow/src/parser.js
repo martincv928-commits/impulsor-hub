@@ -40,7 +40,7 @@
 
   const NUM = '(\\d+(?:\\.\\d+)?|\\.\\d+)';
   const CUR = '(?:\\s*(?:pesos?|mxn|m\\.?n\\.?|varos))?';
-  const QUAL = '((?:\\s+(?:cada\\s+\\S+|c/u|la\\s+\\S+|el\\s+\\S+|por\\s+\\S+|pesos|mxn))*)';
+  const QUAL = '((?:\\s+(?:cada\\s+\\S+|c/u|la\\s+\\S+|el\\s+\\S+|de\\s+\\S+|por\\s+\\S+|pesos|mxn))*)';
   const RE_A = new RegExp('^' + NUM + '\\s+(.+?)\\s*(?:(?:a|en|@|por|de|a\\s+raz[oó]n\\s+de|a\\s+precio\\s+de)\\s+\\$?\\s*|\\$\\s*)' + NUM + CUR + QUAL + '$', 'iu');
   const RE_B = new RegExp('^' + NUM + '\\s+(.+)$', 'iu');
   const RE_C = new RegExp('^(\\D.*?)\\s*(?:(a|en|por|de|:|=|cuesta|vale|con\\s+(?:costo|precio)\\s+de|a\\s+precio\\s+de)\\s*)?\\$?\\s*' + NUM + CUR + QUAL + '$', 'iu');
@@ -241,7 +241,7 @@
   }
 
   function unitFromQual(q) {
-    const m = /(?:cada|la|el|por)\s+(\S+)/i.exec(q || '');
+    const m = /(?:cada|la|el|de|por)\s+(\S+)/i.exec(q || '');
     if (!m) return null;
     return unitOf(m[1]);
   }

@@ -318,3 +318,24 @@ test('cloud: el catálogo local y el de Supabase se traducen sin perder datos', 
 test('cloud: sin configurar, la app se comporta como V0.2 (deshabilitada)', () => {
   assert.equal(CLOUD.enabled(), false);
 });
+
+test('voz: el dictado corrige una palabra a medio camino ("litros" -> "L") y aun así se limpia', () => {
+  globalThis.webkitSpeechRecognition = globalThis.webkitSpeechRecognition || class {};
+  delete require.cache[require.resolve('../src/voice.js')];
+  const { clean } = (require('../src/voice.js'), globalThis.QF.voice);
+  const shot = 'cotízame cotízame cotízame para cotízame para Salamanca cotízame para Salamanca cotízame para Salamanca cotízame para Salamanca 5 cotízame para Salamanca 5 litros de cotízame para Salamanca 5 litros de cotízame para Salamanca 5 cotízame para Salamanca 5 cotízame para Salamanca 5 cotízame para Salamanca 5 L de cloro cotízame para Salamanca 5 L de cloro a cotízame para Salamanca 5 L de cloro a cotízame para Salamanca 5 L de cloro a $4 cotízame para Salamanca 5 L de cloro a $4 cotízame para Salamanca 5 L de cloro a $4 cotízame para Salamanca 5 L de cloro a $4 el cotízame para Salamanca 5 L de cloro a $4 el litro';
+  const text = clean(shot);
+  assert.equal(text, 'cotízame para Salamanca 5 L de cloro a $4 el litro');
+  const r = parse(text);
+  assert.equal(r.quote.client, 'Salamanca');
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Cloro', 5000, 'litro', 400]);
+});
+
+test('parser: "$4 de litro" se entiende igual que "$4 el litro"', () => {
+  const r = parse('cotízame para el cliente Salamanca 4 L de jabón foca a $12 el litro 5 L de cloro a $4 de litro y 3 l de fabuloso cítricos a $7 el litro sin iva');
+  assert.equal(r.quote.client, 'Salamanca');
+  assert.equal(r.quote.ivaMode, 'sin');
+  assert.deepEqual(descs(r), ['Jabón foca', 'Cloro', 'Fabuloso cítricos']);
+  assert.deepEqual([it(r, 1).qtyMilli, it(r, 1).unit, it(r, 1).priceCents], [5000, 'litro', 400]);
+  assertClean(r);
+});
