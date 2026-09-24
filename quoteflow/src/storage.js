@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
-  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio' };
+  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', importDecided: 'qf.importDecided' };
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
@@ -88,6 +88,11 @@
       if (typeof data.folio === 'number') write(K.folio, data.folio);
       return true;
     },
+
+    // V0.3: si ya se le preguntó al usuario qué hacer con datos locales previos
+    // al conectar una cuenta en la nube, para no volver a preguntarle cada vez.
+    isImportDecided: () => !!read(K.importDecided, false),
+    setImportDecided: () => write(K.importDecided, true),
   };
 
   QF.storage = storage;
