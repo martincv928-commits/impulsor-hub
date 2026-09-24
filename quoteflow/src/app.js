@@ -2,9 +2,10 @@
  * persistencia, voz y compartir viven en sus propios módulos. */
 (function () {
   'use strict';
-  const { money: M, catalog: CAT, storage: DB, pdf: PDF, voice: VOICE, share: SHARE } = window.QF;
+  const { money: M, catalog: CAT, storage: DB, pdf: PDF, voice: VOICE, share: SHARE, cloud: CLOUD } = window.QF;
   const interpreter = window.QF.getInterpreter();
   const app = document.getElementById('app');
+  const cloudOn = CLOUD && CLOUD.enabled();
 
   const UNITS = ['pieza', 'servicio', 'litro', 'metro', 'm²', 'kg', 'caja', 'paquete', 'hora', 'juego', 'rollo', 'bolsa', 'galón', 'bulto', 'lote', 'día'];
   const EXAMPLE = 'Cotiza a Constructora López 5 cámaras a 1850 cada una, instalación 3500 y 100 metros de cable a 12.50, más IVA, vigencia 15 días.';
@@ -20,6 +21,10 @@
     confirmDelete: false,
     listening: null,
     pendingBackup: null,
+    cloudSession: null,
+    cloudBusiness: null,
+    authMode: 'login',
+    authBusy: false,
   };
 
   /* ---------- utilidades ---------- */
@@ -56,6 +61,77 @@
 
   function totalsOf(q) {
     return M.computeTotals(q);
+  }
+
+  /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
+
+  function viewLoading() {
+    return `<div class="hero"><p class="muted">Cargando…</p></div>`;
+  }
+
+  function viewAuth() {
+    const login = S.authMode === 'login';
+    return `
+      <div class="hero" style="padding-top:14px">
+        <div class="brand">QuoteFlow</div>
+      </div>
+      <form class="stack" id="auth-form">
+        <h2 class="title">${login ? 'Inicia sesión' : 'Crea tu cuenta'}</h2>
+        <div class="field"><label for="a-email">Correo</label><input id="a-email" name="email" type="email" required autocomplete="email"></div>
+        <div class="field"><label for="a-pass">Contraseña</label><input id="a-pass" name="password" type="password" required minlength="6" autocomplete="${login ? 'current-password' : 'new-password'}"></div>
+        <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Un momento…' : login ? 'Entrar' : 'Crear cuenta'}</button>
+        <button class="btn ghost block" type="button" data-act="auth-toggle">${login ? '¿No tienes cuenta? Créala' : '¿Ya tienes cuenta? Inicia sesión'}</button>
+      </form>`;
+  }
+
+  function viewBusinessNew() {
+    const s = S.settings; // se usan como sugerencia inicial si ya había datos locales de V0.2
+    return `
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow</div></div>
+      <form class="stack" id="business-form">
+        <h2 class="title">Crea tu negocio</h2>
+        <p class="hint">Todo lo que cotices va a quedar guardado en este negocio.</p>
+        <div class="field"><label for="b-name">Nombre comercial</label><input id="b-name" name="name" required value="${esc(s.businessName)}"></div>
+        <div class="field"><label for="b-phone">Teléfono</label><input id="b-phone" name="phone" type="tel" value="${esc(s.phone)}"></div>
+        <div class="field"><label for="b-email">Correo</label><input id="b-email" name="email" type="email" value="${esc(s.email)}"></div>
+        <div class="field"><label for="b-rfc">RFC (opcional)</label><input id="b-rfc" name="rfc" value="${esc(s.rfc)}" style="text-transform:uppercase"></div>
+        <div class="two-col">
+          <div class="field"><label for="b-cur">Moneda</label><select id="b-cur" name="currency">${['MXN', 'USD'].map((c) => `<option ${s.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+          <div class="field"><label for="b-iva">IVA predeterminado %</label><input id="b-iva" name="ivaRate" inputmode="decimal" value="${esc(M.centsToStr(s.ivaRateBp).replace(/\.00$/, ''))}"></div>
+        </div>
+        <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Creando…' : 'Crear negocio'}</button>
+      </form>`;
+  }
+
+  function viewImportPrompt() {
+    const n = DB.getQuotes().length;
+    const p = DB.getCatalog().length;
+    return `
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow</div></div>
+      <div class="stack">
+        <p>Encontramos datos de QuoteFlow en este dispositivo: ${n} cotización(es) y ${p} producto(s) de catálogo.</p>
+        <button class="btn primary block" data-act="import-yes" ${S.authBusy ? 'disabled' : ''}>Importarlos a mi cuenta</button>
+        <button class="btn block" data-act="import-no" ${S.authBusy ? 'disabled' : ''}>Conservar solo localmente</button>
+      </div>`;
+  }
+
+  async function afterLogin() {
+    S.cloudBusiness = await CLOUD.business.getMine();
+    if (!S.cloudBusiness) return go('business-new');
+    const hasLocal = DB.getQuotes().length > 0 || DB.getCatalog().length > 0;
+    if (hasLocal && !DB.isImportDecided()) return go('import-prompt');
+    await pullAndMerge();
+    go('home');
+  }
+
+  async function pullAndMerge() {
+    S.settings = DB.getSettings();
+    DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
+    S.settings = DB.getSettings();
+    const { catalog, quotes } = await CLOUD.data.pull(S.cloudBusiness.id);
+    DB.saveCatalog(catalog);
+    S.catalog = catalog;
+    quotes.forEach((q) => DB.saveQuote(q));
   }
 
   /* ---------- inicio ---------- */
@@ -347,6 +423,29 @@
     q.items.forEach((it) => { cat = CAT.upsert(cat, it, now); });
     S.catalog = cat;
     DB.saveCatalog(cat);
+    syncQuoteToCloud(q, cat);
+  }
+
+  // La cotización y el catálogo ya quedaron guardados localmente (arriba); esto
+  // solo intenta ponerlos al día en la nube. Si falla, se avisa pero nada se pierde:
+  // la copia local es la que ya se guardó y se puede reintentar más tarde.
+  function syncQuoteToCloud(q, cat) {
+    if (!(cloudOn && S.cloudBusiness)) return;
+    const bizId = S.cloudBusiness.id;
+    CLOUD.data
+      .pushQuote(bizId, q)
+      .then((cloudId) => {
+        if (cloudId !== q.id) {
+          DB.deleteQuote(q.id);
+          q.id = cloudId;
+          DB.saveQuote(q);
+        }
+      })
+      .catch((e) => toast('Se guardó en este dispositivo, pero no se sincronizó con la nube: ' + e.message));
+    q.items.forEach((it) => {
+      const entry = cat.find((c) => c.key === CAT.key(it.desc));
+      if (entry) CLOUD.data.pushProduct(bizId, entry).catch(() => {});
+    });
   }
 
   /* ---------- resumen / compartir ---------- */
@@ -425,9 +524,15 @@
           <div class="field"><label for="s-val">Vigencia (días)</label><input id="s-val" name="validityDays" inputmode="numeric" value="${esc(s.validityDays)}"></div>
         </div>
         <div class="field"><label for="s-cond">Condiciones predeterminadas</label><textarea id="s-cond" name="conditions">${esc(s.conditions)}</textarea></div>
-        <p class="hint">Productos recordados: ${S.catalog.length}. Tus cotizaciones y datos se guardan solo en este dispositivo.</p>
+        <p class="hint">Productos recordados: ${S.catalog.length}. ${cloudOn && S.cloudSession ? 'Tus datos se guardan en tu cuenta.' : 'Tus cotizaciones y datos se guardan solo en este dispositivo.'}</p>
         <button class="btn primary block" type="submit">Guardar</button>
       </form>
+      ${cloudOn && S.cloudSession ? `
+        <div class="section-h"><h2>Cuenta</h2></div>
+        <div class="stack">
+          <p class="hint">Sesión iniciada como ${esc(S.cloudSession.user.email)}</p>
+          <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
+        </div>` : ''}
       <div class="section-h"><h2>Respaldo</h2></div>
       <div class="stack">
         <p class="hint">Guarda un archivo con tu configuración, catálogo e historial. Sirve para recuperarlos si cambias de teléfono o borras los datos del navegador.</p>
@@ -536,7 +641,13 @@
       case 'new': S.writeOpen = false; return go('home');
       case 'delete': S.confirmDelete = true; return render();
       case 'delete-no': S.confirmDelete = false; return render();
-      case 'delete-yes': DB.deleteQuote(q.id); toast('Cotización eliminada'); return go('home');
+      case 'delete-yes': {
+        const idToDelete = q.id;
+        DB.deleteQuote(idToDelete);
+        toast('Cotización eliminada');
+        if (cloudOn && S.cloudBusiness) CLOUD.data.deleteQuote(idToDelete).catch(() => {});
+        return go('home');
+      }
       case 'share': {
         const blob = makePdf();
         if (!blob) return;
@@ -574,6 +685,40 @@
         return go('home');
       }
       case 'restore-no': S.pendingBackup = null; return render();
+      case 'auth-toggle': S.authMode = S.authMode === 'login' ? 'register' : 'login'; return render();
+      case 'logout': {
+        await CLOUD.auth.signOut();
+        S.cloudSession = null;
+        S.cloudBusiness = null;
+        toast('Sesión cerrada');
+        return go('auth');
+      }
+      case 'import-yes': {
+        S.authBusy = true;
+        render();
+        const bizId = S.cloudBusiness.id;
+        let failed = 0;
+        for (const entry of DB.getCatalog()) {
+          try { await CLOUD.data.pushProduct(bizId, entry); } catch (e) { failed++; }
+        }
+        for (const iq of DB.getQuotes()) {
+          try {
+            const cloudId = await CLOUD.data.pushQuote(bizId, iq);
+            if (cloudId !== iq.id) { DB.deleteQuote(iq.id); iq.id = cloudId; DB.saveQuote(iq); }
+          } catch (e) { failed++; }
+        }
+        DB.setImportDecided();
+        S.authBusy = false;
+        if (failed) toast(`Se importó lo posible; ${failed} elemento(s) no se pudieron subir. Vuelve a intentar más tarde desde Configuración.`);
+        else toast('Datos importados a tu cuenta');
+        await pullAndMerge();
+        return go('home');
+      }
+      case 'import-no': {
+        DB.setImportDecided();
+        await pullAndMerge();
+        return go('home');
+      }
     }
   });
 
@@ -583,23 +728,105 @@
     if (e.target.id === 's-logo' && e.target.files[0]) readLogo(e.target.files[0]);
     if (e.target.id === 'backup-file' && e.target.files[0]) readBackupFile(e.target.files[0]);
   });
-  app.addEventListener('submit', (e) => {
+  app.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const s = S.settings;
-    ['businessName', 'phone', 'email', 'address', 'currency', 'ivaMode', 'conditions'].forEach((k) => (s[k] = String(f.get(k) || '').trim()));
-    s.rfc = String(f.get('rfc') || '').trim().toUpperCase();
-    s.ivaRateBp = M.toBp(f.get('ivaRate')) ?? 1600;
-    s.validityDays = parseInt(f.get('validityDays'), 10) || 15;
-    DB.saveSettings(s);
-    toast('Configuración guardada');
-    go('home');
+
+    if (e.target.id === 'settings-form') {
+      const s = S.settings;
+      ['businessName', 'phone', 'email', 'address', 'currency', 'ivaMode', 'conditions'].forEach((k) => (s[k] = String(f.get(k) || '').trim()));
+      s.rfc = String(f.get('rfc') || '').trim().toUpperCase();
+      s.ivaRateBp = M.toBp(f.get('ivaRate')) ?? 1600;
+      s.validityDays = parseInt(f.get('validityDays'), 10) || 15;
+      DB.saveSettings(s);
+      toast('Configuración guardada');
+      go('home');
+      if (cloudOn && S.cloudBusiness) CLOUD.business.saveSettings(S.cloudBusiness.id, s).catch((err) => toast('No se sincronizó con la nube: ' + err.message));
+      return;
+    }
+
+    if (e.target.id === 'auth-form') {
+      const email = String(f.get('email') || '').trim();
+      const password = String(f.get('password') || '');
+      S.authBusy = true;
+      render();
+      try {
+        if (S.authMode === 'register') {
+          const res = await CLOUD.auth.signUp(email, password);
+          if (res.session) {
+            S.cloudSession = res.session;
+            await afterLogin();
+          } else {
+            toast('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.');
+            S.authMode = 'login';
+          }
+        } else {
+          const res = await CLOUD.auth.signIn(email, password);
+          S.cloudSession = res.session;
+          await afterLogin();
+        }
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        S.authBusy = false;
+        render();
+      }
+      return;
+    }
+
+    if (e.target.id === 'business-form') {
+      const fields = {
+        name: String(f.get('name') || '').trim(),
+        phone: String(f.get('phone') || '').trim(),
+        email: String(f.get('email') || '').trim(),
+        rfc: String(f.get('rfc') || '').trim().toUpperCase(),
+        currency: String(f.get('currency') || 'MXN'),
+        ivaRateBp: M.toBp(f.get('ivaRate')) ?? 1600,
+      };
+      S.authBusy = true;
+      render();
+      try {
+        S.cloudBusiness = await CLOUD.business.create(fields);
+        toast('Negocio creado');
+        await afterLogin();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        S.authBusy = false;
+        render();
+      }
+    }
   });
 
   function render() {
-    const views = { home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings };
+    const views = {
+      home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
+      loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
+    };
     app.innerHTML = views[S.view]();
   }
 
-  render();
+  async function boot() {
+    if (!cloudOn) return render(); // sin Supabase configurado: exactamente el comportamiento de V0.2
+    S.view = 'loading';
+    render();
+    try {
+      CLOUD.auth.onChange((session) => {
+        if (!session && S.cloudSession) { // se cerró la sesión en otra pestaña, o expiró
+          S.cloudSession = null;
+          S.cloudBusiness = null;
+          go('auth');
+        }
+      });
+      const session = await CLOUD.auth.getSession();
+      S.cloudSession = session;
+      if (!session) return go('auth');
+      await afterLogin();
+    } catch (e) {
+      toast('No se pudo conectar con la nube: ' + e.message);
+      go('auth');
+    }
+  }
+
+  boot();
 })();

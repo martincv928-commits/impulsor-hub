@@ -262,3 +262,59 @@ test('respaldo: rechaza archivos que no son de QuoteFlow o están incompletos', 
   assert.match(DB1.validateBackup({ app: 'QuoteFlow', backupVersion: 1, settings: {}, catalog: [], quotes: [{ id: 'x' }] }), /incompleta/);
   assert.match(DB1.validateBackup({ app: 'QuoteFlow', backupVersion: 99, settings: {}, catalog: [], quotes: [] }), /más nueva/);
 });
+
+/* ---------- V0.3: mapeo de datos hacia/desde Supabase (sin red) ---------- */
+const CLOUD = require('../src/cloud.js');
+
+test('cloud: una cotización local sobrevive el viaje a fila de Supabase y de vuelta', () => {
+  const local = {
+    id: 'qlocal123', folio: 'COT-0007', client: 'Pedro',
+    items: [
+      { id: 'i1', desc: 'Jabón Ariel', qtyMilli: 20000, unit: 'litro', priceCents: 1400, priceSource: 'dicho', catalogName: null },
+      { id: 'i2', desc: 'Suavizante', qtyMilli: 10000, unit: 'litro', priceCents: 1800, priceSource: 'catalogo', catalogName: 'Suavizante' },
+    ],
+    discount: { type: 'pct', value: 500 }, ivaMode: 'mas', ivaRateBp: 1600, validityDays: 15,
+    notes: 'Entrega en 3 días', conditions: 'Ver condiciones', sourceText: 'cotiza a Pedro...',
+    status: 'GENERADA', updatedAt: 1700000000000, generatedAt: 1700000000000,
+  };
+  const row = CLOUD._quoteRow('biz-1', local);
+  assert.equal(row.business_id, 'biz-1');
+  assert.equal(row.client_name, 'Pedro');
+  assert.equal(row.id, undefined); // id local ("qlocal123") no es uuid: se deja que la nube genere uno
+
+  // simula lo que Supabase regresaría: la fila guardada + sus conceptos
+  const fakeRow = Object.assign({}, row, {
+    id: '11111111-1111-1111-1111-111111111111',
+    created_at: '2023-11-14T00:00:00.000Z',
+    quote_items: local.items.map((it, i) => ({
+      id: 'item-' + i, sort_order: i, description: it.desc, qty_milli: it.qtyMilli, unit: it.unit,
+      price_cents: it.priceCents, price_source: it.priceSource, catalog_name: it.catalogName,
+    })),
+  });
+  const back = CLOUD._quoteFromRow(fakeRow);
+  assert.equal(back.id, fakeRow.id);
+  assert.equal(back.client, 'Pedro');
+  assert.equal(back.folio, 'COT-0007');
+  assert.deepEqual(back.discount, { type: 'pct', value: 500 });
+  assert.equal(back.items.length, 2);
+  assert.deepEqual([back.items[0].desc, back.items[0].qtyMilli, back.items[0].unit, back.items[0].priceCents], ['Jabón Ariel', 20000, 'litro', 1400]);
+  assert.equal(back.items[1].catalogName, 'Suavizante');
+
+  // una cotización YA sincronizada antes (id ya es uuid) se actualiza, no se duplica
+  const already = Object.assign({}, local, { id: fakeRow.id });
+  const row2 = CLOUD._quoteRow('biz-1', already);
+  assert.equal(row2.id, fakeRow.id);
+});
+
+test('cloud: el catálogo local y el de Supabase se traducen sin perder datos', () => {
+  const entry = { key: 'jabon ariel', name: 'Jabón Ariel', unit: 'litro', priceCents: 1400, uses: 3, updatedAt: 1700000000000 };
+  const row = CLOUD._productRow('biz-1', entry);
+  assert.deepEqual(row, { business_id: 'biz-1', key: 'jabon ariel', name: 'Jabón Ariel', unit: 'litro', price_cents: 1400, uses: 3, updated_at: new Date(1700000000000).toISOString() });
+  const back = CLOUD._catalogFromRows([Object.assign({}, row, { updated_at: row.updated_at })]);
+  assert.equal(back[0].priceCents, 1400);
+  assert.equal(back[0].name, 'Jabón Ariel');
+});
+
+test('cloud: sin configurar, la app se comporta como V0.2 (deshabilitada)', () => {
+  assert.equal(CLOUD.enabled(), false);
+});
