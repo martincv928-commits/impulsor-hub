@@ -7,7 +7,7 @@
   'use strict';
   const QF = (root.QF = root.QF || {});
   QF.config = {
-    supabaseUrl: '',
-    supabaseAnonKey: '',
+    supabaseUrl: 'https://rhdsbymoxllfegderalu.supabase.co',
+    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZHNieW1veGxsZmVnZGVyYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODEwMTYsImV4cCI6MjEwNTg1NzAxNn0.Y3fIkxHBNJdz0cMLf29-GiSxct2-yF3NvCQoTRweOuU',
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
