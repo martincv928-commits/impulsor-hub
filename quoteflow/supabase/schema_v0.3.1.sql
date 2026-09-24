@@ -365,19 +365,19 @@ create policy "solo admins ven el log de accesos de soporte" on support_access_l
 -- Devuelve un resumen (no las cotizaciones completas con todos sus conceptos).
 create or replace function admin_support_access(p_ticket_id uuid, p_action text default 'view_overview')
 returns json language plpgsql security definer set search_path = public as $$
-declare biz_id uuid; result json;
+declare found_biz uuid; result json;
 begin
   if not is_platform_admin(auth.uid()) then raise exception 'No autorizado'; end if;
-  select business_id into biz_id from support_tickets where id = p_ticket_id;
-  if biz_id is null then raise exception 'Ticket no encontrado'; end if;
+  select business_id into found_biz from support_tickets where id = p_ticket_id;
+  if found_biz is null then raise exception 'Ticket no encontrado'; end if;
   insert into support_access_log (admin_id, business_id, ticket_id, action, resource)
-    values (auth.uid(), biz_id, p_ticket_id, p_action, 'business_overview');
+    values (auth.uid(), found_biz, p_ticket_id, p_action, 'business_overview');
   select json_build_object(
-    'business', (select row_to_json(b) from (select id, name, email, phone, status, plan, created_at from businesses where id = biz_id) b),
+    'business', (select row_to_json(b) from (select id, name, email, phone, status, plan, created_at from businesses where id = found_biz) b),
     'members', (select coalesce(json_agg(row_to_json(m)), '[]'::json) from
-      (select p.email, bm.role, bm.status from business_members bm join profiles p on p.id = bm.user_id where bm.business_id = biz_id) m),
+      (select p.email, bm.role, bm.status from business_members bm join profiles p on p.id = bm.user_id where bm.business_id = found_biz) m),
     'recent_quotes', (select coalesce(json_agg(row_to_json(q)), '[]'::json) from
-      (select folio, client_name, status, updated_at from quotes where business_id = biz_id order by updated_at desc limit 10) q)
+      (select folio, client_name, status, updated_at from quotes where business_id = found_biz order by updated_at desc limit 10) q)
   ) into result;
   return result;
 end;
