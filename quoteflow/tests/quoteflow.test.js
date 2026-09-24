@@ -185,3 +185,17 @@ test('dictado: "puedes cotizarme", "cotízame", cliente al final', () => {
   assert.equal(r.quote.client, 'Pedro');
   assert.deepEqual(descs(r), ['Ariel']);
 });
+
+test('voz: texto real duplicado del celular se reduce a la frase completa', () => {
+  globalThis.webkitSpeechRecognition = globalThis.webkitSpeechRecognition || class {};
+  delete require.cache[require.resolve('../src/voice.js')];
+  const { clean } = (require('../src/voice.js'), globalThis.QF.voice);
+  const shot = 'Hazme hazme una hazme una cotización hazme una cotización para hazme una cotización para Jennifer hazme una cotización para Jennifer Natalia hazme una cotización para Jennifer Natalia de hazme una cotización para Jennifer Natalia de 20 hazme una cotización para Jennifer Natalia de 20 l hazme una cotización para Jennifer Natalia de 20 l de Ariel Dani a $12 hazme una cotización para Jennifer Natalia de 20 l de Ariel Dani';
+  const text = clean(shot);
+  assert.equal(text, 'hazme una cotización para Jennifer Natalia de 20 l de Ariel Dani a $12');
+  const r = parse(text);
+  assert.equal(r.quote.client, 'Jennifer Natalia');
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Ariel Dani', 20000, 'litro', 1200]);
+  // texto normal no se toca
+  for (const t of ['dos litros de cloro a 20 y dos litros de jabón a 30', 'Cotiza a Pedro 20 litros de jabón a 14 pesos y 10 litros de suavizante a 18 pesos más IVA']) assert.equal(clean(t), t);
+});
