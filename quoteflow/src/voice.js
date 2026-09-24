@@ -22,8 +22,17 @@
       chunks[chunks.length - 1].push(i);
     });
     if (chunks.length < 2) return toks.join(' ');
+    // El dictado puede corregir una palabra a medio camino (p. ej. "litros" -> "L"),
+    // así que una repetición cuenta como "versión anterior de la misma frase" si
+    // coincide con la versión más larga en casi todas sus palabras (como máximo
+    // una distinta). Si dos repeticiones se parecen menos que eso, es texto
+    // normal que casualmente repite su primera palabra, y no se toca nada.
     const longest = chunks.reduce((a, c) => (c.length >= a.length ? c : a), []);
-    const isVersion = (c) => c.length <= longest.length && c.slice(0, -1).every((ti, j) => norm[ti] === norm[longest[j]]);
+    const isVersion = (c) => {
+      if (c.length > longest.length) return false;
+      const mismatches = c.reduce((n, ti, j) => n + (norm[ti] === norm[longest[j]] ? 0 : 1), 0);
+      return mismatches <= 1;
+    };
     if (!chunks.every(isVersion)) return toks.join(' ');
     return longest.map((i) => toks[i]).join(' ');
   }
