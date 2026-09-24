@@ -53,6 +53,7 @@
     t = t.replace(/(\d+)\s+mil(?:\s+(\d{1,3}))?\b/gi, (_, a, b) => String(parseInt(a, 10) * 1000 + (b ? parseInt(b, 10) : 0)));
     t = t.replace(/\$\s+/g, '$');
     t = t.replace(/(\d)\s*%/g, '$1%');
+    t = t.replace(/(?<!\p{L})(?:por\s+favor|porfa)(?!\p{L})[,]?/giu, ' ');
     return t.replace(/[.\s]+$/, '').trim();
   }
 
@@ -90,22 +91,33 @@
 
   /* ---------- extracción de campos globales ---------- */
 
+  // Verbos de instrucción para IVA: agrega/agrégale, suma/súmale, ponle, añade/añádele, carga/cárgale, incluye/inclúyele…
+  const IVA_VERB = '(?:agr[eé]ga(?:r|le|lo)?|s[uú]ma(?:r|le|lo)?|pon(?:er|le)?|p[oó]nle|a[nñ][aá]de(?:r|le)?|a[nñ][aá]dele|c[aá]rga(?:r|le)?|consid[eé]ra(?:r|le)?|incl[uú]ye(?:le)?|m[eé]te(?:le)?)';
+  const IVA_TAIL = '(?:\\s+(?:del?\\s+)?(\\d+(?:\\.\\d+)?)\\s*(?:%|por\\s*ciento))?';
+  const IVA_RATE = '(?:(?:el\\s+)?(\\d+(?:\\.\\d+)?)\\s*(?:%|por\\s*ciento)\\s+(?:de\\s+)?)?';
+
   function extractIva(t) {
     const rules = [
-      ['incluido', /(?:con\s+)?(?:el\s+)?iva\s+incluido|incluye(?:ndo)?\s+(?:el\s+)?iva|ya\s+con\s+(?:el\s+)?iva|precios?\s+con\s+iva/i],
-      ['sin', /sin\s+(?:el\s+)?iva|exento\s+de\s+iva|no\s+(?:le\s+)?(?:pongas|agregues|sumes)\s+(?:el\s+)?iva/i],
-      ['mas', /(?:m[aá]s|\+)\s*(?:el\s+)?iva|(?:agrega(?:r|le)?|s[uú]ma(?:le)?|ponle|con)\s+(?:el\s+)?iva|m[aá]s\s+impuestos/i],
+      ['incluido', new RegExp('(?:con\\s+)?(?:el\\s+)?iva\\s+incluido' + IVA_TAIL + '|(?:ya\\s+)?incluye(?:ndo)?\\s+(?:el\\s+)?iva|ya\\s+con\\s+(?:el\\s+)?iva|precios?\\s+con\\s+iva|iva\\s+ya\\s+incluido', 'iu')],
+      ['sin', new RegExp('sin\\s+(?:el\\s+)?iva|exento\\s+de\\s+iva|no\\s+(?:le\\s+)?(?:pongas|agregues|sumes|cobres)\\s+(?:el\\s+)?iva', 'iu')],
+      ['mas', new RegExp('(?<!\\p{L})(?:(?:y\\s+)?(?:m[aá]s|\\+)\\s*' + IVA_RATE + '(?:el\\s+)?iva' + IVA_TAIL + '|(?:y\\s+)?' + IVA_VERB + '\\s+' + IVA_RATE + '(?:el\\s+)?iva' + IVA_TAIL + '|con\\s+' + IVA_RATE + '(?:el\\s+)?iva' + IVA_TAIL + '|(?:el\\s+)?(\\d+(?:\\.\\d+)?)\\s*(?:%|por\\s*ciento)\\s+de\\s+iva|m[aá]s\\s+impuestos)(?!\\p{L})', 'iu')],
     ];
     for (const [mode, re] of rules) {
       const m = re.exec(t);
-      if (m) return { mode, rest: t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length) };
+      if (m) {
+        const rate = m.slice(1).find((x) => x !== undefined);
+        // quita todas las repeticiones de frases de IVA ("más IVA ... más IVA")
+        const g = new RegExp(re.source, 'giu');
+        return { mode, rateBp: rate ? M.toBp(rate) : null, rest: t.replace(g, ' ') };
+      }
     }
-    return { mode: null, rest: t };
+    return { mode: null, rateBp: null, rest: t };
   }
 
   function extractValidity(t) {
     const re = new RegExp('(?:con\\s+)?(?:una\\s+)?(?:vigencia|v[aá]lid[ao]|vigente)\\s+(?:de\\s+|por\\s+|a\\s+)?(\\d+|' + NW + ')\\s*(d[ií]as?|semanas?|mes(?:es)?)', 'iu');
-    const m = re.exec(t);
+    const re2 = new RegExp('(?:con\\s+|por\\s+|de\\s+)?(\\d+|' + NW + ')\\s*(d[ií]as?|semanas?|mes(?:es)?)\\s+de\\s+vigencia', 'iu');
+    const m = re.exec(t) || re2.exec(t);
     if (!m) return { days: null, rest: t };
     const n = numOrWord(m[1]);
     const u = m[2].toLowerCase();
@@ -135,7 +147,7 @@
     return { notes: capitalize((m[1] || m[2]).trim()), rest: t.slice(0, m.index) };
   }
 
-  const COMMAND = /^(?:oye\s+|por\s+favor\s+)*(?:(?:haz(?:me)?|genera(?:r|me)?|crea(?:r|me)?|prepara(?:r|me)?|necesito|quiero|nueva|elabora(?:r)?)\s+(?:una\s+|la\s+)?cotizaci[oó]n|cotiza(?:r|me|le|ci[oó]n)?)(?=\s|,|:|$)[\s,:]*/iu;
+  const COMMAND = /^(?:(?:oye|por\s+favor|porfa|hola)[\s,]+)*(?:(?:haz(?:me)?|genera(?:r|me)?|crea(?:r|me)?|prepara(?:r|me)?|necesito|quiero|nueva|elabora(?:r)?)\s+(?:una\s+|la\s+)?cotizaci[oó]n|cotiza(?:r|me|le|ci[oó]n)?)(?=\s|,|:|$)[\s,:]*/iu;
 
   function isCap(tok) {
     return /^\p{Lu}/u.test(tok);
@@ -251,6 +263,41 @@
     return { desc: capitalize(s), qtyMilli: null, unit: null, priceCents: null, src: { qty: false, price: false, unit: false } };
   }
 
+  /* ---------- limpieza final de descripción ----------
+   * Se ejecuta después de extraer cliente/IVA/vigencia/descuento/precio.
+   * Solo quita frases de control reconocidas en los bordes (o frases de IVA/vigencia/
+   * descuento completas, que nunca son nombre de producto); el resto se conserva tal cual. */
+  const RESIDUE = /^(?:y|e|con|m[aá]s|de|a|por|para|pesos?|mxn|iva|vigencia|descuento|cada\s+un[oa]|c\/u|oye|cotiza\w*)$/iu;
+
+  function cleanDesc(desc, client) {
+    let d = ' ' + String(desc || '') + ' ';
+    // frases de control completas en cualquier posición
+    d = extractIva(d).rest;
+    d = extractValidity(d).rest;
+    d = extractDiscount(d).rest;
+    d = d.replace(/\s+/g, ' ').trim();
+    let prev;
+    do {
+      prev = d;
+      d = d.replace(COMMAND, '');
+      if (client) {
+        const c = client.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        d = d.replace(new RegExp('^(?:a|al|para)\\s+' + c + '(?!\\p{L})\\s*', 'iu'), '');
+      }
+      d = d
+        .replace(/^(?:y|e|con|m[aá]s|adem[aá]s|tambi[eé]n|de|oye)(?:\s+|$)/iu, '')
+        // precio que quedó pegado al final: "a 80 pesos", "$80", "80 pesos"
+        .replace(/\s+(?:(?:a|en|por|de)\s+)?\$\s*\d+(?:\.\d+)?(?:\s*(?:pesos?|mxn))?$/iu, '')
+        .replace(/\s+(?:(?:a|en|por|de)\s+)?\d+(?:\.\d+)?\s*(?:pesos?|mxn)$/iu, '')
+        // indicadores de precio unitario / moneda al final
+        .replace(/\s+(?:cada\s+un[oa]|c\/u|pesos?|mxn)$/iu, '')
+        .replace(/\s+(?:y|e|con|m[aá]s|de|a|por|en)$/iu, '')
+        .replace(/^[,;:.\-\s]+|[,;:.\-\s]+$/g, '')
+        .trim();
+    } while (d !== prev);
+    return RESIDUE.test(d) ? '' : capitalize(d);
+  }
+
   /* ---------- API ---------- */
 
   function parse(text, context) {
@@ -286,8 +333,13 @@
     const items = [];
     const segs = t.split(SPLIT).map(cleanSeg).filter((x) => x && !/^(?:por\s+favor|gracias|porfa)$/i.test(x));
     for (const seg of segs) {
+      if (RESIDUE.test(seg)) continue;
       const p = parseSegment(seg);
-      if (!p.desc) { unparsed.push(seg); continue; }
+      p.desc = cleanDesc(p.desc, cli.client);
+      if (!p.desc) {
+        if (p.qtyMilli !== null || p.priceCents !== null) unparsed.push(seg);
+        continue;
+      }
       const item = { id: newId(), desc: p.desc, qtyMilli: p.qtyMilli, unit: p.unit, priceCents: p.priceCents, flags: [], candidates: [], priceSource: p.priceCents !== null ? 'dicho' : null };
       const found = C.find(catalog, p.desc);
       if (found.match) {
@@ -322,7 +374,7 @@
     if (!items.length || incomplete === items.length) confidence = 'baja';
     else if (doubtful.some((d) => d.field !== 'iva') || unparsed.length) confidence = 'media';
 
-    const ivaRateBp = settings.ivaRateBp !== undefined ? settings.ivaRateBp : 1600;
+    const ivaRateBp = iva.rateBp !== null && iva.rateBp !== undefined ? iva.rateBp : settings.ivaRateBp !== undefined ? settings.ivaRateBp : 1600;
     return {
       quote: {
         client: cli.client,

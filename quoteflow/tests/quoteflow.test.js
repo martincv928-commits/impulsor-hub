@@ -91,3 +91,64 @@ test('LocalQuoteInterpreter cumple el contrato', async () => {
   assert.equal(r.interpreter, 'local');
   assert.ok(Array.isArray(r.doubtful) && r.quote && r.confidence);
 });
+
+/* ---------- descripciones limpias: las instrucciones no quedan en el concepto ---------- */
+const CONTROL = /cotiza|cotizaci[oó]n|\biva\b|vigencia|v[aá]lid|descuento|pesos|cada un[oa]|agr[eé]ga|por favor|\boye\b/i;
+const descs = (r) => r.quote.items.map((x) => x.desc);
+const assertClean = (r) => descs(r).forEach((d) => assert.ok(!CONTROL.test(d), `descripción con instrucciones: "${d}"`));
+
+test('limpieza 1: más IVA + vigencia', () => {
+  const r = parse('Cotiza a Juan 10 focos a 80 pesos más IVA vigencia 15 días.');
+  assert.equal(r.quote.client, 'Juan');
+  assert.deepEqual(descs(r), ['Focos']);
+  assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).priceCents], [10000, 8000]);
+  assert.deepEqual([r.quote.ivaMode, r.quote.ivaRateBp, r.quote.validityDays], ['mas', 1600, 15]);
+  assertClean(r);
+});
+
+test('limpieza 2: servicio conserva su nombre completo', () => {
+  const r = parse('Cotiza a Pedro instalación de cámaras por 3500 más IVA.');
+  assert.equal(r.quote.client, 'Pedro');
+  assert.deepEqual(descs(r), ['Instalación de cámaras']);
+  assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).priceCents, r.quote.ivaMode], [1000, 350000, 'mas']);
+  assertClean(r);
+});
+
+test('limpieza 3: cotización para + cada una + descuento', () => {
+  const r = parse('Haz una cotización para Constructora López de 5 cámaras a 1850 cada una con 5% de descuento.');
+  assert.equal(r.quote.client, 'Constructora López');
+  assert.deepEqual(descs(r), ['Cámaras']);
+  assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).priceCents], [5000, 185000]);
+  assert.deepEqual(r.quote.discount, { type: 'pct', value: 500 });
+  assertClean(r);
+});
+
+test('limpieza 4: dos productos sin cliente', () => {
+  const r = parse('Cotiza 20 litros de jabón Ariel a 14 pesos y 10 litros de suavizante a 18 pesos.');
+  assert.deepEqual(descs(r), ['Jabón Ariel', 'Suavizante']);
+  assert.deepEqual([it(r, 1).qtyMilli, it(r, 1).unit, it(r, 1).priceCents], [10000, 'litro', 1800]);
+  assertClean(r);
+});
+
+test('limpieza: variantes habladas (agrégale, por favor, oye, cada uno, válida por)', () => {
+  const cases = [
+    'Cotiza a Juan 10 focos a 80 pesos, agrégale IVA y vigencia de 15 días.',
+    'cotiza a juan 10 focos a 80 pesos agrégale iva y vigencia de 15 días',
+    'Oye, cotiza a Juan por favor 10 focos de 80 pesos más el IVA',
+    'Cotiza a Juan 10 focos cada uno a 80 pesos válida por 15 días',
+  ];
+  for (const c of cases) {
+    const r = parse(c);
+    assert.equal(r.quote.client, 'Juan', c);
+    assert.deepEqual(descs(r), ['Focos'], c);
+    assert.deepEqual([it(r, 0).qtyMilli, it(r, 0).priceCents], [10000, 8000], c);
+    assertClean(r);
+  }
+  assert.equal(parse(cases[0]).quote.ivaMode, 'mas');
+  assert.equal(parse(cases[3]).quote.validityDays, 15);
+});
+
+test('limpieza: no borra palabras reales del producto', () => {
+  assert.deepEqual(descs(parse('Cotiza a Pedro 2 cables calibre 12 a 30 pesos y dale 5% de descuento')), ['Cables calibre 12']);
+  assert.deepEqual(descs(parse('Cotiza a Pedro instalación de cámaras.')), ['Instalación de cámaras']);
+});
