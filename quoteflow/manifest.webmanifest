@@ -1,0 +1,9 @@
+{
+  "name": "QuoteFlow",
+  "short_name": "QuoteFlow",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F5F6F2",
+  "theme_color": "#2743B8",
+  "lang": "es-MX"
+}
