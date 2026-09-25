@@ -242,37 +242,89 @@
   );
 
   // Un paquete/kit descrito por sus partes ("contiene 3 l de esto, 3 l de
-  // aquello... a $X de total") es UN solo concepto con un precio de conjunto,
-  // no varios conceptos con precio por unidad: "de total"/"en total" es la
-  // señal de que el monto no se multiplica ni se reparte.
-  const BUNDLE_TOTAL_RE = /\b(?:a|en|por)?\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:pesos?|mxn)?\s*(?:de\s+total|en\s+total)\b/iu;
-  // "un paquete NOMBRE que cuesta $X (el cual) contiene ..." — el precio va
-  // pegado al nombre del paquete, antes de la lista de partes, no al final.
-  const BUNDLE_CUESTA_RE = /\b(?:paquete|kits?|combos?)\s+([^,]+?)\s+(?:que\s+)?cuesta\s+\$?\s*(\d+(?:\.\d+)?)/iu;
+  // aquello...") es UN solo concepto con un precio de conjunto, no varios
+  // conceptos con precio por unidad. El precio de conjunto puede venir dicho
+  // de varias formas: "que cuesta $X", "a $X de total"/"en total", o solo
+  // "total $X" al final — cualquiera de ellas es la señal de que el monto no
+  // se multiplica ni se reparte entre las partes mencionadas.
+  const LUMP_PRICE_RE = /cuesta\s+\$?\s*(\d+(?:\.\d+)?)|\btotal\s+\$?\s*(\d+(?:\.\d+)?)\b|\$?\s*(\d+(?:\.\d+)?)\s*(?:pesos?|mxn)?\s*(?:de\s+total|en\s+total)\b/iu;
+  const NAME_LLAMADO_RE = /llamad[oa]\s+(.+?)(?=\s+(?:a\s+)?\$|\s+\d|\s+(?:que\s+)?(?:contiene|incluye)\b|$)/iu;
+  const NAME_CONTAINER_RE = /\b(?:paquete|kits?|combos?)\s+(.+?)(?=\s+(?:que\s+)?(?:cuesta|contiene|incluye)\b|\s+llamad[oa]\b|$)/iu;
+  const CONTAINS_RE = /\b(?:que\s+)?(?:contiene|incluye)\s+(.+)$/iu;
 
   function bundleUnit(t) {
-    return /\bpaquete\b/i.test(t) ? 'paquete' : /\bkits?\b/i.test(t) ? 'paquete' : /\bcombos?\b/i.test(t) ? 'paquete' : 'servicio';
+    return /\bpaquetes?\b/i.test(t) ? 'paquete' : /\bkits?\b/i.test(t) ? 'paquete' : /\bcombos?\b/i.test(t) ? 'paquete' : 'servicio';
+  }
+
+  // Reparte "3 l de jabón de ropa 3 l de jabón de trastes y 3 l de cloro" en
+  // sus partes (aunque no haya conector entre ellas) y las devuelve ya
+  // legibles: "3 litros de jabón de ropa, 3 litros de jabón de trastes y 3
+  // litros de cloro".
+  function pluralUnit(u, qtyMilli) {
+    if (!u || qtyMilli === 1000) return u;
+    if (/s$/i.test(u)) return u;
+    if (/[oó]n$/i.test(u)) return u.slice(0, -2) + 'ones';
+    return u + 's';
+  }
+
+  function formatContainsList(text) {
+    const startRe = new RegExp(ITEM_START, 'giu');
+    const idxs = [];
+    let sm;
+    while ((sm = startRe.exec(text))) {
+      idxs.push(sm.index);
+      if (startRe.lastIndex === sm.index) startRe.lastIndex++;
+    }
+    const rawSegs = idxs.length
+      ? idxs.map((start, i) => text.slice(start, i + 1 < idxs.length ? idxs[i + 1] : text.length))
+      : [text];
+    const parts = rawSegs
+      .map((seg) => cleanSeg(seg))
+      .filter(Boolean)
+      .map((seg) => {
+        const s = wordToNum(seg);
+        const m = RE_B.exec(s);
+        if (!m) return capitalize(seg).toLowerCase();
+        const su = splitUnit(m[2]);
+        const qtyMilli = M.toMilli(m[1]);
+        const qty = M.milliToStr(qtyMilli);
+        return su.unit ? `${qty} ${pluralUnit(su.unit, qtyMilli)} de ${su.desc}` : `${qty} ${su.desc}`;
+      });
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(', ') + ' y ' + parts[parts.length - 1];
   }
 
   function parseBundle(t) {
-    let m = BUNDLE_TOTAL_RE.exec(t);
-    if (m) {
-      const priceCents = M.toCents(m[1]);
-      let rest = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
-      rest = rest.replace(/\btodo\s+junto\b/giu, ' ').replace(/\s+/g, ' ').trim();
-      const named = /llamad[oa]\s+(.+)$/iu.exec(rest);
-      let desc = named && named[1].trim() ? named[1] : rest.replace(/^(?:un|una)\s+/i, '').replace(/^que\s+contiene\s+/i, '');
-      desc = cleanSeg(desc) || 'Paquete';
-      return { desc: capitalize(desc), qtyMilli: 1000, unit: bundleUnit(t), priceCents, src: { qty: true, price: true, unit: true, lump: true } };
-    }
-    m = BUNDLE_CUESTA_RE.exec(t);
-    if (m) {
-      const name = cleanSeg(m[1].replace(/\bque\b\s*$/i, ''));
-      const priceCents = M.toCents(m[2]);
-      const desc = capitalize(name ? 'Paquete ' + name : 'Paquete');
-      return { desc, qtyMilli: 1000, unit: bundleUnit(t), priceCents, src: { qty: true, price: true, unit: true, lump: true } };
-    }
-    return null;
+    // Solo es un "paquete descrito por partes" si de verdad hay una cláusula
+    // "contiene"/"incluye": si no, "total $X" o "cuesta $X" pueden aparecer
+    // en una frase normal de un solo concepto y no deben activar este modo.
+    const containsM = CONTAINS_RE.exec(t);
+    if (!containsM) return null;
+
+    const priceM = LUMP_PRICE_RE.exec(t);
+    if (!priceM) return null;
+    const priceCents = M.toCents(priceM[1] || priceM[2] || priceM[3]);
+
+    const namedM = NAME_LLAMADO_RE.exec(t);
+    const containerM = NAME_CONTAINER_RE.exec(t);
+    let name = (namedM && namedM[1].trim()) || (containerM && containerM[1].trim()) || '';
+    name = cleanSeg(name.replace(/\btodo\s+junto\b/giu, ' '));
+
+    let containsText = containsM[1];
+    containsText = containsText
+      .replace(/\btodo\s+junto\b.*$/is, '')
+      .replace(/\bllamad[oa]\s+.*$/is, '')
+      .replace(new RegExp(LUMP_PRICE_RE.source, 'giu'), ' ')
+      .replace(/\s+(?:a|de|en)\s*$/i, '')
+      .trim();
+    const list = formatContainsList(containsText);
+
+    let desc = /\bpaquetes?\b|\bkits?\b|\bcombos?\b/i.test(name) ? name : (name ? 'Paquete ' + name : 'Paquete');
+    desc = capitalize(desc);
+    if (list) desc += ' que contiene: ' + list;
+
+    return { desc, qtyMilli: 1000, unit: bundleUnit(t), priceCents, src: { qty: true, price: true, unit: true, lump: true } };
   }
 
   /* ---------- conceptos ---------- */

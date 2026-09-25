@@ -396,12 +396,14 @@ test('parser: "$4 de litro" se entiende igual que "$4 el litro"', () => {
   assertClean(r);
 });
 
+const BUNDLE_LIST = '3 litros de jabón de ropa, 3 litros de jabón de trastes, 3 litros de cloro y 3 litros de fabuloso';
+
 test('parser: un paquete descrito por partes con "a $X de total" es un solo concepto, no uno por parte', () => {
   const r = parse('cotízame un paquete que contiene 3 l de jabón de ropa 3 l de jabón de trastes 3 l de cloro y 3 l de fabuloso todo junto llamado paquete climbón a $105 de total sin iva para el cliente Soria');
   assert.equal(r.quote.client, 'Soria');
   assert.equal(r.quote.ivaMode, 'sin');
   assert.equal(r.quote.items.length, 1);
-  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete climbón', 1000, 'paquete', 10500]);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete climbón que contiene: ' + BUNDLE_LIST, 1000, 'paquete', 10500]);
 });
 
 test('parser: un paquete con "NOMBRE que cuesta $X" (precio antes de la lista de partes) también es un solo concepto', () => {
@@ -409,7 +411,22 @@ test('parser: un paquete con "NOMBRE que cuesta $X" (precio antes de la lista de
   assert.equal(r.quote.client, 'Soria');
   assert.equal(r.quote.ivaMode, 'sin');
   assert.equal(r.quote.items.length, 1);
-  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete clean pón', 1000, 'paquete', 10500]);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete clean pón que contiene: ' + BUNDLE_LIST, 1000, 'paquete', 10500]);
+});
+
+test('parser: un paquete con "total $X" simple al final (sin "de"/"en") también es un solo concepto', () => {
+  const r = parse('cotízame para el cliente Soria un paquete Clean pong que contiene 3 l de jabón de ropa 3 l de jabón de trastes 3 l de cloro y 3 l de fabuloso total $105 sin iva');
+  assert.equal(r.quote.client, 'Soria');
+  assert.equal(r.quote.ivaMode, 'sin');
+  assert.equal(r.quote.items.length, 1);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete Clean pong que contiene: ' + BUNDLE_LIST, 1000, 'paquete', 10500]);
+});
+
+test('parser: la palabra "total" sola (sin "contiene") no activa el modo paquete en un concepto normal', () => {
+  const r = parse('cotiza a Pedro 5 servicios de instalación a 500 pesos total');
+  assert.equal(r.quote.items.length, 1);
+  assert.equal(it(r, 0).qtyMilli, 5000);
+  assert.notEqual(it(r, 0).desc, 'Paquete');
 });
 
 test('parser: "para el cliente X" al final de la frase no arrastra la palabra "cliente" al nombre', () => {
