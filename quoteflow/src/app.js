@@ -34,12 +34,14 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (c) => M.format(c, S.settings.currency);
   const uid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const pid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const icon = {
     mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>',
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
     pen: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>',
     share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>',
+    cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg>',
   };
 
   let toastTimer;
@@ -78,6 +80,25 @@
 
   function totalsOf(q) {
     return M.computeTotals(q);
+  }
+
+  /* ---------- seguimiento de pagos (V0.4) ---------- */
+  const PAYMENT_METHOD_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro' };
+  const PAYMENT_LABEL = { SIN_PAGO: 'Sin pago', PARCIAL: 'Pago parcial', PAGADO: 'Pagado' };
+  const PAYMENT_PILL = { SIN_PAGO: 'draft', PARCIAL: 'info', PAGADO: 'done' };
+  const paidCentsOf = (q) => (q.payments || []).reduce((s, p) => s + p.amountCents, 0);
+  const balanceCentsOf = (q) => Math.max(0, totalsOf(q).total - paidCentsOf(q));
+  function paymentStatusOf(q) {
+    const total = totalsOf(q).total;
+    const paid = paidCentsOf(q);
+    if (paid <= 0) return 'SIN_PAGO';
+    if (total > 0 && paid >= total) return 'PAGADO';
+    return 'PARCIAL';
+  }
+  function savePaymentsChange(q) {
+    q.updatedAt = Date.now();
+    DB.saveQuote(q);
+    syncQuoteToCloud(q, S.catalog);
   }
 
   /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
@@ -243,6 +264,7 @@
       <header class="top">
         <div class="brand">QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</div>
         <span class="spacer"></span>
+        <button class="icon-btn" data-act="collections" aria-label="Cobranza">${icon.cash}</button>
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
       </header>
       ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
@@ -273,7 +295,10 @@
             <span class="client">${esc(q.client || 'Sin cliente')}</span>
             <span class="total num">${fmt(totalsOf(q).total)}</span>
             <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
-            <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+            <span style="display:flex;gap:6px;justify-self:end">
+              <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+              ${q.status === 'GENERADA' ? `<span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>` : ''}
+            </span>
           </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>`;
   }
@@ -582,10 +607,66 @@
           ${q.ivaMode !== 'sin' ? `<tr><td class="muted">IVA${q.ivaMode === 'incluido' ? ' incluido' : ''}</td><td class="r">${fmt(t.iva)}</td></tr>` : ''}
           <tr><td><b>Total</b></td><td class="r"><b>${fmt(t.total)}</b></td></tr>
         </table></div>
+        ${paymentsSection(q)}
         <div class="two-col">
           <button class="btn" data-act="edit">Editar</button>
           <button class="btn" data-act="new">Nueva cotización</button>
         </div>
+      </div>`;
+  }
+
+  function paymentsSection(q) {
+    const total = totalsOf(q).total;
+    const paid = paidCentsOf(q);
+    const balance = balanceCentsOf(q);
+    const status = paymentStatusOf(q);
+    const payments = q.payments || [];
+    return `
+      <div class="section-h"><h2>Cobro</h2><span class="pill ${PAYMENT_PILL[status]}">${PAYMENT_LABEL[status]}</span></div>
+      <div class="sheet"><table class="num">
+        <tr><td class="muted">Pagado</td><td class="r">${fmt(paid)}</td></tr>
+        <tr><td><b>Saldo</b></td><td class="r"><b>${fmt(balance)}</b></td></tr>
+      </table></div>
+      ${payments.length ? `<div class="list">${payments.map((p) => `
+        <div class="qrow" style="grid-template-columns:1fr auto">
+          <span class="client">${fmt(p.amountCents)} · ${esc(PAYMENT_METHOD_LABEL[p.method] || p.method)}${p.note ? ' · ' + esc(p.note) : ''}</span>
+          <button class="x-btn" data-act="del-payment" data-id="${p.id}" aria-label="Eliminar pago">×</button>
+          <span class="meta">${dateStr(p.paidAt)}</span>
+        </div>`).join('')}</div>` : ''}
+      ${balance > 0 ? `
+        <form class="stack" id="payment-form">
+          <div class="two-col">
+            <div class="field"><label for="pay-amount">Monto recibido</label><input id="pay-amount" name="amount" inputmode="decimal" class="num" value="${esc(M.centsToStr(balance).replace(/\.00$/, ''))}" required></div>
+            <div class="field"><label for="pay-method">Método</label><select id="pay-method" name="method">${Object.keys(PAYMENT_METHOD_LABEL).map((m) => `<option value="${m}">${PAYMENT_METHOD_LABEL[m]}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label for="pay-note">Nota (opcional)</label><input id="pay-note" name="note"></div>
+          <button class="btn primary block" type="submit">Registrar pago</button>
+        </form>` : ''}`;
+  }
+
+  /* ---------- cobranza: saldos pendientes de cobro ---------- */
+  function viewCollections() {
+    const pending = DB.getQuotes()
+      .filter((q) => q.status === 'GENERADA' && balanceCentsOf(q) > 0)
+      .sort((a, b) => balanceCentsOf(b) - balanceCentsOf(a));
+    const totalPending = pending.reduce((s, q) => s + balanceCentsOf(q), 0);
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">Cobranza</div>
+      </header>
+      <section class="summary">
+        <div class="muted">Pendiente por cobrar</div>
+        <div class="big num">${fmt(totalPending)}</div>
+      </section>
+      <div class="list">
+        ${pending.length ? pending.map((q) => `
+          <button class="qrow" data-act="open" data-id="${q.id}">
+            <span class="client">${esc(q.client || 'Sin cliente')}</span>
+            <span class="total num">${fmt(balanceCentsOf(q))}</span>
+            <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+            <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
+          </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>'}
       </div>`;
   }
 
@@ -702,6 +783,7 @@
     switch (act) {
       case 'settings': return go('settings');
       case 'home': S.writeOpen = false; return go('home');
+      case 'collections': return go('collections');
       case 'toggle-all': S.showAll = !S.showAll; return render();
       case 'speak':
         if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
@@ -750,6 +832,12 @@
       }
       case 'edit': S.interp = null; return go('editor');
       case 'new': S.writeOpen = false; return go('home');
+      case 'del-payment': {
+        q.payments = (q.payments || []).filter((p) => p.id !== b.dataset.id);
+        savePaymentsChange(q);
+        toast('Pago eliminado');
+        return render();
+      }
       case 'delete': S.confirmDelete = true; return render();
       case 'delete-no': S.confirmDelete = false; return render();
       case 'delete-yes': {
@@ -926,6 +1014,19 @@
       }
     }
 
+    if (e.target.id === 'payment-form') {
+      const amountCents = M.toCents(f.get('amount'));
+      if (!amountCents || amountCents <= 0) return toast('Escribe un monto válido.');
+      const method = String(f.get('method') || 'efectivo');
+      const note = String(f.get('note') || '').trim();
+      const q = S.quote;
+      q.payments = q.payments || [];
+      q.payments.unshift({ id: pid(), amountCents, method, note, paidAt: Date.now() });
+      savePaymentsChange(q);
+      toast('Pago registrado');
+      return render();
+    }
+
     if (e.target.id === 'support-reply-form') {
       const body = String(f.get('body') || '').trim();
       if (!body) return;
@@ -943,6 +1044,7 @@
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket,
+      collections: viewCollections,
     };
     app.innerHTML = views[S.view]();
   }

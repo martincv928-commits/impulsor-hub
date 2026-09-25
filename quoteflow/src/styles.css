@@ -103,6 +103,7 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.45; }
 .pill { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 2px 8px; border-radius: 99px; justify-self: end; align-self: center; }
 .pill.draft { background: var(--warn-soft); color: var(--warn); }
 .pill.done { background: var(--ok-soft); color: var(--ok); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
 .empty { padding: 16px; color: var(--muted); font-size: 14px; }
 
 /* escucha */
