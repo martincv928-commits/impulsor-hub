@@ -18,7 +18,10 @@
     return /^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG';
   }
 
-  function build(quote, settings) {
+  const METHOD_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro' };
+
+  function build(quote, settings, mode) {
+    const isReceipt = mode === 'estado';
     const M = QF.money;
     const { jsPDF } = root.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'letter' });
@@ -54,7 +57,7 @@
     doc.setTextColor(...ACCENT);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text('COTIZACIÓN', R, y + 5, { align: 'right' });
+    doc.text(isReceipt ? 'ESTADO DE CUENTA' : 'COTIZACIÓN', R, y + 5, { align: 'right' });
     doc.setFontSize(9);
     doc.setTextColor(...INK);
     const issued = quote.generatedAt || quote.updatedAt || Date.now();
@@ -179,6 +182,59 @@
     }
     y += 16;
 
+    // Pagos registrados y saldo (solo en el estado de cuenta)
+    if (isReceipt) {
+      const payments = (quote.payments || []).slice().sort((a, b) => a.paidAt - b.paidAt);
+      const paid = payments.reduce((s, p) => s + p.amountCents, 0);
+      const saldo = Math.max(0, t.total - paid);
+      if (y + 20 > H - 30) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...INK);
+      doc.text('PAGOS REGISTRADOS', L, y);
+      y += 6;
+      doc.setFontSize(9);
+      if (payments.length) {
+        payments.forEach((p) => {
+          if (y + 6 > H - 30) { doc.addPage(); y = 20; }
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...MUTED);
+          const label = fmtDate(p.paidAt) + ' · ' + (METHOD_LABEL[p.method] || p.method) + (p.note ? ' · ' + p.note : '');
+          doc.text(label, L, y, { maxWidth: lx - L - 4 });
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...INK);
+          doc.text(money(p.amountCents), R, y, { align: 'right' });
+          y += 5.5;
+        });
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MUTED);
+        doc.text('Sin pagos registrados.', L, y);
+        y += 5.5;
+      }
+      y += 2;
+      doc.setDrawColor(...LINE);
+      doc.setLineWidth(0.2);
+      doc.line(L, y, R, y);
+      y += 6;
+      doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text('Pagado', lx, y);
+      doc.setTextColor(...INK);
+      doc.text(money(paid), R - 2, y, { align: 'right' });
+      y += 5.5;
+      const saldoColor = saldo > 0 ? [154, 98, 18] : [47, 125, 79];
+      doc.setFillColor(...saldoColor);
+      doc.rect(lx - 3, y - 4, R - lx + 3, 9, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11.5);
+      doc.text('SALDO PENDIENTE', lx, y + 2);
+      doc.text(money(saldo), R - 2, y + 2, { align: 'right' });
+      y += 16;
+    }
+
     // Vigencia, notas, condiciones
     function block(title, body) {
       if (!body) return;
@@ -210,13 +266,14 @@
     return doc;
   }
 
-  function filename(quote) {
+  function filename(quote, mode) {
     const c = (quote.client || 'cliente').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    return `Cotizacion_${quote.folio || 'borrador'}_${c}.pdf`;
+    const prefix = mode === 'estado' ? 'Estado_de_cuenta' : 'Cotizacion';
+    return `${prefix}_${quote.folio || 'borrador'}_${c}.pdf`;
   }
 
   QF.pdf = {
-    blob: (quote, settings) => build(quote, settings).output('blob'),
+    blob: (quote, settings, mode) => build(quote, settings, mode).output('blob'),
     filename,
     fmtDate,
   };

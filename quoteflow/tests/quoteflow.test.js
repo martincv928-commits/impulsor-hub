@@ -319,6 +319,13 @@ test('cloud: sin configurar, la app se comporta como V0.2 (deshabilitada)', () =
   assert.equal(CLOUD.enabled(), false);
 });
 
+test('parser: parseAmount saca un monto dictado para registrar un pago', () => {
+  assert.equal(P.parseAmount('quinientos pesos en efectivo'), 50000);
+  assert.equal(P.parseAmount('500.50 pesos'), 50050);
+  assert.equal(P.parseAmount('mil doscientos'), 120000);
+  assert.equal(P.parseAmount('nada de números aquí'), null);
+});
+
 /* ---------- V0.4: seguimiento de pagos ---------- */
 test('cloud: un pago local sobrevive el viaje a fila de Supabase y de vuelta', () => {
   const payment = { id: 'pLocal1', amountCents: 5000, method: 'transferencia', note: 'Anticipo', paidAt: 1700000000000 };

@@ -9,7 +9,9 @@
   const NUM_WORDS = {
     un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9,
     diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, veinte: 20, treinta: 30,
-    cuarenta: 40, cincuenta: 50, cien: 100, ciento: 100, doscientos: 200, quinientos: 500, mil: 1000,
+    cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+    cien: 100, ciento: 100, doscientos: 200, trescientos: 300, cuatrocientos: 400, quinientos: 500,
+    seiscientos: 600, setecientos: 700, ochocientos: 800, novecientos: 900, mil: 1000,
   };
   const NW = Object.keys(NUM_WORDS).sort((a, b) => b.length - a.length).join('|');
 
@@ -65,6 +67,21 @@
   function numOrWord(s) {
     const n = NUM_WORDS[String(s).toLowerCase()];
     return n !== undefined ? n : parseFloat(s);
+  }
+
+  // Extrae un monto en centavos de una frase dictada, p. ej. "quinientos pesos
+  // en efectivo" -> 50000. Solo para capturas simples (un pago, un monto);
+  // no es el parser completo de cotizaciones.
+  function parseAmount(text) {
+    let t = preprocess(text).toLowerCase();
+    t = t.replace(new RegExp('\\b(' + NW + ')(?:\\s+(' + NW + '))?\\b', 'giu'), (m, a, b) => {
+      const av = NUM_WORDS[a] || 0;
+      const bv = b ? NUM_WORDS[b] || 0 : 0;
+      return String(av + bv);
+    });
+    const m = t.match(/(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    return M.toCents(m[1]);
   }
 
   function capitalize(s) {
@@ -406,6 +423,6 @@
     };
   }
 
-  QF.parser = { parse, preprocess, unitOf };
+  QF.parser = { parse, preprocess, unitOf, parseAmount };
   if (typeof module !== 'undefined') module.exports = QF.parser;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -2,7 +2,7 @@
  * persistencia, voz y compartir viven en sus propios módulos. */
 (function () {
   'use strict';
-  const { money: M, catalog: CAT, storage: DB, pdf: PDF, voice: VOICE, share: SHARE, cloud: CLOUD } = window.QF;
+  const { money: M, catalog: CAT, storage: DB, pdf: PDF, voice: VOICE, share: SHARE, cloud: CLOUD, parser: P } = window.QF;
   const interpreter = window.QF.getInterpreter();
   const app = document.getElementById('app');
   const cloudOn = CLOUD && CLOUD.enabled();
@@ -304,14 +304,9 @@
   }
 
   /* ---------- voz ---------- */
-  function startVoice() {
-    if (!VOICE.supported()) {
-      S.writeOpen = true;
-      render();
-      document.getElementById('free-text').focus();
-      toast('Este navegador no tiene dictado. Usa el micrófono de tu teclado.');
-      return;
-    }
+  // Overlay de dictado genérico: muestra "Escuchando…", entrega el texto final
+  // a onFinish. Lo usan tanto la cotización por voz como el pago por voz.
+  function dictate(onFinish, onErrorFallback) {
     const overlay = document.createElement('div');
     overlay.className = 'listen';
     overlay.innerHTML = `
@@ -322,24 +317,21 @@
     const tr = overlay.querySelector('#tr');
     let last = '';
     let cancelled = false;
+    let handle;
     const close = () => { overlay.remove(); S.listening = null; };
     try {
-      S.listening = VOICE.start({
+      handle = S.listening = VOICE.start({
         onText: (t) => { last = t; tr.textContent = t; tr.classList.remove('empty-t'); },
         onEnd: (finalText) => {
           close();
           if (cancelled) return;
-          const text = (finalText || last).trim();
-          if (text) interpretText(text);
-          else toast('No se escuchó nada. Intenta de nuevo.');
+          onFinish((finalText || last).trim());
         },
         onError: (code) => {
           close();
-          S.writeOpen = true;
-          render();
-          toast(code === 'not-allowed' || code === 'service-not-allowed'
-            ? 'Permite el micrófono para dictar, o usa el micrófono del teclado.'
-            : 'No se pudo usar el dictado (' + code + '). Escribe o usa el teclado.');
+          if (onErrorFallback) onErrorFallback(code);
+          else toast(code === 'not-allowed' || code === 'service-not-allowed'
+            ? 'Permite el micrófono para dictar.' : 'No se pudo usar el dictado (' + code + ').');
         },
       });
     } catch (e) {
@@ -347,8 +339,43 @@
       toast('No se pudo iniciar el dictado.');
       return;
     }
-    overlay.querySelector('#v-done').onclick = () => S.listening && S.listening.stop();
-    overlay.querySelector('#v-cancel').onclick = () => { cancelled = true; S.listening && S.listening.abort(); close(); };
+    overlay.querySelector('#v-done').onclick = () => handle && handle.stop();
+    overlay.querySelector('#v-cancel').onclick = () => { cancelled = true; handle && handle.abort(); close(); };
+  }
+
+  function startVoice() {
+    if (!VOICE.supported()) {
+      S.writeOpen = true;
+      render();
+      document.getElementById('free-text').focus();
+      toast('Este navegador no tiene dictado. Usa el micrófono de tu teclado.');
+      return;
+    }
+    dictate(
+      (text) => { if (text) interpretText(text); else toast('No se escuchó nada. Intenta de nuevo.'); },
+      (code) => {
+        S.writeOpen = true;
+        render();
+        toast(code === 'not-allowed' || code === 'service-not-allowed'
+          ? 'Permite el micrófono para dictar, o usa el micrófono del teclado.'
+          : 'No se pudo usar el dictado (' + code + '). Escribe o usa el teclado.');
+      }
+    );
+  }
+
+  function startPaymentVoice() {
+    if (!VOICE.supported()) return toast('Este navegador no tiene dictado. Escribe el monto directamente.');
+    dictate((text) => {
+      if (!text) return toast('No se escuchó nada.');
+      const cents = P.parseAmount(text);
+      const amountInput = document.getElementById('pay-amount');
+      if (cents && amountInput) amountInput.value = M.centsToStr(cents).replace(/\.00$/, '');
+      const methodSelect = document.getElementById('pay-method');
+      const lower = text.toLowerCase();
+      const foundMethod = Object.keys(PAYMENT_METHOD_LABEL).find((m) => lower.includes(m));
+      if (foundMethod && methodSelect) methodSelect.value = foundMethod;
+      toast(cents ? 'Monto capturado: revisa y toca “Registrar pago”.' : 'No se entendió un monto; escríbelo manualmente.');
+    });
   }
 
   /* ---------- interpretación ---------- */
@@ -636,12 +663,22 @@
       ${balance > 0 ? `
         <form class="stack" id="payment-form">
           <div class="two-col">
-            <div class="field"><label for="pay-amount">Monto recibido</label><input id="pay-amount" name="amount" inputmode="decimal" class="num" value="${esc(M.centsToStr(balance).replace(/\.00$/, ''))}" required></div>
+            <div class="field">
+              <label for="pay-amount">Monto recibido</label>
+              <div class="row">
+                <input id="pay-amount" name="amount" inputmode="decimal" class="num" value="${esc(M.centsToStr(balance).replace(/\.00$/, ''))}" required style="flex:1">
+                <button type="button" class="icon-btn" data-act="pay-voice" aria-label="Dictar monto">${icon.mic}</button>
+              </div>
+            </div>
             <div class="field"><label for="pay-method">Método</label><select id="pay-method" name="method">${Object.keys(PAYMENT_METHOD_LABEL).map((m) => `<option value="${m}">${PAYMENT_METHOD_LABEL[m]}</option>`).join('')}</select></div>
           </div>
           <div class="field"><label for="pay-note">Nota (opcional)</label><input id="pay-note" name="note"></div>
           <button class="btn primary block" type="submit">Registrar pago</button>
-        </form>` : ''}`;
+        </form>` : ''}
+      <div class="two-col" style="margin-top:4px">
+        <button class="btn" data-act="share-receipt">${icon.share} Compartir estado de cuenta</button>
+        <button class="btn" data-act="download-receipt">Descargar</button>
+      </div>`;
   }
 
   /* ---------- cobranza: saldos pendientes de cobro ---------- */
@@ -670,12 +707,12 @@
       </div>`;
   }
 
-  function makePdf() {
+  function makePdf(mode) {
     if (!window.jspdf) {
       toast('No se cargó el generador de PDF. Revisa tu conexión y recarga.');
       return null;
     }
-    return PDF.blob(S.quote, S.settings);
+    return PDF.blob(S.quote, S.settings, mode);
   }
 
   /* ---------- configuración ---------- */
@@ -832,6 +869,7 @@
       }
       case 'edit': S.interp = null; return go('editor');
       case 'new': S.writeOpen = false; return go('home');
+      case 'pay-voice': return startPaymentVoice();
       case 'del-payment': {
         q.payments = (q.payments || []).filter((p) => p.id !== b.dataset.id);
         savePaymentsChange(q);
@@ -864,6 +902,18 @@
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         if (!window.open(url, '_blank')) location.href = url;
+        return;
+      }
+      case 'share-receipt': {
+        const blob = makePdf('estado');
+        if (!blob) return;
+        const r = await SHARE.sharePdf(blob, PDF.filename(q, 'estado'), 'Estado de cuenta ' + q.folio, `Estado de cuenta ${q.folio} para ${q.client}: saldo pendiente ${fmt(balanceCentsOf(q))}`);
+        if (r === 'downloaded') toast('Tu navegador no permite compartir archivos; se descargó el PDF.');
+        return;
+      }
+      case 'download-receipt': {
+        const blob = makePdf('estado');
+        if (blob) SHARE.download(blob, PDF.filename(q, 'estado'));
         return;
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
