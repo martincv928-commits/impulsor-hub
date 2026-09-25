@@ -56,6 +56,20 @@
     S.confirmDelete = false;
     render();
     window.scrollTo(0, 0);
+    if (view === 'home' && cloudOn && S.cloudBusiness) {
+      CLOUD.business
+        .getMine()
+        .then((biz) => {
+          if (biz) S.cloudBusiness = biz;
+          if (S.view === 'home') render();
+        })
+        .catch(() => {});
+    }
+  }
+
+  const BLOCKED_STATUS = ['SUSPENDED', 'CANCELLED'];
+  function isBusinessBlocked() {
+    return cloudOn && S.cloudBusiness && BLOCKED_STATUS.includes(S.cloudBusiness.status);
   }
 
   function dateStr(ts) {
@@ -232,6 +246,11 @@
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
       </header>
       ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
+      ${isBusinessBlocked() ? `
+        <div class="banner baja">
+          <div class="head">! Negocio ${S.cloudBusiness.status === 'CANCELLED' ? 'cancelado' : 'suspendido'}</div>
+          <p style="margin:0">No puedes crear cotizaciones nuevas mientras esto siga así. Contacta a soporte desde Configuración si crees que es un error.</p>
+        </div>` : `
       <section class="hero">
         <button class="mic" data-act="speak" aria-label="Hablar cotización">${icon.mic}</button>
         <div class="mic-label">Hablar</div>
@@ -246,7 +265,7 @@
             <span class="spacer"></span>
             <button class="btn primary" data-act="interpret">Interpretar</button>
           </div>` : `<button class="btn block" data-act="write">${icon.pen} Escribir cotización</button>`}
-      </section>
+      </section>`}
       <div class="section-h"><h2>Cotizaciones recientes</h2>${quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
       <div class="list">
         ${shown.length ? shown.map((q) => `
@@ -684,10 +703,15 @@
       case 'settings': return go('settings');
       case 'home': S.writeOpen = false; return go('home');
       case 'toggle-all': S.showAll = !S.showAll; return render();
-      case 'speak': return startVoice();
-      case 'write': S.writeOpen = true; render(); return document.getElementById('free-text').focus();
+      case 'speak':
+        if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
+        return startVoice();
+      case 'write':
+        if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
+        S.writeOpen = true; render(); return document.getElementById('free-text').focus();
       case 'fill-example': document.getElementById('free-text').value = EXAMPLE; return;
       case 'interpret': {
+        if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
         const text = document.getElementById('free-text').value.trim();
         if (!text) return toast('Escribe la cotización primero.');
         return interpretText(text);
