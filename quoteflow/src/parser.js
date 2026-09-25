@@ -246,18 +246,33 @@
   // no varios conceptos con precio por unidad: "de total"/"en total" es la
   // señal de que el monto no se multiplica ni se reparte.
   const BUNDLE_TOTAL_RE = /\b(?:a|en|por)?\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:pesos?|mxn)?\s*(?:de\s+total|en\s+total)\b/iu;
+  // "un paquete NOMBRE que cuesta $X (el cual) contiene ..." — el precio va
+  // pegado al nombre del paquete, antes de la lista de partes, no al final.
+  const BUNDLE_CUESTA_RE = /\b(?:paquete|kits?|combos?)\s+([^,]+?)\s+(?:que\s+)?cuesta\s+\$?\s*(\d+(?:\.\d+)?)/iu;
+
+  function bundleUnit(t) {
+    return /\bpaquete\b/i.test(t) ? 'paquete' : /\bkits?\b/i.test(t) ? 'paquete' : /\bcombos?\b/i.test(t) ? 'paquete' : 'servicio';
+  }
 
   function parseBundle(t) {
-    const m = BUNDLE_TOTAL_RE.exec(t);
-    if (!m) return null;
-    const priceCents = M.toCents(m[1]);
-    let rest = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
-    rest = rest.replace(/\btodo\s+junto\b/giu, ' ').replace(/\s+/g, ' ').trim();
-    const named = /llamad[oa]\s+(.+)$/iu.exec(rest);
-    let desc = named && named[1].trim() ? named[1] : rest.replace(/^(?:un|una)\s+/i, '').replace(/^que\s+contiene\s+/i, '');
-    desc = cleanSeg(desc) || 'Paquete';
-    const unit = /\bpaquete\b/i.test(t) ? 'paquete' : /\bkits?\b/i.test(t) ? 'paquete' : /\bcombos?\b/i.test(t) ? 'paquete' : 'servicio';
-    return { desc: capitalize(desc), qtyMilli: 1000, unit, priceCents, src: { qty: true, price: true, unit: true, lump: true } };
+    let m = BUNDLE_TOTAL_RE.exec(t);
+    if (m) {
+      const priceCents = M.toCents(m[1]);
+      let rest = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+      rest = rest.replace(/\btodo\s+junto\b/giu, ' ').replace(/\s+/g, ' ').trim();
+      const named = /llamad[oa]\s+(.+)$/iu.exec(rest);
+      let desc = named && named[1].trim() ? named[1] : rest.replace(/^(?:un|una)\s+/i, '').replace(/^que\s+contiene\s+/i, '');
+      desc = cleanSeg(desc) || 'Paquete';
+      return { desc: capitalize(desc), qtyMilli: 1000, unit: bundleUnit(t), priceCents, src: { qty: true, price: true, unit: true, lump: true } };
+    }
+    m = BUNDLE_CUESTA_RE.exec(t);
+    if (m) {
+      const name = cleanSeg(m[1].replace(/\bque\b\s*$/i, ''));
+      const priceCents = M.toCents(m[2]);
+      const desc = capitalize(name ? 'Paquete ' + name : 'Paquete');
+      return { desc, qtyMilli: 1000, unit: bundleUnit(t), priceCents, src: { qty: true, price: true, unit: true, lump: true } };
+    }
+    return null;
   }
 
   /* ---------- conceptos ---------- */
