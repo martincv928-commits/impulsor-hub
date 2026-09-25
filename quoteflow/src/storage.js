@@ -6,7 +6,7 @@
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
-    currency: 'MXN', ivaRateBp: 1600, ivaMode: 'mas', validityDays: 15,
+    currency: 'MXN', ivaRateBp: 1600, ivaMode: 'mas', validityDays: 15, paymentTermDays: 0,
     conditions: 'Precios sujetos a cambio sin previo aviso después de la vigencia.\nTiempo de entrega a convenir.',
   };
 

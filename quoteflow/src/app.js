@@ -101,6 +101,35 @@
     syncQuoteToCloud(q, S.catalog);
   }
 
+  /* ---------- vencimiento y plan de parcialidades (V0.4.2) ---------- */
+  const PAYMENT_DUE_LABEL = { vigente: 'Vigente', vencido: 'Vencido', a_tiempo: 'Pagado a tiempo', con_retraso: 'Pagado con retraso' };
+  const PAYMENT_DUE_PILL = { vigente: 'info', vencido: 'danger', a_tiempo: 'done', con_retraso: 'draft' };
+  function paymentDueAt(q) {
+    if (!q.paymentTermDays) return null;
+    const base = q.generatedAt || q.updatedAt || Date.now();
+    return base + q.paymentTermDays * 86400000;
+  }
+  function paymentDueStatus(q) {
+    const due = paymentDueAt(q);
+    if (!due) return null;
+    if (paymentStatusOf(q) === 'PAGADO') {
+      const lastPaidAt = (q.payments || []).reduce((m, p) => Math.max(m, p.paidAt), 0);
+      return lastPaidAt <= due ? 'a_tiempo' : 'con_retraso';
+    }
+    return Date.now() > due ? 'vencido' : 'vigente';
+  }
+  const sortedInstallments = (q) => (q.installments || []).slice().sort((a, b) => a.dueAt - b.dueAt);
+  const INSTALLMENT_LABEL = { CUMPLIDA: 'Cumplida', VENCIDA: 'Vencida', PENDIENTE: 'Pendiente' };
+  const INSTALLMENT_PILL = { CUMPLIDA: 'done', VENCIDA: 'danger', PENDIENTE: 'muted' };
+  function installmentStatusAt(q, idx) {
+    const list = sortedInstallments(q);
+    const upTo = list.slice(0, idx + 1).reduce((s, i) => s + i.amountCents, 0);
+    const dueAt = list[idx].dueAt;
+    const paidByDue = (q.payments || []).filter((p) => p.paidAt <= dueAt).reduce((s, p) => s + p.amountCents, 0);
+    if (paidByDue >= upTo) return 'CUMPLIDA';
+    return Date.now() > dueAt ? 'VENCIDA' : 'PENDIENTE';
+  }
+
   /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
 
   function viewLoading() {
@@ -382,7 +411,7 @@
   async function interpretText(text, keep) {
     const res = await interpreter.interpret(text, { catalog: S.catalog, settings: S.settings });
     const now = Date.now();
-    const base = keep || { id: uid(), folio: null, status: 'BORRADOR', createdAt: now, conditions: S.settings.conditions };
+    const base = keep || { id: uid(), folio: null, status: 'BORRADOR', createdAt: now, conditions: S.settings.conditions, paymentTermDays: S.settings.paymentTermDays || 0 };
     S.quote = Object.assign({}, base, res.quote, { sourceText: text, updatedAt: now });
     if (keep && !res.quote.client) S.quote.client = keep.client;
     S.interp = res;
@@ -459,6 +488,7 @@
           <div class="field"><label for="iva-rate">Tasa IVA %</label><input id="iva-rate" data-q="ivaRate" inputmode="decimal" class="num" value="${esc(M.centsToStr(q.ivaRateBp).replace(/\.00$/, ''))}"></div>
           <div class="field"><label for="validity">Vigencia (días)</label><input id="validity" data-q="validity" inputmode="numeric" class="num" value="${esc(q.validityDays)}"></div>
         </div>
+        <div class="field"><label for="payterm">Plazo de pago (días, 0 = de contado)</label><input id="payterm" data-q="paymentTerm" inputmode="numeric" class="num" value="${esc(q.paymentTermDays || 0)}"></div>
         <div class="two-col">
           <div class="field"><label for="disc">Descuento</label><input id="disc" data-q="disc" inputmode="decimal" class="num" value="${d.value ? esc(M.centsToStr(d.value).replace(/\.00$/, '')) : ''}" placeholder="0"></div>
           <div class="field"><label>Tipo</label><div class="seg two" role="group" aria-label="Tipo de descuento">
@@ -543,6 +573,7 @@
     if (f === 'notes') q.notes = t.value;
     if (f === 'conditions') q.conditions = t.value;
     if (f === 'validity') q.validityDays = parseInt(t.value, 10) || 0;
+    if (f === 'paymentTerm') q.paymentTermDays = parseInt(t.value, 10) || 0;
     if (f === 'ivaRate') q.ivaRateBp = M.toBp(t.value) || 0;
     if (f === 'disc') q.discount = { type: (q.discount && q.discount.type) || 'pct', value: M.toCents(t.value) || 0 };
     refreshTotals();
@@ -648,8 +679,12 @@
     const balance = balanceCentsOf(q);
     const status = paymentStatusOf(q);
     const payments = q.payments || [];
+    const due = paymentDueAt(q);
+    const dueStatus = paymentDueStatus(q);
+    const installments = sortedInstallments(q);
     return `
       <div class="section-h"><h2>Cobro</h2><span class="pill ${PAYMENT_PILL[status]}">${PAYMENT_LABEL[status]}</span></div>
+      ${due ? `<p class="hint">Vence el ${dateStr(due)} <span class="pill ${PAYMENT_DUE_PILL[dueStatus]}" style="margin-left:6px">${PAYMENT_DUE_LABEL[dueStatus]}</span></p>` : ''}
       <div class="sheet"><table class="num">
         <tr><td class="muted">Pagado</td><td class="r">${fmt(paid)}</td></tr>
         <tr><td><b>Saldo</b></td><td class="r"><b>${fmt(balance)}</b></td></tr>
@@ -675,6 +710,27 @@
           <div class="field"><label for="pay-note">Nota (opcional)</label><input id="pay-note" name="note"></div>
           <button class="btn primary block" type="submit">Registrar pago</button>
         </form>` : ''}
+      <div class="section-h"><h2>Plan de parcialidades</h2></div>
+      ${installments.length ? `
+        <div class="list">
+          ${installments.map((inst, i) => `
+            <div class="qrow" style="grid-template-columns:1fr auto">
+              <span class="client">Parcialidad ${i + 1} · ${fmt(inst.amountCents)}</span>
+              <span class="pill ${INSTALLMENT_PILL[installmentStatusAt(q, i)]}">${INSTALLMENT_LABEL[installmentStatusAt(q, i)]}</span>
+              <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn ghost danger block" data-act="clear-installments">Quitar plan de parcialidades</button>
+      ` : `
+        <form class="stack" id="installments-form">
+          <p class="hint">Divide el total en pagos programados para saber si cada abono llega a tiempo.</p>
+          <div class="two-col">
+            <div class="field"><label for="inst-count">Número de parcialidades</label><input id="inst-count" name="count" inputmode="numeric" class="num" value="3"></div>
+            <div class="field"><label for="inst-interval">Días entre cada una</label><input id="inst-interval" name="interval" inputmode="numeric" class="num" value="30"></div>
+          </div>
+          <button class="btn block" type="submit">Generar plan</button>
+        </form>
+      `}
       <div class="two-col" style="margin-top:4px">
         <button class="btn" data-act="share-receipt">${icon.share} Compartir estado de cuenta</button>
         <button class="btn" data-act="download-receipt">Descargar</button>
@@ -685,7 +741,11 @@
   function viewCollections() {
     const pending = DB.getQuotes()
       .filter((q) => q.status === 'GENERADA' && balanceCentsOf(q) > 0)
-      .sort((a, b) => balanceCentsOf(b) - balanceCentsOf(a));
+      .sort((a, b) => {
+        const av = paymentDueStatus(a) === 'vencido' ? 0 : 1;
+        const bv = paymentDueStatus(b) === 'vencido' ? 0 : 1;
+        return av !== bv ? av - bv : balanceCentsOf(b) - balanceCentsOf(a);
+      });
     const totalPending = pending.reduce((s, q) => s + balanceCentsOf(q), 0);
     return `
       <header class="top">
@@ -702,7 +762,10 @@
             <span class="client">${esc(q.client || 'Sin cliente')}</span>
             <span class="total num">${fmt(balanceCentsOf(q))}</span>
             <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
-            <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
+            <span style="display:flex;gap:6px;justify-self:end">
+              <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
+              ${paymentDueAt(q) ? `<span class="pill ${PAYMENT_DUE_PILL[paymentDueStatus(q)]}">${PAYMENT_DUE_LABEL[paymentDueStatus(q)]}</span>` : ''}
+            </span>
           </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>'}
       </div>`;
   }
@@ -746,6 +809,7 @@
           <div class="field"><label for="s-ivamode">Si no se menciona IVA</label><select id="s-ivamode" name="ivaMode">${[['mas', 'Más IVA'], ['incluido', 'IVA incluido'], ['sin', 'Sin IVA']].map(([k, l]) => `<option value="${k}" ${s.ivaMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <div class="field"><label for="s-val">Vigencia (días)</label><input id="s-val" name="validityDays" inputmode="numeric" value="${esc(s.validityDays)}"></div>
         </div>
+        <div class="field"><label for="s-payterm">Plazo de pago predeterminado (días, 0 = de contado)</label><input id="s-payterm" name="paymentTermDays" inputmode="numeric" value="${esc(s.paymentTermDays || 0)}"></div>
         <div class="field"><label for="s-cond">Condiciones predeterminadas</label><textarea id="s-cond" name="conditions">${esc(s.conditions)}</textarea></div>
         <p class="hint">Productos recordados: ${S.catalog.length}. ${cloudOn && S.cloudSession ? 'Tus datos se guardan en tu cuenta.' : 'Tus cotizaciones y datos se guardan solo en este dispositivo.'}</p>
         <button class="btn primary block" type="submit">Guardar</button>
@@ -876,6 +940,12 @@
         toast('Pago eliminado');
         return render();
       }
+      case 'clear-installments': {
+        q.installments = [];
+        savePaymentsChange(q);
+        toast('Plan de parcialidades eliminado');
+        return render();
+      }
       case 'delete': S.confirmDelete = true; return render();
       case 'delete-no': S.confirmDelete = false; return render();
       case 'delete-yes': {
@@ -990,6 +1060,7 @@
       s.rfc = String(f.get('rfc') || '').trim().toUpperCase();
       s.ivaRateBp = M.toBp(f.get('ivaRate')) ?? 1600;
       s.validityDays = parseInt(f.get('validityDays'), 10) || 15;
+      s.paymentTermDays = parseInt(f.get('paymentTermDays'), 10) || 0;
       DB.saveSettings(s);
       toast('Configuración guardada');
       go('home');
@@ -1074,6 +1145,25 @@
       q.payments.unshift({ id: pid(), amountCents, method, note, paidAt: Date.now() });
       savePaymentsChange(q);
       toast('Pago registrado');
+      return render();
+    }
+
+    if (e.target.id === 'installments-form') {
+      const count = Math.max(1, Math.min(24, parseInt(f.get('count'), 10) || 1));
+      const interval = Math.max(1, parseInt(f.get('interval'), 10) || 1);
+      const q = S.quote;
+      const total = totalsOf(q).total;
+      const base = q.generatedAt || q.updatedAt || Date.now();
+      let assigned = 0;
+      const installments = [];
+      for (let i = 0; i < count; i++) {
+        const amt = i === count - 1 ? total - assigned : Math.floor(total / count);
+        assigned += amt;
+        installments.push({ id: pid(), dueAt: base + interval * (i + 1) * 86400000, amountCents: amt });
+      }
+      q.installments = installments;
+      savePaymentsChange(q);
+      toast('Plan de parcialidades generado');
       return render();
     }
 

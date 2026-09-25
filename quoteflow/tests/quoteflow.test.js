@@ -360,6 +360,21 @@ test('cloud: una cotización con pagos parciales conserva el saldo al ir y volve
   assert.equal(back.payments[0].method, 'efectivo');
 });
 
+/* ---------- V0.4.2: vencimiento y plan de parcialidades ---------- */
+test('cloud: el plazo de pago y el plan de parcialidades viajan sin perderse', () => {
+  const local = { id: 'qlocal10', paymentTermDays: 30 };
+  const row = CLOUD._quoteRow('biz-1', local);
+  assert.equal(row.payment_term_days, 30);
+  const back = CLOUD._quoteFromRow(Object.assign({}, row, { id: 'x', created_at: '2023-11-14T00:00:00.000Z', updated_at: '2023-11-14T00:00:00.000Z' }));
+  assert.equal(back.paymentTermDays, 30);
+
+  const inst = { id: 'iLocal1', dueAt: 1700000005000, amountCents: 25000 };
+  const irow = CLOUD._installmentRow('quote-x', inst);
+  assert.deepEqual(irow, { quote_id: 'quote-x', due_at: new Date(1700000005000).toISOString(), amount_cents: 25000 });
+  const backInst = CLOUD._installmentsFromRows([Object.assign({ id: 'inst-uuid-1' }, irow)]);
+  assert.deepEqual(backInst, [{ id: 'inst-uuid-1', dueAt: 1700000005000, amountCents: 25000 }]);
+});
+
 test('voz: el dictado corrige una palabra a medio camino ("litros" -> "L") y aun así se limpia', () => {
   globalThis.webkitSpeechRecognition = globalThis.webkitSpeechRecognition || class {};
   delete require.cache[require.resolve('../src/voice.js')];

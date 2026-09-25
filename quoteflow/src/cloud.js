@@ -145,6 +145,7 @@
       iva_mode: q.ivaMode,
       iva_rate_bp: q.ivaRateBp,
       validity_days: q.validityDays,
+      payment_term_days: q.paymentTermDays || 0,
       notes: q.notes || '',
       conditions: q.conditions || '',
       source_text: q.sourceText || '',
@@ -170,10 +171,12 @@
       id: row.id, folio: row.folio, client: row.client_name, status: row.status,
       items, discount: { type: row.discount_type, value: row.discount_value },
       ivaMode: row.iva_mode, ivaRateBp: row.iva_rate_bp, validityDays: row.validity_days,
+      paymentTermDays: row.payment_term_days || 0,
       notes: row.notes, conditions: row.conditions, sourceText: row.source_text,
       createdAt: new Date(row.created_at).getTime(), updatedAt: new Date(row.updated_at).getTime(),
       generatedAt: row.generated_at ? new Date(row.generated_at).getTime() : undefined,
       payments: paymentsFromRows(row.quote_payments),
+      installments: installmentsFromRows(row.quote_installments),
     };
   }
 
@@ -193,6 +196,20 @@
       .sort((a, b) => b.paidAt - a.paidAt);
   }
 
+  /* ---------- plan de parcialidades (V0.4.2) ---------- */
+  function installmentRow(quoteId, inst) {
+    return {
+      quote_id: quoteId,
+      due_at: new Date(inst.dueAt).toISOString(),
+      amount_cents: inst.amountCents,
+    };
+  }
+  function installmentsFromRows(rows) {
+    return (rows || [])
+      .map((r) => ({ id: r.id, dueAt: new Date(r.due_at).getTime(), amountCents: r.amount_cents }))
+      .sort((a, b) => a.dueAt - b.dueAt);
+  }
+
   const data = {
     // Trae catálogo y cotizaciones del negocio y los mezcla en el caché local
     // (nunca borra local-only que aún no se haya subido).
@@ -200,7 +217,7 @@
       const c = client();
       const [{ data: products, error: e1 }, { data: quotes, error: e2 }] = await Promise.all([
         c.from('products').select('*').eq('business_id', businessId),
-        c.from('quotes').select('*, quote_items(*), quote_payments(*)').eq('business_id', businessId),
+        c.from('quotes').select('*, quote_items(*), quote_payments(*), quote_installments(*)').eq('business_id', businessId),
       ]);
       if (e1) throw new Error(friendlyError(e1));
       if (e2) throw new Error(friendlyError(e2));
@@ -235,6 +252,13 @@
         const payments = q.payments.map((p) => paymentRow(cloudId, p));
         const { error: payErr } = await client().from('quote_payments').insert(payments);
         if (payErr) throw new Error(friendlyError(payErr));
+      }
+      const { error: delInstErr } = await client().from('quote_installments').delete().eq('quote_id', cloudId);
+      if (delInstErr) throw new Error(friendlyError(delInstErr));
+      if (q.installments && q.installments.length) {
+        const installments = q.installments.map((inst) => installmentRow(cloudId, inst));
+        const { error: instErr } = await client().from('quote_installments').insert(installments);
+        if (instErr) throw new Error(friendlyError(instErr));
       }
       return cloudId;
     },
@@ -281,6 +305,7 @@
     // expuestos para pruebas de mapeo de datos (no dependen de red)
     _quoteRow: quoteRow, _quoteFromRow: quoteFromRow, _productRow: productRow, _catalogFromRows: catalogFromRows,
     _paymentRow: paymentRow, _paymentsFromRows: paymentsFromRows,
+    _installmentRow: installmentRow, _installmentsFromRows: installmentsFromRows,
   };
   if (typeof module !== 'undefined') module.exports = QF.cloud;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
