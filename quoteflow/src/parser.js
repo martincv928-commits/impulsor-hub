@@ -217,9 +217,9 @@
     if (any) {
       return { client: any[1], rest: t.slice(0, any.index) + ' ' + t.slice(any.index + any[0].length), doubtful: false };
     }
-    const tail = /(?:^|\s)para\s+((?:el\s+|la\s+)?[\p{L}][\p{L}.&]*(?:\s+[\p{L}][\p{L}.&]*){0,3})$/u.exec(t);
+    const tail = /(?:^|\s)para\s+((?:el\s+|la\s+|el\s+cliente\s+|la\s+cliente\s+|cliente:?\s+)?[\p{L}][\p{L}.&]*(?:\s+[\p{L}][\p{L}.&]*){0,3})$/u.exec(t);
     if (tail && !/\d/.test(tail[1])) {
-      const client = tail[1].replace(/^(?:el|la)\s+/i, '').replace(/(^|\s)(\p{Ll})/gu, (_, x, y) => x + y.toUpperCase());
+      const client = tail[1].replace(/^(?:el\s+cliente|la\s+cliente|cliente|el|la)\s+/i, '').replace(/(^|\s)(\p{Ll})/gu, (_, x, y) => x + y.toUpperCase());
       return { client, rest: t.slice(0, tail.index), doubtful: true };
     }
     return { client: '', rest: t, doubtful: false };
@@ -240,6 +240,25 @@
       '|(?<=' + ITEM_END + ')\\s+(?=' + ITEM_START + ')',
     'iu'
   );
+
+  // Un paquete/kit descrito por sus partes ("contiene 3 l de esto, 3 l de
+  // aquello... a $X de total") es UN solo concepto con un precio de conjunto,
+  // no varios conceptos con precio por unidad: "de total"/"en total" es la
+  // señal de que el monto no se multiplica ni se reparte.
+  const BUNDLE_TOTAL_RE = /\b(?:a|en|por)?\s*\$?\s*(\d+(?:\.\d+)?)\s*(?:pesos?|mxn)?\s*(?:de\s+total|en\s+total)\b/iu;
+
+  function parseBundle(t) {
+    const m = BUNDLE_TOTAL_RE.exec(t);
+    if (!m) return null;
+    const priceCents = M.toCents(m[1]);
+    let rest = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+    rest = rest.replace(/\btodo\s+junto\b/giu, ' ').replace(/\s+/g, ' ').trim();
+    const named = /llamad[oa]\s+(.+)$/iu.exec(rest);
+    let desc = named && named[1].trim() ? named[1] : rest.replace(/^(?:un|una)\s+/i, '').replace(/^que\s+contiene\s+/i, '');
+    desc = cleanSeg(desc) || 'Paquete';
+    const unit = /\bpaquete\b/i.test(t) ? 'paquete' : /\bkits?\b/i.test(t) ? 'paquete' : /\bcombos?\b/i.test(t) ? 'paquete' : 'servicio';
+    return { desc: capitalize(desc), qtyMilli: 1000, unit, priceCents, src: { qty: true, price: true, unit: true, lump: true } };
+  }
 
   /* ---------- conceptos ---------- */
 
@@ -362,7 +381,14 @@
     if (notes.notes) recognized.push('notas');
 
     const items = [];
-    const segs = t.split(SPLIT).map(cleanSeg).filter((x) => x && !/^(?:por\s+favor|gracias|porfa)$/i.test(x));
+    const bundle = parseBundle(t);
+    const segs = bundle ? [] : t.split(SPLIT).map(cleanSeg).filter((x) => x && !/^(?:por\s+favor|gracias|porfa)$/i.test(x));
+    if (bundle) {
+      items.push({
+        id: newId(), desc: bundle.desc, qtyMilli: bundle.qtyMilli, unit: bundle.unit,
+        priceCents: bundle.priceCents, flags: [], candidates: [], priceSource: 'dicho',
+      });
+    }
     for (const seg of segs) {
       if (RESIDUE.test(seg)) continue;
       const p = parseSegment(seg);
