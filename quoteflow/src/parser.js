@@ -402,7 +402,7 @@
         d = d.replace(new RegExp('^(?:a|al|para)\\s+' + c + '(?!\\p{L})\\s*', 'iu'), '');
       }
       d = d
-        .replace(/^(?:y|e|con|m[aá]s|adem[aá]s|tambi[eé]n|de|oye)(?:\s+|$)/iu, '')
+        .replace(/^(?:y|e|con|m[aá]s|adem[aá]s|tambi[eé]n|de|oye|unos|unas|algunos|algunas|alg[uú]n|alguna)(?:\s+|$)/iu, '')
         // precio que quedó pegado al final: "a 80 pesos", "$80", "80 pesos"
         .replace(/\s+(?:(?:a|en|por|de)\s+)?\$\s*\d+(?:\.\d+)?(?:\s*(?:pesos?|mxn))?$/iu, '')
         .replace(/\s+(?:(?:a|en|por|de)\s+)?\d+(?:\.\d+)?\s*(?:pesos?|mxn)$/iu, '')

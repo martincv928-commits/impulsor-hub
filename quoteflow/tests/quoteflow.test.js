@@ -429,6 +429,12 @@ test('parser: la palabra "total" sola (sin "contiene") no activa el modo paquete
   assert.notEqual(it(r, 0).desc, 'Paquete');
 });
 
+test('parser: "unos/unas/algunos" no se queda pegado al nombre del producto', () => {
+  assert.equal(parse('cotízame a Jenny unos tampones de $15').quote.items[0].desc, 'Tampones');
+  assert.equal(parse('cotízame a Jenny unas toallas de $15').quote.items[0].desc, 'Toallas');
+  assert.equal(parse('cotízame a Jenny algunos focos de $15').quote.items[0].desc, 'Focos');
+});
+
 test('parser: "para el cliente X" al final de la frase no arrastra la palabra "cliente" al nombre', () => {
   assert.equal(parse('cotiza un servicio a 500 pesos para el cliente Soria').quote.client, 'Soria');
   assert.equal(parse('cotiza un servicio a 500 pesos para Soria').quote.client, 'Soria');
