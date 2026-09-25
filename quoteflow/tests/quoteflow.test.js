@@ -404,6 +404,14 @@ test('parser: un paquete descrito por partes con "a $X de total" es un solo conc
   assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete climbón', 1000, 'paquete', 10500]);
 });
 
+test('parser: un paquete con "NOMBRE que cuesta $X" (precio antes de la lista de partes) también es un solo concepto', () => {
+  const r = parse('cotízame un paquete clean pón que cuesta $105 el cual contiene 3 l de jabón de ropa 3 litros de jabón de trastes 3 l de cloro y 3 l de fabuloso para el cliente Soria sin iva');
+  assert.equal(r.quote.client, 'Soria');
+  assert.equal(r.quote.ivaMode, 'sin');
+  assert.equal(r.quote.items.length, 1);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete clean pón', 1000, 'paquete', 10500]);
+});
+
 test('parser: "para el cliente X" al final de la frase no arrastra la palabra "cliente" al nombre', () => {
   assert.equal(parse('cotiza un servicio a 500 pesos para el cliente Soria').quote.client, 'Soria');
   assert.equal(parse('cotiza un servicio a 500 pesos para Soria').quote.client, 'Soria');
