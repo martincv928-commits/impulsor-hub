@@ -233,6 +233,50 @@
       doc.text('SALDO PENDIENTE', lx, y + 2);
       doc.text(money(saldo), R - 2, y + 2, { align: 'right' });
       y += 16;
+
+      // Vencimiento del pago completo
+      if (quote.paymentTermDays) {
+        const due = (quote.generatedAt || quote.updatedAt || Date.now()) + quote.paymentTermDays * 86400000;
+        let label;
+        if (saldo <= 0) {
+          const lastPaidAt = payments.reduce((m, p) => Math.max(m, p.paidAt), 0);
+          label = lastPaidAt <= due ? 'pagado a tiempo' : 'pagado con retraso';
+        } else {
+          label = Date.now() > due ? 'vencido' : 'vigente';
+        }
+        if (y + 6 > H - 30) { doc.addPage(); y = 20; }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...MUTED);
+        doc.text(`Vence el ${fmtDate(due)} (${label})`, L, y);
+        y += 8;
+      }
+
+      // Plan de parcialidades
+      if (quote.installments && quote.installments.length) {
+        const list = quote.installments.slice().sort((a, b) => a.dueAt - b.dueAt);
+        if (y + 10 > H - 30) { doc.addPage(); y = 20; }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...INK);
+        doc.text('PLAN DE PARCIALIDADES', L, y);
+        y += 6;
+        doc.setFontSize(9);
+        list.forEach((inst, i) => {
+          if (y + 6 > H - 30) { doc.addPage(); y = 20; }
+          const upTo = list.slice(0, i + 1).reduce((s, x) => s + x.amountCents, 0);
+          const paidByDue = payments.filter((p) => p.paidAt <= inst.dueAt).reduce((s, p) => s + p.amountCents, 0);
+          const st = paidByDue >= upTo ? 'cumplida' : (Date.now() > inst.dueAt ? 'vencida' : 'pendiente');
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...MUTED);
+          doc.text(`Parcialidad ${i + 1} · vence ${fmtDate(inst.dueAt)} · ${st}`, L, y, { maxWidth: lx - L - 4 });
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...INK);
+          doc.text(money(inst.amountCents), R, y, { align: 'right' });
+          y += 5.5;
+        });
+        y += 4;
+      }
     }
 
     // Vigencia, notas, condiciones

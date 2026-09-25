@@ -104,6 +104,8 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.45; }
 .pill.draft { background: var(--warn-soft); color: var(--warn); }
 .pill.done { background: var(--ok-soft); color: var(--ok); }
 .pill.info { background: var(--accent-soft); color: var(--accent); }
+.pill.danger { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.pill.muted { background: var(--line); color: var(--muted); }
 .empty { padding: 16px; color: var(--muted); font-size: 14px; }
 
 /* escucha */
