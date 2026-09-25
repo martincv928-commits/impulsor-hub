@@ -395,3 +395,16 @@ test('parser: "$4 de litro" se entiende igual que "$4 el litro"', () => {
   assert.deepEqual([it(r, 1).qtyMilli, it(r, 1).unit, it(r, 1).priceCents], [5000, 'litro', 400]);
   assertClean(r);
 });
+
+test('parser: un paquete descrito por partes con "a $X de total" es un solo concepto, no uno por parte', () => {
+  const r = parse('cotízame un paquete que contiene 3 l de jabón de ropa 3 l de jabón de trastes 3 l de cloro y 3 l de fabuloso todo junto llamado paquete climbón a $105 de total sin iva para el cliente Soria');
+  assert.equal(r.quote.client, 'Soria');
+  assert.equal(r.quote.ivaMode, 'sin');
+  assert.equal(r.quote.items.length, 1);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).unit, it(r, 0).priceCents], ['Paquete climbón', 1000, 'paquete', 10500]);
+});
+
+test('parser: "para el cliente X" al final de la frase no arrastra la palabra "cliente" al nombre', () => {
+  assert.equal(parse('cotiza un servicio a 500 pesos para el cliente Soria').quote.client, 'Soria');
+  assert.equal(parse('cotiza un servicio a 500 pesos para Soria').quote.client, 'Soria');
+});
