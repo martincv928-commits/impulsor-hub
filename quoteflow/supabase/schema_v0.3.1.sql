@@ -246,6 +246,22 @@ end;
 $$;
 
 -- ---------- consultas de solo lectura para el panel admin ----------
+create or replace function admin_business_stats(p_business_id uuid)
+returns json language plpgsql security definer stable set search_path = public as $$
+declare result json;
+begin
+  if not is_platform_admin(auth.uid()) then raise exception 'No autorizado'; end if;
+  select json_build_object(
+    'members_count', (select count(*) from business_members where business_id = p_business_id),
+    'quotes_count', (select count(*) from quotes where business_id = p_business_id),
+    'quotes_generated', (select count(*) from quotes where business_id = p_business_id and status = 'GENERADA'),
+    'products_count', (select count(*) from products where business_id = p_business_id),
+    'last_quote_at', (select max(updated_at) from quotes where business_id = p_business_id)
+  ) into result;
+  return result;
+end;
+$$;
+
 create or replace function admin_dashboard_stats()
 returns json language plpgsql security definer stable set search_path = public as $$
 declare result json;
