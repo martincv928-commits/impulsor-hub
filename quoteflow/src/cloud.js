@@ -173,7 +173,24 @@
       notes: row.notes, conditions: row.conditions, sourceText: row.source_text,
       createdAt: new Date(row.created_at).getTime(), updatedAt: new Date(row.updated_at).getTime(),
       generatedAt: row.generated_at ? new Date(row.generated_at).getTime() : undefined,
+      payments: paymentsFromRows(row.quote_payments),
     };
+  }
+
+  /* ---------- pagos (V0.4): seguimiento de abonos recibidos por una cotización ---------- */
+  function paymentRow(quoteId, p) {
+    return {
+      quote_id: quoteId,
+      amount_cents: p.amountCents,
+      method: p.method || 'efectivo',
+      note: p.note || '',
+      paid_at: new Date(p.paidAt || Date.now()).toISOString(),
+    };
+  }
+  function paymentsFromRows(rows) {
+    return (rows || [])
+      .map((r) => ({ id: r.id, amountCents: r.amount_cents, method: r.method, note: r.note, paidAt: new Date(r.paid_at).getTime() }))
+      .sort((a, b) => b.paidAt - a.paidAt);
   }
 
   const data = {
@@ -183,7 +200,7 @@
       const c = client();
       const [{ data: products, error: e1 }, { data: quotes, error: e2 }] = await Promise.all([
         c.from('products').select('*').eq('business_id', businessId),
-        c.from('quotes').select('*, quote_items(*)').eq('business_id', businessId),
+        c.from('quotes').select('*, quote_items(*), quote_payments(*)').eq('business_id', businessId),
       ]);
       if (e1) throw new Error(friendlyError(e1));
       if (e2) throw new Error(friendlyError(e2));
@@ -211,6 +228,13 @@
         }));
         const { error: itemsErr } = await client().from('quote_items').insert(items);
         if (itemsErr) throw new Error(friendlyError(itemsErr));
+      }
+      const { error: delPayErr } = await client().from('quote_payments').delete().eq('quote_id', cloudId);
+      if (delPayErr) throw new Error(friendlyError(delPayErr));
+      if (q.payments && q.payments.length) {
+        const payments = q.payments.map((p) => paymentRow(cloudId, p));
+        const { error: payErr } = await client().from('quote_payments').insert(payments);
+        if (payErr) throw new Error(friendlyError(payErr));
       }
       return cloudId;
     },
@@ -256,6 +280,7 @@
     enabled, client, auth, business, data, support, settingsFromBusinessRow, looksLikeUuid,
     // expuestos para pruebas de mapeo de datos (no dependen de red)
     _quoteRow: quoteRow, _quoteFromRow: quoteFromRow, _productRow: productRow, _catalogFromRows: catalogFromRows,
+    _paymentRow: paymentRow, _paymentsFromRows: paymentsFromRows,
   };
   if (typeof module !== 'undefined') module.exports = QF.cloud;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -319,6 +319,40 @@ test('cloud: sin configurar, la app se comporta como V0.2 (deshabilitada)', () =
   assert.equal(CLOUD.enabled(), false);
 });
 
+/* ---------- V0.4: seguimiento de pagos ---------- */
+test('cloud: un pago local sobrevive el viaje a fila de Supabase y de vuelta', () => {
+  const payment = { id: 'pLocal1', amountCents: 5000, method: 'transferencia', note: 'Anticipo', paidAt: 1700000000000 };
+  const row = CLOUD._paymentRow('11111111-1111-1111-1111-111111111111', payment);
+  assert.deepEqual(row, {
+    quote_id: '11111111-1111-1111-1111-111111111111',
+    amount_cents: 5000, method: 'transferencia', note: 'Anticipo',
+    paid_at: new Date(1700000000000).toISOString(),
+  });
+  const back = CLOUD._paymentsFromRows([Object.assign({}, row, { id: 'pay-uuid-1' })]);
+  assert.deepEqual(back, [{ id: 'pay-uuid-1', amountCents: 5000, method: 'transferencia', note: 'Anticipo', paidAt: 1700000000000 }]);
+});
+
+test('cloud: una cotización con pagos parciales conserva el saldo al ir y volver de Supabase', () => {
+  const local = {
+    id: 'qlocal9', folio: 'COT-0009', client: 'Ana',
+    items: [{ id: 'i1', desc: 'Servicio', qtyMilli: 1000, unit: 'servicio', priceCents: 100000, priceSource: 'dicho', catalogName: null }],
+    discount: { type: 'pct', value: 0 }, ivaMode: 'sin', ivaRateBp: 1600, validityDays: 15,
+    notes: '', conditions: '', sourceText: '', status: 'GENERADA', updatedAt: 1700000000000, generatedAt: 1700000000000,
+    payments: [{ id: 'pLocal1', amountCents: 40000, method: 'efectivo', note: '', paidAt: 1700000001000 }],
+  };
+  const row = CLOUD._quoteRow('biz-1', local);
+  const fakeRow = Object.assign({}, row, {
+    id: '22222222-2222-2222-2222-222222222222',
+    created_at: '2023-11-14T00:00:00.000Z',
+    quote_items: [],
+    quote_payments: local.payments.map((p) => CLOUD._paymentRow('22222222-2222-2222-2222-222222222222', p)).map((r, i) => Object.assign({ id: 'pay-' + i }, r)),
+  });
+  const back = CLOUD._quoteFromRow(fakeRow);
+  assert.equal(back.payments.length, 1);
+  assert.equal(back.payments[0].amountCents, 40000);
+  assert.equal(back.payments[0].method, 'efectivo');
+});
+
 test('voz: el dictado corrige una palabra a medio camino ("litros" -> "L") y aun así se limpia', () => {
   globalThis.webkitSpeechRecognition = globalThis.webkitSpeechRecognition || class {};
   delete require.cache[require.resolve('../src/voice.js')];
