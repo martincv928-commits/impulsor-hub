@@ -105,6 +105,25 @@
   }
 
   /* ---------- vencimiento y plan de parcialidades (V0.4.2) ---------- */
+  // Un vencimiento no se considera pasado hasta que termina SU DÍA (no en
+  // cuanto pasa la hora exacta): pagar "hoy" nunca debe marcarse vencido.
+  function endOfDay(ts) {
+    const d = new Date(ts);
+    d.setHours(23, 59, 59, 999);
+    return d.getTime();
+  }
+  function isOverdue(dueAt) {
+    return Date.now() > endOfDay(dueAt);
+  }
+
+  // Pequeño punto de color + la etiqueta, para identificar el estado de un
+  // vistazo (color) y con certeza (texto) — no solo por el color de fondo del pill.
+  const DOT_COLOR = { done: 'var(--ok)', danger: 'var(--danger)', info: 'var(--accent)', draft: 'var(--warn)', muted: 'var(--muted)' };
+  function statusChip(pillClass, label) {
+    const dot = DOT_COLOR[pillClass] || 'var(--muted)';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:9px;height:9px;border-radius:50%;background:${dot};flex:none;display:inline-block"></span><span class="pill ${pillClass}">${esc(label)}</span></span>`;
+  }
+
   const PAYMENT_DUE_LABEL = { vigente: 'Vigente', vencido: 'Vencido', a_tiempo: 'Pagado a tiempo', con_retraso: 'Pagado con retraso' };
   const PAYMENT_DUE_PILL = { vigente: 'info', vencido: 'danger', a_tiempo: 'done', con_retraso: 'draft' };
   function paymentDueAt(q) {
@@ -117,23 +136,37 @@
     if (!due) return null;
     if (paymentStatusOf(q) === 'PAGADO') {
       const lastPaidAt = (q.payments || []).reduce((m, p) => Math.max(m, p.paidAt), 0);
-      return lastPaidAt <= due ? 'a_tiempo' : 'con_retraso';
+      return lastPaidAt <= endOfDay(due) ? 'a_tiempo' : 'con_retraso';
     }
-    return Date.now() > due ? 'vencido' : 'vigente';
+    return isOverdue(due) ? 'vencido' : 'vigente';
   }
   const sortedInstallments = (q) => (q.installments || []).slice().sort((a, b) => a.dueAt - b.dueAt);
-  const INSTALLMENT_LABEL = { A_TIEMPO: 'Pagada a tiempo', PAGADA_TARDE: 'Pagada a destiempo', VENCIDA: 'Vencida', PENDIENTE: 'Pendiente' };
-  const INSTALLMENT_PILL = { A_TIEMPO: 'done', PAGADA_TARDE: 'draft', VENCIDA: 'danger', PENDIENTE: 'muted' };
+  // Combina "qué tanto se ha abonado" (nada / parcial / completo) con "llegó
+  // a tiempo" para dar un solo indicador claro por parcialidad.
+  const INSTALLMENT_LABEL = {
+    A_TIEMPO: 'Pagada a tiempo', PAGADA_TARDE: 'Pagada a destiempo',
+    PARCIAL_PENDIENTE: 'Pago parcial', PARCIAL_VENCIDA: 'Pago parcial (vencida)',
+    PENDIENTE: 'Pendiente', VENCIDA: 'Vencida',
+  };
+  const INSTALLMENT_PILL = {
+    A_TIEMPO: 'done', PAGADA_TARDE: 'draft',
+    PARCIAL_PENDIENTE: 'info', PARCIAL_VENCIDA: 'danger',
+    PENDIENTE: 'muted', VENCIDA: 'danger',
+  };
 
   // Reparte el total abonado (en cualquier fecha) entre las parcialidades en
   // orden ("cascada"): lo que sobra de llenar la 1 pasa a la 2, etc. Esto es
   // lo que dice si cada parcialidad quedó liquidada, parcial o sin pago.
   // El "a tiempo / a destiempo / vencida" se calcula aparte, comparando qué
-  // tanto ya estaba cubierto en la fecha de vencimiento de cada una.
+  // tanto ya estaba cubierto en la fecha de vencimiento de cada una (por día
+  // completo, no por la hora exacta: pagar el mismo día nunca es "vencida").
   function installmentProgress(q) {
     const list = sortedInstallments(q);
     const totalPaid = paidCentsOf(q);
-    const paidByDate = (cutoff) => (q.payments || []).filter((p) => p.paidAt <= cutoff).reduce((s, p) => s + p.amountCents, 0);
+    const paidByDate = (dueAt) => {
+      const cutoff = endOfDay(dueAt);
+      return (q.payments || []).filter((p) => p.paidAt <= cutoff).reduce((s, p) => s + p.amountCents, 0);
+    };
     let cumRequired = 0;
     return list.map((inst) => {
       const requiredThroughPrev = cumRequired;
@@ -142,10 +175,11 @@
       const remaining = inst.amountCents - allocated;
       const liquidadaByDue = paidByDate(inst.dueAt) >= cumRequired;
       const liquidadaNow = totalPaid >= cumRequired;
+      const overdue = isOverdue(inst.dueAt);
       let timeliness;
-      if (liquidadaByDue) timeliness = 'A_TIEMPO';
-      else if (liquidadaNow) timeliness = 'PAGADA_TARDE';
-      else timeliness = Date.now() > inst.dueAt ? 'VENCIDA' : 'PENDIENTE';
+      if (remaining <= 0) timeliness = liquidadaByDue ? 'A_TIEMPO' : 'PAGADA_TARDE';
+      else if (allocated > 0) timeliness = overdue ? 'PARCIAL_VENCIDA' : 'PARCIAL_PENDIENTE';
+      else timeliness = overdue ? 'VENCIDA' : 'PENDIENTE';
       return Object.assign({}, inst, { allocated, remaining, timeliness });
     });
   }
@@ -368,7 +402,7 @@
             <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
             <span style="display:flex;gap:6px;justify-self:end">
               <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
-              ${q.status === 'GENERADA' ? `<span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>` : ''}
+              ${q.status === 'GENERADA' ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
             </span>
           </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>`;
@@ -744,8 +778,8 @@
     const dueStatus = paymentDueStatus(q);
     const progress = installmentProgress(q);
     return `
-      <div class="section-h"><h2>Cobro</h2><span class="pill ${PAYMENT_PILL[status]}">${PAYMENT_LABEL[status]}</span></div>
-      ${due ? `<p class="hint">Vence el ${dateStr(due)} <span class="pill ${PAYMENT_DUE_PILL[dueStatus]}" style="margin-left:6px">${PAYMENT_DUE_LABEL[dueStatus]}</span></p>` : ''}
+      <div class="section-h"><h2>Cobro</h2>${statusChip(PAYMENT_PILL[status], PAYMENT_LABEL[status])}</div>
+      ${due ? `<p class="hint">Vence el ${dateStr(due)} <span style="margin-left:6px">${statusChip(PAYMENT_DUE_PILL[dueStatus], PAYMENT_DUE_LABEL[dueStatus])}</span></p>` : ''}
       <div class="sheet"><table class="num">
         <tr><td class="muted">Pagado</td><td class="r">${fmt(paid)}</td></tr>
         <tr><td><b>Saldo</b></td><td class="r"><b>${fmt(balance)}</b></td></tr>
@@ -780,8 +814,8 @@
         <div class="list">
           ${progress.map((inst, i) => `
             <div class="qrow" style="grid-template-columns:1fr auto">
-              <span class="client">Parcialidad ${i + 1} · ${inst.remaining > 0 ? (inst.allocated > 0 ? `abonado ${fmt(inst.allocated)}, faltan ${fmt(inst.remaining)}` : `${fmt(inst.amountCents)} sin abonos`) : `${fmt(inst.amountCents)} liquidada`}</span>
-              <span class="pill ${INSTALLMENT_PILL[inst.timeliness]}">${INSTALLMENT_LABEL[inst.timeliness]}</span>
+              <span class="client">Parcialidad ${i + 1} · ${fmt(inst.amountCents)}${inst.remaining > 0 && inst.allocated > 0 ? ` (faltan ${fmt(inst.remaining)})` : ''}</span>
+              ${statusChip(INSTALLMENT_PILL[inst.timeliness], INSTALLMENT_LABEL[inst.timeliness])}
               <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
             </div>`).join('')}
         </div>
@@ -829,8 +863,8 @@
             <span class="total num">${fmt(balanceCentsOf(q))}</span>
             <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
             <span style="display:flex;gap:6px;justify-self:end">
-              <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
-              ${paymentDueAt(q) ? `<span class="pill ${PAYMENT_DUE_PILL[paymentDueStatus(q)]}">${PAYMENT_DUE_LABEL[paymentDueStatus(q)]}</span>` : ''}
+              ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
+              ${paymentDueAt(q) ? statusChip(PAYMENT_DUE_PILL[paymentDueStatus(q)], PAYMENT_DUE_LABEL[paymentDueStatus(q)]) : ''}
             </span>
           </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>'}
       </div>`;
@@ -858,7 +892,7 @@
               <span class="client">${esc(c.name)}</span>
               <span class="total num">${c.info.debt > 0 ? fmt(c.info.debt) : ''}</span>
               <span class="meta">${c.info.quotes.length} cotización(es) generada(s)</span>
-              ${c.info.moroso ? '<span class="pill danger">Moroso</span>' : c.info.debt > 0 ? '<span class="pill draft">Debe</span>' : '<span class="pill done">Al corriente</span>'}
+              ${c.info.moroso ? statusChip('danger', 'Moroso') : c.info.debt > 0 ? statusChip('draft', 'Debe') : statusChip('done', 'Al corriente')}
             </button>`).join('') : '<div class="empty">Aún no guardas clientes. Agrega uno arriba, o guarda uno desde una cotización.</div>'}
         </div>
       </div>`;
@@ -884,7 +918,7 @@
             <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
             <span class="total num">${fmt(balanceCentsOf(q))}</span>
             <span class="meta">${dateStr(q.updatedAt)}</span>
-            <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
+            ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
           </button>`).join('') : '<div class="empty">Sin cotizaciones generadas todavía.</div>'}
       </div>
       <div class="stack" style="margin-top:20px">
