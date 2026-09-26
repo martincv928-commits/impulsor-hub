@@ -23,7 +23,12 @@ jobs:
           rm -rf blockforge-build
           mkdir blockforge-build
           unzip -q blockforge-v09-public.zip -d blockforge-build
-          sed -i "s/versionCode 8; versionName '0.8'/versionCode 10; versionName '0.10'/" blockforge-build/app/build.gradle
+          # Auto-increment: every build gets a higher versionCode so it installs as an update
+          VC=$(( ${{ github.run_number }} + 1 ))
+          echo "VC=$VC" >> "$GITHUB_ENV"
+          sed -i "s/versionCode 8; versionName '0.8'/versionCode $VC; versionName '0.$VC'/" blockforge-build/app/build.gradle
+          grep -q "versionCode $VC;" blockforge-build/app/build.gradle
+          sed -i "s/>V0\.8 · NUEVA FORJA</>V0.$VC · NUEVA FORJA</" blockforge-build/app/src/main/assets/www/index.html
           printf "android.useAndroidX=true\nandroid.enableJetifier=true\n" > blockforge-build/gradle.properties
 
       - name: Build release APK
@@ -38,18 +43,18 @@ jobs:
           echo "$KEYSTORE_B64" | base64 --decode > blockforge.keystore
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           UNSIGNED="$(find blockforge-build/app/build/outputs/apk/release -name '*unsigned*.apk' -o -name 'app-release.apk' | head -1)"
-          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" BLOCK_FORGE_V0.10_ALIGNED.apk
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "BLOCK_FORGE_V0.${VC}_ALIGNED.apk"
           "$BUILD_TOOLS/apksigner" sign \
             --ks blockforge.keystore \
             --ks-key-alias blockforge \
             --ks-pass "pass:$KEY_PASSWORD" \
             --key-pass "pass:$KEY_PASSWORD" \
-            --out BLOCK_FORGE_V0.10.apk \
-            BLOCK_FORGE_V0.10_ALIGNED.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs BLOCK_FORGE_V0.10.apk
+            --out "BLOCK_FORGE_V0.${VC}.apk" \
+            "BLOCK_FORGE_V0.${VC}_ALIGNED.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "BLOCK_FORGE_V0.${VC}.apk"
 
       - name: Upload verified signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: BLOCK_FORGE_V0.10_SIGNED
-          path: BLOCK_FORGE_V0.10.apk
+          name: BLOCK_FORGE_V0.${{ env.VC }}_SIGNED
+          path: BLOCK_FORGE_V0.${{ env.VC }}.apk
