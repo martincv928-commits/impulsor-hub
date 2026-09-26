@@ -3,7 +3,7 @@ name: Block Forge V0.9 APK
 on:
   workflow_dispatch:
   push:
-    branches: [block-forge-build-v09]
+    branches: [block-forge-build-v09, claude/new-session-9jvn1h]
 
 jobs:
   build:
