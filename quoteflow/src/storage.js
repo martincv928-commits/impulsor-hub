@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
-  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', importDecided: 'qf.importDecided' };
+  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', importDecided: 'qf.importDecided', customers: 'qf.customers' };
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
@@ -32,6 +32,10 @@
     saveSettings: (s) => write(K.settings, s),
     getCatalog: () => read(K.catalog, []),
     saveCatalog: (c) => write(K.catalog, c),
+    // V0.4.3: base de clientes, opcional (nada se guarda aquí solo, hay que
+    // decidirlo desde la app). No afecta que se pueda cotizar a cualquiera.
+    getCustomers: () => read(K.customers, []),
+    saveCustomers: (c) => write(K.customers, c),
     getQuotes: () => read(K.quotes, []).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
     getQuote: (id) => read(K.quotes, []).find((q) => q.id === id) || null,
     saveQuote(q) {
@@ -59,6 +63,7 @@
         settings: read(K.settings, {}),
         catalog: read(K.catalog, []),
         quotes: read(K.quotes, []),
+        customers: read(K.customers, []),
         folio: read(K.folio, 0),
       };
     },
@@ -85,6 +90,7 @@
       write(K.settings, Object.assign({}, DEFAULT_SETTINGS, data.settings));
       write(K.catalog, data.catalog);
       write(K.quotes, data.quotes);
+      if (Array.isArray(data.customers)) write(K.customers, data.customers);
       if (typeof data.folio === 'number') write(K.folio, data.folio);
       return true;
     },

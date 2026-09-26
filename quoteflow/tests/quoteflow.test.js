@@ -439,3 +439,16 @@ test('parser: "para el cliente X" al final de la frase no arrastra la palabra "c
   assert.equal(parse('cotiza un servicio a 500 pesos para el cliente Soria').quote.client, 'Soria');
   assert.equal(parse('cotiza un servicio a 500 pesos para Soria').quote.client, 'Soria');
 });
+
+/* ---------- V0.4.3: base de clientes opcional ---------- */
+test('parser: si el nombre dicho coincide con un cliente guardado, se usa el nombre guardado tal cual', () => {
+  const customers = [{ key: CAT.key('Constructora López'), name: 'Constructora López S.A. de C.V.' }];
+  const r = P.parse('cotiza a constructora lopez un servicio a 500', { catalog: [], customers, settings: {} });
+  assert.equal(r.quote.client, 'Constructora López S.A. de C.V.');
+});
+
+test('parser: un cliente que no está guardado se sigue usando tal cual (nada obliga a guardarlo)', () => {
+  const customers = [{ key: CAT.key('Constructora López'), name: 'Constructora López S.A. de C.V.' }];
+  const r = P.parse('cotiza a Pedro un servicio a 500', { catalog: [], customers, settings: {} });
+  assert.equal(r.quote.client, 'Pedro');
+});
