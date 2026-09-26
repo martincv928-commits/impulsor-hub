@@ -62,7 +62,9 @@
     doc.setTextColor(...INK);
     const issued = quote.generatedAt || quote.updatedAt || Date.now();
     const until = issued + (quote.validityDays || 0) * 86400000;
-    const meta = [['Folio', quote.folio || '—'], ['Fecha', fmtDate(issued)], ['Válida hasta', fmtDate(until)]];
+    const meta = isReceipt
+      ? [['Folio', quote.folio || '—'], ['Fecha', fmtDate(issued)]]
+      : [['Folio', quote.folio || '—'], ['Fecha', fmtDate(issued)], ['Válida hasta', fmtDate(until)]];
     meta.forEach(([k, v], i) => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...MUTED);
@@ -294,9 +296,13 @@
       doc.text(lines, L, y + 4.6);
       y += lines.length * 4.2 + 9;
     }
-    block('Vigencia', `Esta cotización es válida por ${quote.validityDays} días, hasta el ${fmtDate(until)}.`);
-    block('Notas', quote.notes);
-    block('Condiciones', quote.conditions);
+    // Las políticas de la cotización (vigencia, condiciones) no aplican al
+    // estado de cuenta: ahí solo importan los hechos del cobro.
+    if (!isReceipt) {
+      block('Vigencia', `Esta cotización es válida por ${quote.validityDays} días, hasta el ${fmtDate(until)}.`);
+      block('Notas', quote.notes);
+      block('Condiciones', quote.conditions);
+    }
 
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
