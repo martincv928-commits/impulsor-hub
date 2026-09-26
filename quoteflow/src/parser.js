@@ -420,6 +420,7 @@
   function parse(text, context) {
     const ctx = context || {};
     const catalog = ctx.catalog || [];
+    const customers = ctx.customers || [];
     const settings = ctx.settings || {};
     const recognized = [];
     const doubtful = [];
@@ -434,6 +435,14 @@
     const disc = extractDiscount(t); t = disc.rest;
     t = t.replace(/\s+/g, ' ').trim();
     const cli = extractClient(t); t = cli.rest.trim();
+    // Si el nombre dicho coincide con un cliente ya guardado, se usa su nombre
+    // tal cual está guardado (corrige variaciones de dictado); si no coincide
+    // con ninguno, se deja el nombre dicho tal cual (no hace falta tenerlo
+    // guardado para cotizarle).
+    if (cli.client && customers.length) {
+      const cm = C.find(customers, cli.client);
+      if (cm.match) cli.client = cm.match.name;
+    }
 
     if (cli.client) {
       recognized.push('cliente');

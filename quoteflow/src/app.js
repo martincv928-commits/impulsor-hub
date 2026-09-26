@@ -16,6 +16,8 @@
     interp: null,
     settings: DB.getSettings(),
     catalog: DB.getCatalog(),
+    customers: DB.getCustomers(),
+    activeCustomer: null,
     writeOpen: false,
     showAll: false,
     confirmDelete: false,
@@ -42,6 +44,7 @@
     pen: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>',
     share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>',
     cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg>',
+    people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   };
 
   let toastTimer;
@@ -119,15 +122,53 @@
     return Date.now() > due ? 'vencido' : 'vigente';
   }
   const sortedInstallments = (q) => (q.installments || []).slice().sort((a, b) => a.dueAt - b.dueAt);
-  const INSTALLMENT_LABEL = { CUMPLIDA: 'Cumplida', VENCIDA: 'Vencida', PENDIENTE: 'Pendiente' };
-  const INSTALLMENT_PILL = { CUMPLIDA: 'done', VENCIDA: 'danger', PENDIENTE: 'muted' };
-  function installmentStatusAt(q, idx) {
+  const INSTALLMENT_LABEL = { A_TIEMPO: 'Pagada a tiempo', PAGADA_TARDE: 'Pagada a destiempo', VENCIDA: 'Vencida', PENDIENTE: 'Pendiente' };
+  const INSTALLMENT_PILL = { A_TIEMPO: 'done', PAGADA_TARDE: 'draft', VENCIDA: 'danger', PENDIENTE: 'muted' };
+
+  // Reparte el total abonado (en cualquier fecha) entre las parcialidades en
+  // orden ("cascada"): lo que sobra de llenar la 1 pasa a la 2, etc. Esto es
+  // lo que dice si cada parcialidad quedó liquidada, parcial o sin pago.
+  // El "a tiempo / a destiempo / vencida" se calcula aparte, comparando qué
+  // tanto ya estaba cubierto en la fecha de vencimiento de cada una.
+  function installmentProgress(q) {
     const list = sortedInstallments(q);
-    const upTo = list.slice(0, idx + 1).reduce((s, i) => s + i.amountCents, 0);
-    const dueAt = list[idx].dueAt;
-    const paidByDue = (q.payments || []).filter((p) => p.paidAt <= dueAt).reduce((s, p) => s + p.amountCents, 0);
-    if (paidByDue >= upTo) return 'CUMPLIDA';
-    return Date.now() > dueAt ? 'VENCIDA' : 'PENDIENTE';
+    const totalPaid = paidCentsOf(q);
+    const paidByDate = (cutoff) => (q.payments || []).filter((p) => p.paidAt <= cutoff).reduce((s, p) => s + p.amountCents, 0);
+    let cumRequired = 0;
+    return list.map((inst) => {
+      const requiredThroughPrev = cumRequired;
+      cumRequired += inst.amountCents;
+      const allocated = Math.min(inst.amountCents, Math.max(0, totalPaid - requiredThroughPrev));
+      const remaining = inst.amountCents - allocated;
+      const liquidadaByDue = paidByDate(inst.dueAt) >= cumRequired;
+      const liquidadaNow = totalPaid >= cumRequired;
+      let timeliness;
+      if (liquidadaByDue) timeliness = 'A_TIEMPO';
+      else if (liquidadaNow) timeliness = 'PAGADA_TARDE';
+      else timeliness = Date.now() > inst.dueAt ? 'VENCIDA' : 'PENDIENTE';
+      return Object.assign({}, inst, { allocated, remaining, timeliness });
+    });
+  }
+
+  /* ---------- base de clientes (V0.4.3, opcional: nada obliga a guardar) ---------- */
+  function findCustomer(name) {
+    const key = CAT.key(name);
+    return key ? S.customers.find((c) => CAT.key(c.name) === key) || null : null;
+  }
+  function customerInfo(name) {
+    const key = CAT.key(name);
+    if (!key) return { debt: 0, moroso: false, quotes: [] };
+    const quotes = DB.getQuotes().filter((q) => q.status === 'GENERADA' && CAT.key(q.client) === key);
+    const debt = quotes.reduce((s, q) => s + balanceCentsOf(q), 0);
+    const moroso = quotes.some((q) => balanceCentsOf(q) > 0 && paymentDueStatus(q) === 'vencido');
+    return { debt, moroso, quotes };
+  }
+  function saveCustomer(name) {
+    const clean = String(name || '').trim();
+    if (!clean || findCustomer(clean)) return false;
+    S.customers = S.customers.concat([{ id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: clean, createdAt: Date.now() }]);
+    DB.saveCustomers(S.customers);
+    return true;
   }
 
   /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
@@ -294,6 +335,7 @@
         <div class="brand">QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</div>
         <span class="spacer"></span>
         <button class="icon-btn" data-act="collections" aria-label="Cobranza">${icon.cash}</button>
+        <button class="icon-btn" data-act="clients" aria-label="Clientes">${icon.people}</button>
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
       </header>
       ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
@@ -409,7 +451,8 @@
 
   /* ---------- interpretación ---------- */
   async function interpretText(text, keep) {
-    const res = await interpreter.interpret(text, { catalog: S.catalog, settings: S.settings });
+    const customerEntries = S.customers.map((c) => ({ key: CAT.key(c.name), name: c.name }));
+    const res = await interpreter.interpret(text, { catalog: S.catalog, customers: customerEntries, settings: S.settings });
     const now = Date.now();
     const base = keep || { id: uid(), folio: null, status: 'BORRADOR', createdAt: now, conditions: S.settings.conditions, paymentTermDays: S.settings.paymentTermDays || 0 };
     S.quote = Object.assign({}, base, res.quote, { sourceText: text, updatedAt: now });
@@ -472,7 +515,14 @@
               <button class="btn" data-act="reinterpret" style="margin-top:8px">Volver a interpretar</button>
             </details>
           </div>` : ''}
-        <div class="field"><label for="client">Cliente</label><input id="client" data-q="client" value="${esc(q.client)}" placeholder="Nombre del cliente" class="${q.client ? '' : 'missing'}"></div>
+        <div class="field">
+          <label for="client">Cliente</label>
+          <div class="row">
+            <input id="client" data-q="client" value="${esc(q.client)}" placeholder="Nombre del cliente" list="client-list" class="${q.client ? '' : 'missing'}" style="flex:1">
+            <button type="button" class="icon-btn" data-act="save-client" aria-label="Guardar cliente" title="Guardar como cliente recurrente" style="font-size:20px">☆</button>
+          </div>
+          ${q.client && customerInfo(q.client).moroso ? '<p class="hint" style="color:var(--danger)">⚠ Este cliente tiene pagos vencidos en otra cotización.</p>' : ''}
+        </div>
         <div>
           <div class="lbl">Conceptos</div>
           <div class="stack" id="items">${q.items.map(itemHtml).join('')}</div>
@@ -503,6 +553,7 @@
           : `<button class="btn ghost danger" data-act="delete">Eliminar cotización</button>`) : ''}
       </div>
       <datalist id="cat-list">${S.catalog.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      <datalist id="client-list">${S.customers.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
       <datalist id="unit-list">${UNITS.map((u) => `<option value="${u}">`).join('')}</datalist>
       <div class="dock"><div class="dock-in">
         <div class="totals num" id="totals">${totalsHtml()}</div>
@@ -586,6 +637,11 @@
       const it = findItem(card.dataset.item);
       it.candidates = [];
       if (applyCatalog(it)) { render(); toast('Precio tomado del catálogo: ' + fmt(it.priceCents)); }
+      return;
+    }
+    if (t.id === 'client' && t.value.trim()) {
+      render();
+      if (customerInfo(t.value.trim()).moroso) toast('⚠ Este cliente tiene pagos vencidos en otra cotización.');
     }
   }
 
@@ -673,6 +729,11 @@
       </div>`;
   }
 
+  function todayInputStr(ts) {
+    const d = new Date(ts || Date.now());
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
   function paymentsSection(q) {
     const total = totalsOf(q).total;
     const paid = paidCentsOf(q);
@@ -681,7 +742,7 @@
     const payments = q.payments || [];
     const due = paymentDueAt(q);
     const dueStatus = paymentDueStatus(q);
-    const installments = sortedInstallments(q);
+    const progress = installmentProgress(q);
     return `
       <div class="section-h"><h2>Cobro</h2><span class="pill ${PAYMENT_PILL[status]}">${PAYMENT_LABEL[status]}</span></div>
       ${due ? `<p class="hint">Vence el ${dateStr(due)} <span class="pill ${PAYMENT_DUE_PILL[dueStatus]}" style="margin-left:6px">${PAYMENT_DUE_LABEL[dueStatus]}</span></p>` : ''}
@@ -707,16 +768,20 @@
             </div>
             <div class="field"><label for="pay-method">Método</label><select id="pay-method" name="method">${Object.keys(PAYMENT_METHOD_LABEL).map((m) => `<option value="${m}">${PAYMENT_METHOD_LABEL[m]}</option>`).join('')}</select></div>
           </div>
+          <div class="two-col">
+            <div class="field"><label for="pay-date">Fecha del pago</label><input id="pay-date" name="date" type="date" value="${todayInputStr()}" max="${todayInputStr()}"></div>
+            ${progress.length ? `<div class="field"><label for="pay-installment">Aplica a</label><select id="pay-installment" name="installment"><option value="">Automático</option>${progress.map((inst, i) => `<option value="${i + 1}">Parcialidad ${i + 1} (${fmt(inst.amountCents)})</option>`).join('')}</select></div>` : ''}
+          </div>
           <div class="field"><label for="pay-note">Nota (opcional)</label><input id="pay-note" name="note"></div>
           <button class="btn primary block" type="submit">Registrar pago</button>
         </form>` : ''}
       <div class="section-h"><h2>Plan de parcialidades</h2></div>
-      ${installments.length ? `
+      ${progress.length ? `
         <div class="list">
-          ${installments.map((inst, i) => `
+          ${progress.map((inst, i) => `
             <div class="qrow" style="grid-template-columns:1fr auto">
-              <span class="client">Parcialidad ${i + 1} · ${fmt(inst.amountCents)}</span>
-              <span class="pill ${INSTALLMENT_PILL[installmentStatusAt(q, i)]}">${INSTALLMENT_LABEL[installmentStatusAt(q, i)]}</span>
+              <span class="client">Parcialidad ${i + 1} · ${inst.remaining > 0 ? (inst.allocated > 0 ? `abonado ${fmt(inst.allocated)}, faltan ${fmt(inst.remaining)}` : `${fmt(inst.amountCents)} sin abonos`) : `${fmt(inst.amountCents)} liquidada`}</span>
+              <span class="pill ${INSTALLMENT_PILL[inst.timeliness]}">${INSTALLMENT_LABEL[inst.timeliness]}</span>
               <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
             </div>`).join('')}
         </div>
@@ -731,8 +796,9 @@
           <button class="btn block" type="submit">Generar plan</button>
         </form>
       `}
-      <div class="two-col" style="margin-top:4px">
-        <button class="btn" data-act="share-receipt">${icon.share} Compartir estado de cuenta</button>
+      <button class="btn primary block" data-act="share-receipt" style="margin-top:4px">${icon.share} Compartir estado de cuenta</button>
+      <div class="two-col">
+        <button class="btn" data-act="view-receipt">Ver PDF</button>
         <button class="btn" data-act="download-receipt">Descargar</button>
       </div>`;
   }
@@ -767,6 +833,62 @@
               ${paymentDueAt(q) ? `<span class="pill ${PAYMENT_DUE_PILL[paymentDueStatus(q)]}">${PAYMENT_DUE_LABEL[paymentDueStatus(q)]}</span>` : ''}
             </span>
           </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>'}
+      </div>`;
+  }
+
+  /* ---------- base de clientes (V0.4.3, opcional) ---------- */
+  function viewClients() {
+    const rows = S.customers
+      .map((c) => Object.assign({ info: customerInfo(c.name) }, c))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">Clientes</div>
+      </header>
+      <div class="stack">
+        <form class="row" id="customer-form">
+          <input id="c-name" name="name" placeholder="Nombre del cliente" style="flex:1" required>
+          <button class="btn primary" type="submit">+ Agregar</button>
+        </form>
+        <p class="hint">Guardar un cliente es opcional: siempre puedes cotizar a cualquiera sin guardarlo. Guárdalos para ver quién te debe y quién es recurrente.</p>
+        <div class="list">
+          ${rows.length ? rows.map((c) => `
+            <button class="qrow" data-act="open-client" data-id="${c.id}">
+              <span class="client">${esc(c.name)}</span>
+              <span class="total num">${c.info.debt > 0 ? fmt(c.info.debt) : ''}</span>
+              <span class="meta">${c.info.quotes.length} cotización(es) generada(s)</span>
+              ${c.info.moroso ? '<span class="pill danger">Moroso</span>' : c.info.debt > 0 ? '<span class="pill draft">Debe</span>' : '<span class="pill done">Al corriente</span>'}
+            </button>`).join('') : '<div class="empty">Aún no guardas clientes. Agrega uno arriba, o guarda uno desde una cotización.</div>'}
+        </div>
+      </div>`;
+  }
+
+  function viewClientDetail() {
+    const c = S.activeCustomer;
+    const info = customerInfo(c.name);
+    const quotes = info.quotes.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="clients" aria-label="Volver a clientes">${icon.back}</button>
+        <div class="title">${esc(c.name)}</div>
+      </header>
+      <section class="summary">
+        <div class="muted">${info.moroso ? '⚠ Cliente moroso: tiene pagos vencidos' : info.debt > 0 ? 'Tiene saldo pendiente' : 'Al corriente'}</div>
+        <div class="big num">${fmt(info.debt)}</div>
+      </section>
+      <div class="section-h"><h2>Cotizaciones generadas</h2></div>
+      <div class="list">
+        ${quotes.length ? quotes.map((q) => `
+          <button class="qrow" data-act="open" data-id="${q.id}">
+            <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
+            <span class="total num">${fmt(balanceCentsOf(q))}</span>
+            <span class="meta">${dateStr(q.updatedAt)}</span>
+            <span class="pill ${PAYMENT_PILL[paymentStatusOf(q)]}">${PAYMENT_LABEL[paymentStatusOf(q)]}</span>
+          </button>`).join('') : '<div class="empty">Sin cotizaciones generadas todavía.</div>'}
+      </div>
+      <div class="stack" style="margin-top:20px">
+        <button class="btn ghost danger block" data-act="delete-client">Quitar de clientes guardados</button>
       </div>`;
   }
 
@@ -885,6 +1007,20 @@
       case 'settings': return go('settings');
       case 'home': S.writeOpen = false; return go('home');
       case 'collections': return go('collections');
+      case 'clients': S.customers = DB.getCustomers(); return go('clients');
+      case 'open-client': S.activeCustomer = S.customers.find((c) => c.id === b.dataset.id); return go('client-detail');
+      case 'delete-client': {
+        S.customers = S.customers.filter((c) => c.id !== S.activeCustomer.id);
+        DB.saveCustomers(S.customers);
+        toast('Cliente eliminado de guardados');
+        return go('clients');
+      }
+      case 'save-client': {
+        if (!S.quote.client) return toast('Escribe el nombre del cliente primero.');
+        if (saveCustomer(S.quote.client)) toast('Cliente guardado');
+        else toast('Ese cliente ya está guardado.');
+        return render();
+      }
       case 'toggle-all': S.showAll = !S.showAll; return render();
       case 'speak':
         if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
@@ -979,6 +1115,13 @@
         if (!blob) return;
         const r = await SHARE.sharePdf(blob, PDF.filename(q, 'estado'), 'Estado de cuenta ' + q.folio, `Estado de cuenta ${q.folio} para ${q.client}: saldo pendiente ${fmt(balanceCentsOf(q))}`);
         if (r === 'downloaded') toast('Tu navegador no permite compartir archivos; se descargó el PDF.');
+        return;
+      }
+      case 'view-receipt': {
+        const blob = makePdf('estado');
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        if (!window.open(url, '_blank')) location.href = url;
         return;
       }
       case 'download-receipt': {
@@ -1139,10 +1282,14 @@
       const amountCents = M.toCents(f.get('amount'));
       if (!amountCents || amountCents <= 0) return toast('Escribe un monto válido.');
       const method = String(f.get('method') || 'efectivo');
-      const note = String(f.get('note') || '').trim();
+      let note = String(f.get('note') || '').trim();
+      const installmentNum = parseInt(f.get('installment'), 10);
+      if (installmentNum > 0) note = `[Parcialidad ${installmentNum}] ${note}`.trim();
+      const dateInput = String(f.get('date') || '').trim();
+      const paidAt = dateInput ? new Date(dateInput + 'T12:00:00').getTime() : Date.now();
       const q = S.quote;
       q.payments = q.payments || [];
-      q.payments.unshift({ id: pid(), amountCents, method, note, paidAt: Date.now() });
+      q.payments.unshift({ id: pid(), amountCents, method, note, paidAt: Number.isFinite(paidAt) ? paidAt : Date.now() });
       savePaymentsChange(q);
       toast('Pago registrado');
       return render();
@@ -1167,6 +1314,14 @@
       return render();
     }
 
+    if (e.target.id === 'customer-form') {
+      const name = String(f.get('name') || '').trim();
+      if (!name) return;
+      if (saveCustomer(name)) toast('Cliente agregado');
+      else toast('Ese cliente ya existe.');
+      return render();
+    }
+
     if (e.target.id === 'support-reply-form') {
       const body = String(f.get('body') || '').trim();
       if (!body) return;
@@ -1184,7 +1339,7 @@
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket,
-      collections: viewCollections,
+      collections: viewCollections, clients: viewClients, 'client-detail': viewClientDetail,
     };
     app.innerHTML = views[S.view]();
   }
