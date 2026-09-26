@@ -415,6 +415,67 @@
     return RESIDUE.test(d) ? '' : capitalize(d);
   }
 
+  // Convierte texto ya "limpio" (sin cliente/iva/vigencia/descuento/notas) en
+  // conceptos. Lo usan parse() (cotización completa) y parseItems() (agregar
+  // un producto suelto a una cotización que ya existe).
+  function buildItems(t, catalog, clientName) {
+    const items = [];
+    const unparsed = [];
+    const bundle = parseBundle(t);
+    const segs = bundle ? [] : t.split(SPLIT).map(cleanSeg).filter((x) => x && !/^(?:por\s+favor|gracias|porfa)$/i.test(x));
+    if (bundle) {
+      items.push({
+        id: newId(), desc: bundle.desc, qtyMilli: bundle.qtyMilli, unit: bundle.unit,
+        priceCents: bundle.priceCents, flags: [], candidates: [], priceSource: 'dicho',
+      });
+    }
+    for (const seg of segs) {
+      if (RESIDUE.test(seg)) continue;
+      const p = parseSegment(seg);
+      p.desc = cleanDesc(p.desc, clientName);
+      if (!p.desc) {
+        if (p.qtyMilli !== null || p.priceCents !== null) unparsed.push(seg);
+        continue;
+      }
+      const item = { id: newId(), desc: p.desc, qtyMilli: p.qtyMilli, unit: p.unit, priceCents: p.priceCents, flags: [], candidates: [], priceSource: p.priceCents !== null ? 'dicho' : null };
+      const found = C.find(catalog, p.desc);
+      if (found.match) {
+        if (item.priceCents === null) {
+          item.priceCents = found.match.priceCents;
+          item.priceSource = 'catalogo';
+          item.catalogName = found.match.name;
+          item.flags.push(found.exact ? 'precio_catalogo' : 'precio_catalogo_aprox');
+        }
+        if (!item.unit && found.match.unit) item.unit = found.match.unit;
+      } else if (found.candidates.length && item.priceCents === null) {
+        item.candidates = found.candidates.map((e) => ({ name: e.name, unit: e.unit, priceCents: e.priceCents }));
+        item.flags.push('ambiguo');
+      }
+      if (item.qtyMilli === null) item.flags.push('sin_cantidad');
+      if (item.priceCents === null) item.flags.push('sin_precio');
+      if (!item.unit) item.unit = p.src.lump ? 'servicio' : 'pieza';
+      items.push(item);
+    }
+    return { items, unparsed };
+  }
+
+  // Agrega uno o varios conceptos sueltos a una cotización que ya existe
+  // (por ejemplo "2 piezas de foco a 45 pesos"), sin tocar cliente/iva/etc.
+  // Se le puede decir/escribir de más (cliente, iva…) y simplemente se ignora.
+  function parseItems(text, context) {
+    const ctx = context || {};
+    const catalog = ctx.catalog || [];
+    let t = preprocess(text);
+    t = t.replace(COMMAND, '');
+    t = extractNotes(t).rest;
+    t = extractIva(t).rest;
+    t = extractValidity(t).rest;
+    t = extractDiscount(t).rest;
+    t = extractClient(t).rest;
+    t = t.replace(/\s+/g, ' ').trim();
+    return buildItems(t, catalog, '').items;
+  }
+
   /* ---------- API ---------- */
 
   function parse(text, context) {
@@ -456,42 +517,8 @@
     if (disc.unclear) doubtful.push({ field: 'descuento', message: 'Se mencionó un descuento pero no su valor.' });
     if (notes.notes) recognized.push('notas');
 
-    const items = [];
-    const bundle = parseBundle(t);
-    const segs = bundle ? [] : t.split(SPLIT).map(cleanSeg).filter((x) => x && !/^(?:por\s+favor|gracias|porfa)$/i.test(x));
-    if (bundle) {
-      items.push({
-        id: newId(), desc: bundle.desc, qtyMilli: bundle.qtyMilli, unit: bundle.unit,
-        priceCents: bundle.priceCents, flags: [], candidates: [], priceSource: 'dicho',
-      });
-    }
-    for (const seg of segs) {
-      if (RESIDUE.test(seg)) continue;
-      const p = parseSegment(seg);
-      p.desc = cleanDesc(p.desc, cli.client);
-      if (!p.desc) {
-        if (p.qtyMilli !== null || p.priceCents !== null) unparsed.push(seg);
-        continue;
-      }
-      const item = { id: newId(), desc: p.desc, qtyMilli: p.qtyMilli, unit: p.unit, priceCents: p.priceCents, flags: [], candidates: [], priceSource: p.priceCents !== null ? 'dicho' : null };
-      const found = C.find(catalog, p.desc);
-      if (found.match) {
-        if (item.priceCents === null) {
-          item.priceCents = found.match.priceCents;
-          item.priceSource = 'catalogo';
-          item.catalogName = found.match.name;
-          item.flags.push(found.exact ? 'precio_catalogo' : 'precio_catalogo_aprox');
-        }
-        if (!item.unit && found.match.unit) item.unit = found.match.unit;
-      } else if (found.candidates.length && item.priceCents === null) {
-        item.candidates = found.candidates.map((e) => ({ name: e.name, unit: e.unit, priceCents: e.priceCents }));
-        item.flags.push('ambiguo');
-      }
-      if (item.qtyMilli === null) item.flags.push('sin_cantidad');
-      if (item.priceCents === null) item.flags.push('sin_precio');
-      if (!item.unit) item.unit = p.src.lump ? 'servicio' : 'pieza';
-      items.push(item);
-    }
+    const { items, unparsed: itemsUnparsed } = buildItems(t, catalog, cli.client);
+    unparsed.push(...itemsUnparsed);
 
     if (items.length) recognized.push('conceptos');
     else doubtful.push({ field: 'conceptos', message: 'No se identificaron conceptos.' });
@@ -525,6 +552,6 @@
     };
   }
 
-  QF.parser = { parse, preprocess, unitOf, parseAmount };
+  QF.parser = { parse, preprocess, unitOf, parseAmount, parseItems };
   if (typeof module !== 'undefined') module.exports = QF.parser;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

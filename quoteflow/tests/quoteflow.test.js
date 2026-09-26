@@ -452,3 +452,17 @@ test('parser: un cliente que no está guardado se sigue usando tal cual (nada ob
   const r = P.parse('cotiza a Pedro un servicio a 500', { catalog: [], customers, settings: {} });
   assert.equal(r.quote.client, 'Pedro');
 });
+
+/* ---------- V0.4.4: agregar un producto suelto a una cotización existente ---------- */
+test('parser: parseItems agrega un concepto suelto sin necesitar cliente/iva/etc', () => {
+  const items = P.parseItems('2 piezas de foco a 45 pesos', { catalog: [] });
+  assert.equal(items.length, 1);
+  assert.deepEqual([items[0].desc, items[0].qtyMilli, items[0].unit, items[0].priceCents], ['Foco', 2000, 'pieza', 4500]);
+});
+
+test('parser: parseItems ignora un "agrega" inicial y usa el catálogo si no se dice precio', () => {
+  const catalog = [{ key: CAT.key('Cloro'), name: 'Cloro', unit: 'litro', priceCents: 1200 }];
+  const items = P.parseItems('agrega 3 litros de cloro', { catalog });
+  assert.equal(items.length, 1);
+  assert.deepEqual([items[0].desc, items[0].qtyMilli, items[0].priceCents, items[0].priceSource], ['Cloro', 3000, 1200, 'catalogo']);
+});

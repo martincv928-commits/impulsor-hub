@@ -19,6 +19,7 @@
     customers: DB.getCustomers(),
     activeCustomer: null,
     writeOpen: false,
+    addProductOpen: false,
     showAll: false,
     confirmDelete: false,
     listening: null,
@@ -573,6 +574,7 @@
           <div class="field"><label for="validity">Vigencia (días)</label><input id="validity" data-q="validity" inputmode="numeric" class="num" value="${esc(q.validityDays)}"></div>
         </div>
         <div class="field"><label for="payterm">Plazo de pago (días, 0 = de contado)</label><input id="payterm" data-q="paymentTerm" inputmode="numeric" class="num" value="${esc(q.paymentTermDays || 0)}"></div>
+        <div class="field"><label for="saledate">Fecha de la venta</label><input id="saledate" data-q="saleDate" type="date" value="${todayInputStr(q.generatedAt)}" max="${todayInputStr()}"></div>
         <div class="two-col">
           <div class="field"><label for="disc">Descuento</label><input id="disc" data-q="disc" inputmode="decimal" class="num" value="${d.value ? esc(M.centsToStr(d.value).replace(/\.00$/, '')) : ''}" placeholder="0"></div>
           <div class="field"><label>Tipo</label><div class="seg two" role="group" aria-label="Tipo de descuento">
@@ -659,6 +661,7 @@
     if (f === 'conditions') q.conditions = t.value;
     if (f === 'validity') q.validityDays = parseInt(t.value, 10) || 0;
     if (f === 'paymentTerm') q.paymentTermDays = parseInt(t.value, 10) || 0;
+    if (f === 'saleDate' && t.value) q.generatedAt = new Date(t.value + 'T12:00:00').getTime();
     if (f === 'ivaRate') q.ivaRateBp = M.toBp(t.value) || 0;
     if (f === 'disc') q.discount = { type: (q.discount && q.discount.type) || 'pct', value: M.toCents(t.value) || 0 };
     refreshTotals();
@@ -693,8 +696,13 @@
     if (!q.folio) q.folio = DB.nextFolio();
     q.status = status;
     q.updatedAt = now;
-    if (status === 'GENERADA') q.generatedAt = now;
+    // Solo se pone la fecha de venta la primera vez que se genera: si ya
+    // tenía una (la de hoy, o una que el usuario haya puesto a mano para una
+    // venta pasada), no se pisa al volver a generar (p. ej. tras agregar un
+    // producto).
+    if (status === 'GENERADA' && !q.generatedAt) q.generatedAt = now;
     q.items.forEach((it) => { it.candidates = []; });
+    reconcileInstallments(q);
     q.totals = totalsOf(q);
     DB.saveQuote(q);
     let cat = S.catalog;
@@ -702,6 +710,23 @@
     S.catalog = cat;
     DB.saveCatalog(cat);
     syncQuoteToCloud(q, cat);
+  }
+
+  // Si el total cambia (se agrega/edita un producto) y ya había un plan de
+  // parcialidades, se reparte el nuevo total entre las mismas parcialidades
+  // (mismas fechas de vencimiento), igual que cuando se generó el plan.
+  function reconcileInstallments(q) {
+    if (!q.installments || !q.installments.length) return;
+    const total = totalsOf(q).total;
+    const sorted = sortedInstallments(q);
+    const count = sorted.length;
+    const per = Math.floor(total / count);
+    let assigned = 0;
+    q.installments = sorted.map((inst, i) => {
+      const amt = i === count - 1 ? total - assigned : per;
+      assigned += amt;
+      return Object.assign({}, inst, { amountCents: amt });
+    });
   }
 
   // La cotización y el catálogo ya quedaron guardados localmente (arriba); esto
@@ -755,12 +780,42 @@
           ${q.ivaMode !== 'sin' ? `<tr><td class="muted">IVA${q.ivaMode === 'incluido' ? ' incluido' : ''}</td><td class="r">${fmt(t.iva)}</td></tr>` : ''}
           <tr><td><b>Total</b></td><td class="r"><b>${fmt(t.total)}</b></td></tr>
         </table></div>
+        ${addProductSection()}
         ${paymentsSection(q)}
         <div class="two-col">
           <button class="btn" data-act="edit">Editar</button>
           <button class="btn" data-act="new">Nueva cotización</button>
         </div>
       </div>`;
+  }
+
+  // Agregar un producto a una cotización ya generada, directo o por voz, sin
+  // perder el estado GENERADA ni la fecha de venta ya registrada. Si hay un
+  // plan de parcialidades, se reajusta solo al nuevo total (mismas fechas).
+  function addProductSection() {
+    return `
+      <div class="section-h"><h2>Agregar producto</h2></div>
+      ${S.addProductOpen ? `
+        <div class="stack">
+          <div class="row">
+            <textarea id="add-product-text" placeholder="Ej. 2 piezas de foco a 45 pesos" style="flex:1;min-height:60px"></textarea>
+            <button type="button" class="icon-btn" data-act="add-product-voice" aria-label="Dictar producto">${icon.mic}</button>
+          </div>
+          <button class="btn primary block" data-act="add-product-submit">Agregar a la cotización</button>
+        </div>
+      ` : `<button class="btn block ghost" data-act="add-product-open">+ Agregar producto</button>`}`;
+  }
+
+  function addProductsToQuote(text) {
+    const q = S.quote;
+    const items = P.parseItems(text, { catalog: S.catalog });
+    if (!items.length) return toast('No se entendió ningún producto. Intenta de nuevo.');
+    items.forEach((it) => q.items.push(it));
+    persist(q.status);
+    const incomplete = items.some((it) => it.qtyMilli === null || it.priceCents === null || (it.candidates && it.candidates.length));
+    toast(incomplete ? 'Producto agregado; revisa cantidad/precio en Editar.' : 'Producto agregado: ' + items.map((i) => i.desc).join(', '));
+    S.addProductOpen = false;
+    render();
   }
 
   function todayInputStr(ts) {
@@ -1115,6 +1170,19 @@
         savePaymentsChange(q);
         toast('Plan de parcialidades eliminado');
         return render();
+      }
+      case 'add-product-open': S.addProductOpen = true; render(); return document.getElementById('add-product-text').focus();
+      case 'add-product-voice':
+        if (!VOICE.supported()) return toast('Este navegador no tiene dictado. Escríbelo directamente.');
+        return dictate((text) => {
+          if (!text) return toast('No se escuchó nada.');
+          const ta = document.getElementById('add-product-text');
+          if (ta) ta.value = text;
+        });
+      case 'add-product-submit': {
+        const text = document.getElementById('add-product-text').value.trim();
+        if (!text) return toast('Escribe o dicta el producto primero.');
+        return addProductsToQuote(text);
       }
       case 'delete': S.confirmDelete = true; return render();
       case 'delete-no': S.confirmDelete = false; return render();
