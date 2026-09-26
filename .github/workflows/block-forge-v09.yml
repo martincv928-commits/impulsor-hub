@@ -1,0 +1,32 @@
+name: Block Forge V0.9 APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Prepare Block Forge source
+        run: |
+          rm -rf blockforge-build
+          mkdir blockforge-build
+          unzip -q blockforge-v09-public.zip -d blockforge-build
+          sed -i "s/versionCode 8; versionName '0.8'/versionCode 9; versionName '0.9'/" blockforge-build/app/build.gradle
+      - name: Build release APK
+        working-directory: blockforge-build
+        run: gradle assembleRelease
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLOCK_FORGE_V0.9_UNSIGNED
+          path: blockforge-build/app/build/outputs/apk/release/*.apk
