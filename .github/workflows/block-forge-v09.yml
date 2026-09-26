@@ -21,6 +21,7 @@ jobs:
           mkdir blockforge-build
           unzip -q blockforge-v09-public.zip -d blockforge-build
           sed -i "s/versionCode 8; versionName '0.8'/versionCode 9; versionName '0.9'/" blockforge-build/app/build.gradle
+          printf "android.useAndroidX=true\nandroid.enableJetifier=true\n" > blockforge-build/gradle.properties
       - name: Build release APK
         working-directory: blockforge-build
         run: gradle assembleRelease
