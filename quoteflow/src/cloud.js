@@ -52,7 +52,22 @@
       return data.session || null;
     },
     onChange(cb) {
-      client().auth.onAuthStateChange((_event, session) => cb(session));
+      client().auth.onAuthStateChange((event, session) => cb(session, event));
+    },
+    // Manda el correo de restablecimiento. redirectTo debe ser una URL de la
+    // propia app (la misma página funciona: al volver del correo, Supabase
+    // entrega una sesión especial de recuperación y dispara el evento
+    // 'PASSWORD_RECOVERY' en onChange).
+    async resetPasswordForEmail(email, redirectTo) {
+      const { error } = await client().auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw new Error(friendlyError(error));
+    },
+    // Solo funciona dentro de la sesión de recuperación que llega por el
+    // enlace del correo (o con sesión normal, para cambiar tu propia
+    // contraseña ya logueado).
+    async updatePassword(newPassword) {
+      const { error } = await client().auth.updateUser({ password: newPassword });
+      if (error) throw new Error(friendlyError(error));
     },
   };
 
