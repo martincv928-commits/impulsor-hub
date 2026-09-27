@@ -47,6 +47,7 @@
     share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>',
     cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    brand: '<svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2f3f9e"/><stop offset="100%" stop-color="#5a3fc0"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#bmg)"/><path d="M28 34 Q28 26 36 26 L64 26 Q72 26 72 34 L72 56 Q72 64 64 64 L46 64 L34 74 Q31 76 31 72 L31 64 L36 64 Q28 64 28 56 Z" fill="#fff"/><rect x="40" y="50" width="7" height="9" rx="2" fill="#ffb648"/><rect x="50" y="43" width="7" height="16" rx="2" fill="#ffb648"/><rect x="60" y="35" width="7" height="24" rx="2" fill="#3a2fae"/></svg>',
   };
 
   let toastTimer;
@@ -217,7 +218,7 @@
     const login = S.authMode === 'login';
     return `
       <div class="hero" style="padding-top:14px">
-        <div class="brand">QuoteFlow</div>
+        <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
       </div>
       <form class="stack" id="auth-form">
         <h2 class="title">${login ? 'Inicia sesión' : 'Crea tu cuenta'}</h2>
@@ -231,7 +232,7 @@
   function viewBusinessNew() {
     const s = S.settings; // se usan como sugerencia inicial si ya había datos locales de V0.2
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow</div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>QuoteFlow</span></div></div>
       <form class="stack" id="business-form">
         <h2 class="title">Crea tu negocio</h2>
         <p class="hint">Todo lo que cotices va a quedar guardado en este negocio.</p>
@@ -251,7 +252,7 @@
     const n = DB.getQuotes().length;
     const p = DB.getCatalog().length;
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow</div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>QuoteFlow</span></div></div>
       <div class="stack">
         <p>Encontramos datos de QuoteFlow en este dispositivo: ${n} cotización(es) y ${p} producto(s) de catálogo.</p>
         <button class="btn primary block" data-act="import-yes" ${S.authBusy ? 'disabled' : ''}>Importarlos a mi cuenta</button>
@@ -368,7 +369,7 @@
     const name = S.settings.businessName;
     return `
       <header class="top">
-        <div class="brand">QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</div>
+        <div class="brand">${icon.brand}<span>QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</span></div>
         <span class="spacer"></span>
         <button class="icon-btn" data-act="collections" aria-label="Cobranza">${icon.cash}</button>
         <button class="icon-btn" data-act="clients" aria-label="Clientes">${icon.people}</button>
