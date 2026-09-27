@@ -30,6 +30,24 @@
   }
 
   const METHOD_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro' };
+  const OK_RGB = [47, 125, 79];
+  const DANGER_RGB = [179, 38, 30];
+
+  // Mismo criterio que en la app: si al momento de este pago ya había algo
+  // vencido sin cubrir (según el plan de parcialidades, o si no hay plan,
+  // según el vencimiento general), llegó tarde; si no, a tiempo.
+  function paymentTimeliness(quote, payment, installments) {
+    if (installments && installments.length) {
+      const before = (quote.payments || [])
+        .filter((p) => p.paidAt < payment.paidAt || (p.paidAt === payment.paidAt && p.id < payment.id))
+        .reduce((s, p) => s + p.amountCents, 0);
+      const requiredAsOf = installments.filter((inst) => inst.dueAt <= payment.paidAt).reduce((s, inst) => s + inst.amountCents, 0);
+      return before < requiredAsOf ? 'atrasado' : 'a_tiempo';
+    }
+    if (!quote.paymentTermDays) return null;
+    const due = (quote.generatedAt || quote.updatedAt || Date.now()) + quote.paymentTermDays * 86400000;
+    return payment.paidAt <= due ? 'a_tiempo' : 'atrasado';
+  }
 
   function build(quote, settings, mode) {
     const isReceipt = mode === 'estado';
@@ -230,10 +248,17 @@
           doc.setTextColor(...MUTED);
           const label = fmtDate(p.paidAt) + ' · ' + (METHOD_LABEL[p.method] || p.method) + (p.note ? ' · ' + p.note : '');
           doc.text(label, L, y, { maxWidth: lx - L - 4 });
+          const tl = paymentTimeliness(quote, p, quote.installments);
+          if (tl) {
+            doc.setFontSize(7.5);
+            doc.setTextColor(...(tl === 'atrasado' ? DANGER_RGB : OK_RGB));
+            doc.text(tl === 'atrasado' ? 'ATRASADO' : 'A TIEMPO', L, y + 3.6);
+            doc.setFontSize(9);
+          }
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...INK);
           doc.text(money(p.amountCents), R, y, { align: 'right' });
-          y += 5.5;
+          y += tl ? 8.5 : 5.5;
         });
       } else {
         doc.setFont('helvetica', 'normal');
@@ -279,6 +304,32 @@
         doc.setTextColor(...MUTED);
         doc.text(`Vence el ${fmtDate(due)} (${label})`, L, y);
         y += 8;
+      }
+
+      // Planes anteriores (si el plan se reestructuró alguna vez, se deja
+      // constancia del que había antes de cada reestructuración).
+      if (quote.installmentHistory && quote.installmentHistory.length) {
+        quote.installmentHistory.forEach((h) => {
+          const list = (h.installments || []).slice().sort((a, b) => a.dueAt - b.dueAt);
+          if (!list.length) return;
+          if (y + 10 > H - 30) { doc.addPage(); y = 20; }
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(...MUTED);
+          doc.text(`PLAN ANTERIOR · REEMPLAZADO EL ${fmtDate(h.replacedAt)}`, L, y);
+          y += 6;
+          doc.setFontSize(9);
+          list.forEach((inst, i) => {
+            if (y + 6 > H - 30) { doc.addPage(); y = 20; }
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...MUTED);
+            doc.text(`Parcialidad ${i + 1} · vence ${fmtDate(inst.dueAt)}`, L, y, { maxWidth: lx - L - 4 });
+            doc.setTextColor(...INK);
+            doc.text(money(inst.amountCents), R, y, { align: 'right' });
+            y += 5.5;
+          });
+          y += 4;
+        });
       }
 
       // Plan de parcialidades
