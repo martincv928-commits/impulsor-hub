@@ -1065,6 +1065,16 @@
           <div class="field"><label for="s-val">Vigencia (días)</label><input id="s-val" name="validityDays" inputmode="numeric" value="${esc(s.validityDays)}"></div>
         </div>
         <div class="field"><label for="s-payterm">Plazo de pago predeterminado (días, 0 = de contado)</label><input id="s-payterm" name="paymentTermDays" inputmode="numeric" value="${esc(s.paymentTermDays || 0)}"></div>
+        <div class="section-h"><h2>Diseño del PDF</h2></div>
+        <div class="two-col">
+          <div class="field"><label for="s-pdfaccent">Color de tu marca</label><input id="s-pdfaccent" name="pdfAccent" type="color" value="${esc(s.pdfAccent || '#2743b8')}" style="width:100%;height:46px;padding:4px"></div>
+          <div class="field">
+            <label for="s-showrfc" style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;color:var(--ink);letter-spacing:0;min-height:46px">
+              <input id="s-showrfc" name="showRfcOnPdf" type="checkbox" ${s.showRfcOnPdf !== false ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+              Mostrar RFC en el PDF
+            </label>
+          </div>
+        </div>
         <div class="field"><label for="s-cond">Condiciones predeterminadas</label><textarea id="s-cond" name="conditions">${esc(s.conditions)}</textarea></div>
         <p class="hint">Productos recordados: ${S.catalog.length}. ${cloudOn && S.cloudSession ? 'Tus datos se guardan en tu cuenta.' : 'Tus cotizaciones y datos se guardan solo en este dispositivo.'}</p>
         <button class="btn primary block" type="submit">Guardar</button>
@@ -1351,6 +1361,8 @@
       s.ivaRateBp = M.toBp(f.get('ivaRate')) ?? 1600;
       s.validityDays = parseInt(f.get('validityDays'), 10) || 15;
       s.paymentTermDays = parseInt(f.get('paymentTermDays'), 10) || 0;
+      s.pdfAccent = String(f.get('pdfAccent') || '#2743b8').trim();
+      s.showRfcOnPdf = f.get('showRfcOnPdf') === 'on';
       DB.saveSettings(s);
       toast('Configuración guardada');
       go('home');

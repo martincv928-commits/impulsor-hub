@@ -6,8 +6,7 @@
   const INK = [22, 33, 28];
   const MUTED = [94, 107, 100];
   const LINE = [214, 221, 216];
-  const ACCENT = [39, 67, 184];
-  const SOFT = [240, 243, 250];
+  const DEFAULT_ACCENT = [39, 67, 184];
 
   function fmtDate(ts) {
     const d = new Date(ts);
@@ -18,10 +17,24 @@
     return /^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG';
   }
 
+  // El color de marca del PDF es el del negocio (settings.pdfAccent), no el
+  // morado/índigo de la propia app QuoteFlow: son cosas distintas a propósito.
+  function hexToRgb(hex, fallback) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return fallback;
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function tint(rgb, amount) {
+    return rgb.map((c) => Math.round(c + (255 - c) * amount));
+  }
+
   const METHOD_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', otro: 'Otro' };
 
   function build(quote, settings, mode) {
     const isReceipt = mode === 'estado';
+    const ACCENT = hexToRgb(settings.pdfAccent, DEFAULT_ACCENT);
+    const SOFT = tint(ACCENT, 0.92);
     const M = QF.money;
     const { jsPDF } = root.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'letter' });
@@ -51,7 +64,8 @@
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...MUTED);
-    const contact = [settings.address, settings.phone && 'Tel. ' + settings.phone, settings.email, settings.rfc && 'RFC: ' + settings.rfc].filter(Boolean);
+    const showRfc = settings.showRfcOnPdf !== false;
+    const contact = [settings.address, settings.phone && 'Tel. ' + settings.phone, settings.email, showRfc && settings.rfc && 'RFC: ' + settings.rfc].filter(Boolean);
     contact.forEach((c, i) => doc.text(String(c), textX, y + 10 + i * 4, { maxWidth: 105 - (textX - L) }));
 
     doc.setTextColor(...ACCENT);
