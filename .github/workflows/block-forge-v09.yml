@@ -5,6 +5,9 @@ on:
   push:
     branches: [block-forge-build-v09, claude/new-session-9jvn1h]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -58,3 +61,21 @@ jobs:
         with:
           name: BLOCK_FORGE_V0.${{ env.VC }}_SIGNED
           path: BLOCK_FORGE_V0.${{ env.VC }}.apk
+
+      - name: Publish APK to a git branch (Actions artifact storage is unreachable from the delivery sandbox)
+        run: |
+          rm -rf /tmp/apk-publish
+          mkdir -p /tmp/apk-publish
+          cp "BLOCK_FORGE_V0.${VC}.apk" /tmp/apk-publish/BLOCK_FORGE.apk
+          printf '%s\n' "$VC" > /tmp/apk-publish/VERSION_CODE
+          cd /tmp/apk-publish
+          git init -q
+          git config user.email "actions@github.com"
+          git config user.name "Block Forge CI"
+          git checkout -q -b block-forge-latest-apk
+          git add BLOCK_FORGE.apk VERSION_CODE
+          git commit -q -m "Block Forge V0.${VC} APK"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q -f origin block-forge-latest-apk
+        env:
+          GH_TOKEN: ${{ github.token }}
