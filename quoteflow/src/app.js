@@ -20,6 +20,7 @@
     activeCustomer: null,
     writeOpen: false,
     addProductOpen: false,
+    restructureOpen: false,
     showAll: false,
     confirmDelete: false,
     listening: null,
@@ -713,10 +714,14 @@
   }
 
   // Si el total cambia (se agrega/edita un producto) y ya había un plan de
-  // parcialidades, se reparte el nuevo total entre las mismas parcialidades
-  // (mismas fechas de vencimiento), igual que cuando se generó el plan.
+  // parcialidades SIN ningún abono todavía, es seguro repartir el nuevo total
+  // entre las mismas parcialidades (mismas fechas), tal cual al generar el
+  // plan. En cuanto ya hay pagos registrados, esto ya NO se toca solo: hay
+  // historial que respetar (qué se pagó a tiempo, etc.), así que se deja que
+  // el usuario decida y reestructure con restructurePlan().
   function reconcileInstallments(q) {
     if (!q.installments || !q.installments.length) return;
+    if (q.payments && q.payments.length) return;
     const total = totalsOf(q).total;
     const sorted = sortedInstallments(q);
     const count = sorted.length;
@@ -727,6 +732,28 @@
       assigned += amt;
       return Object.assign({}, inst, { amountCents: amt });
     });
+  }
+
+  // Reestructura el plan con el SALDO PENDIENTE (no el total de la
+  // cotización): las parcialidades ya liquidadas se quedan como historial
+  // (con su fecha original, para no perder si se pagaron a tiempo o no); lo
+  // que falta se reparte en un plan nuevo a partir de hoy.
+  function restructurePlan(q, count, interval) {
+    const balance = balanceCentsOf(q);
+    if (balance <= 0) return false;
+    const progress = installmentProgress(q);
+    const settled = progress.filter((p) => p.remaining <= 0).map((p) => ({ id: p.id, dueAt: p.dueAt, amountCents: p.amountCents }));
+    const base = Date.now();
+    const per = Math.floor(balance / count);
+    let assigned = 0;
+    const fresh = [];
+    for (let i = 0; i < count; i++) {
+      const amt = i === count - 1 ? balance - assigned : per;
+      assigned += amt;
+      fresh.push({ id: pid(), dueAt: base + interval * (i + 1) * 86400000, amountCents: amt });
+    }
+    q.installments = settled.concat(fresh);
+    return true;
   }
 
   // La cotización y el catálogo ya quedaron guardados localmente (arriba); esto
@@ -774,7 +801,7 @@
           <button class="btn" data-act="download">Descargar</button>
         </div>
         <div class="sheet"><table class="num">
-          ${q.items.map((it) => `<tr><td>${esc(M.milliToStr(it.qtyMilli))} ${esc(it.unit)} · ${esc(it.desc)}<div class="muted">${fmt(it.priceCents)} c/u</div></td><td class="r">${fmt(M.lineAmount(it))}</td></tr>`).join('')}
+          ${q.items.map((it) => `<tr><td>${esc(M.milliToStr(it.qtyMilli))} ${esc(it.unit)} · ${esc(it.desc)}<div class="muted">${fmt(it.priceCents)} c/u</div>${it.addedAt ? `<div class="muted" style="font-size:11px;font-style:italic">Agregado el ${dateStr(it.addedAt)}</div>` : ''}</td><td class="r">${fmt(M.lineAmount(it))}</td></tr>`).join('')}
           <tr><td class="muted">Subtotal</td><td class="r">${fmt(t.subtotal)}</td></tr>
           ${t.discount ? `<tr><td class="muted">Descuento</td><td class="r">-${fmt(t.discount)}</td></tr>` : ''}
           ${q.ivaMode !== 'sin' ? `<tr><td class="muted">IVA${q.ivaMode === 'incluido' ? ' incluido' : ''}</td><td class="r">${fmt(t.iva)}</td></tr>` : ''}
@@ -810,7 +837,8 @@
     const q = S.quote;
     const items = P.parseItems(text, { catalog: S.catalog });
     if (!items.length) return toast('No se entendió ningún producto. Intenta de nuevo.');
-    items.forEach((it) => q.items.push(it));
+    const now = Date.now();
+    items.forEach((it) => { it.addedAt = now; q.items.push(it); });
     persist(q.status);
     const incomplete = items.some((it) => it.qtyMilli === null || it.priceCents === null || (it.candidates && it.candidates.length));
     toast(incomplete ? 'Producto agregado; revisa cantidad/precio en Editar.' : 'Producto agregado: ' + items.map((i) => i.desc).join(', '));
@@ -874,6 +902,21 @@
               <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
             </div>`).join('')}
         </div>
+        ${progress.reduce((s, i) => s + i.amountCents, 0) !== total && balance > 0 ? `
+          <div class="banner media">
+            <div class="head">! El total cambió</div>
+            <p style="margin:0">El plan ya no cuadra con el total actual (${fmt(total)}). Reestructura las parcialidades que faltan con el saldo pendiente (${fmt(balance)}); las ya liquidadas se quedan como están.</p>
+          </div>
+          ${S.restructureOpen ? `
+            <form class="stack" id="restructure-form">
+              <div class="two-col">
+                <div class="field"><label for="re-count">Número de parcialidades nuevas</label><input id="re-count" name="count" inputmode="numeric" class="num" value="2"></div>
+                <div class="field"><label for="re-interval">Días entre cada una</label><input id="re-interval" name="interval" inputmode="numeric" class="num" value="30"></div>
+              </div>
+              <button class="btn primary block" type="submit">Reestructurar con el saldo pendiente (${fmt(balance)})</button>
+            </form>
+          ` : `<button class="btn block" data-act="restructure-open">Reestructurar plan</button>`}
+        ` : ''}
         <button class="btn ghost danger block" data-act="clear-installments">Quitar plan de parcialidades</button>
       ` : `
         <form class="stack" id="installments-form">
@@ -1171,6 +1214,7 @@
         toast('Plan de parcialidades eliminado');
         return render();
       }
+      case 'restructure-open': S.restructureOpen = true; return render();
       case 'add-product-open': S.addProductOpen = true; render(); return document.getElementById('add-product-text').focus();
       case 'add-product-voice':
         if (!VOICE.supported()) return toast('Este navegador no tiene dictado. Escríbelo directamente.');
@@ -1413,6 +1457,18 @@
       q.installments = installments;
       savePaymentsChange(q);
       toast('Plan de parcialidades generado');
+      return render();
+    }
+
+    if (e.target.id === 'restructure-form') {
+      const count = Math.max(1, Math.min(24, parseInt(f.get('count'), 10) || 1));
+      const interval = Math.max(1, parseInt(f.get('interval'), 10) || 1);
+      const q = S.quote;
+      if (restructurePlan(q, count, interval)) {
+        savePaymentsChange(q);
+        toast('Plan reestructurado con el saldo pendiente');
+      }
+      S.restructureOpen = false;
       return render();
     }
 

@@ -117,7 +117,10 @@
     doc.setFontSize(9.5);
     for (const it of quote.items) {
       const descLines = doc.splitTextToSize(it.desc || '', cols[2].w - 4);
-      const rowH = Math.max(1, descLines.length) * 4.4 + 2.6;
+      // En el estado de cuenta (no en la cotización), un producto agregado
+      // después de la venta original lleva una nota discreta con su fecha.
+      const addedNote = isReceipt && it.addedAt ? `Agregado el ${fmtDate(it.addedAt)}` : null;
+      const rowH = Math.max(1, descLines.length) * 4.4 + 2.6 + (addedNote ? 3.6 : 0);
       if (y + rowH > H - 60) {
         doc.addPage();
         y = 20;
@@ -133,8 +136,18 @@
         amount: money(M.lineAmount(it)),
       };
       cols.forEach((c) => {
-        if (c.key === 'desc') doc.text(descLines, c.x + 2, y);
-        else doc.text(String(vals[c.key]), c.align === 'right' ? c.x + c.w - 2 : c.x + 2, y, { align: c.align });
+        if (c.key === 'desc') {
+          doc.text(descLines, c.x + 2, y);
+          if (addedNote) {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(7);
+            doc.setTextColor(...MUTED);
+            doc.text(addedNote, c.x + 2, y + descLines.length * 4.4);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9.5);
+            doc.setTextColor(...INK);
+          }
+        } else doc.text(String(vals[c.key]), c.align === 'right' ? c.x + c.w - 2 : c.x + 2, y, { align: c.align });
       });
       y += rowH;
       doc.setDrawColor(...LINE);
