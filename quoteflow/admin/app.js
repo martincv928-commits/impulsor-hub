@@ -63,6 +63,29 @@
         <div class="field"><label for="a-email">Correo</label><input id="a-email" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="a-pass">Contraseña</label><input id="a-pass" name="password" type="password" required autocomplete="current-password"></div>
         <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Un momento…' : 'Entrar'}</button>
+        <button class="btn ghost block" type="button" data-act="forgot-password">¿Olvidaste tu contraseña?</button>
+      </form>`;
+  }
+
+  function viewForgotPassword() {
+    return `
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
+      <form class="stack" id="forgot-password-form">
+        <p class="hint">Escribe tu correo de administrador y te mandamos un enlace para restablecer tu contraseña.</p>
+        <div class="field"><label for="fp-email">Correo</label><input id="fp-email" name="email" type="email" required autocomplete="email"></div>
+        <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Enviando…' : 'Enviar enlace'}</button>
+        <button class="btn ghost block" type="button" data-act="back-to-login">Volver a inicio de sesión</button>
+      </form>`;
+  }
+
+  function viewResetPassword() {
+    return `
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
+      <form class="stack" id="reset-password-form">
+        <p class="hint">Elige tu nueva contraseña.</p>
+        <div class="field"><label for="rp-pass">Nueva contraseña</label><input id="rp-pass" name="password" type="password" required minlength="6" autocomplete="new-password"></div>
+        <div class="field"><label for="rp-pass2">Confirma la contraseña</label><input id="rp-pass2" name="password2" type="password" required minlength="6" autocomplete="new-password"></div>
+        <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Guardando…' : 'Guardar nueva contraseña'}</button>
       </form>`;
   }
 
@@ -221,6 +244,7 @@
   function render() {
     const views = {
       loading: viewLoading, auth: viewAuth, 'not-admin': viewNotAdmin,
+      'forgot-password': viewForgotPassword, 'reset-password': viewResetPassword,
       dashboard: viewDashboard, businesses: viewBusinesses, business: viewBusiness,
       tickets: viewTickets, ticket: viewTicket, audit: viewAudit,
     };
@@ -311,6 +335,8 @@
       case 'open-business': return openBusiness(b.dataset.id);
       case 'open-ticket': return openTicket(b.dataset.id);
       case 'logout': await CLOUD.auth.signOut(); S.session = null; return go('auth');
+      case 'forgot-password': return go('forgot-password');
+      case 'back-to-login': return go('auth');
       case 'set-plan':
         try { S.business = Object.assign({}, S.business, await QFA.setBusinessPlan(S.business.id, b.dataset.v)); toast('Plan actualizado'); await refreshBusiness(); } catch (e) { toast(e.message); }
         return;
@@ -359,6 +385,44 @@
       }
       return;
     }
+    if (e.target.id === 'forgot-password-form') {
+      const f = new FormData(e.target);
+      const email = String(f.get('email') || '').trim();
+      if (!email) return;
+      S.authBusy = true;
+      render();
+      try {
+        const redirectTo = location.origin + location.pathname;
+        await CLOUD.auth.resetPasswordForEmail(email, redirectTo);
+        toast('Si ese correo tiene una cuenta, te llegará un enlace para restablecer tu contraseña.');
+        S.authBusy = false;
+        go('auth');
+      } catch (err) {
+        S.authBusy = false;
+        toast(err.message);
+        render();
+      }
+      return;
+    }
+    if (e.target.id === 'reset-password-form') {
+      const f = new FormData(e.target);
+      const pass = String(f.get('password') || '');
+      const pass2 = String(f.get('password2') || '');
+      if (pass !== pass2) return toast('Las contraseñas no coinciden.');
+      S.authBusy = true;
+      render();
+      try {
+        await CLOUD.auth.updatePassword(pass);
+        S.authBusy = false;
+        toast('Contraseña actualizada');
+        await boot();
+      } catch (err) {
+        S.authBusy = false;
+        toast(err.message);
+        render();
+      }
+      return;
+    }
     if (e.target.id === 'biz-search') return; // no usado (input, no form)
     if (e.target.id === 'reply-form') {
       const body = document.getElementById('reply-body').value.trim();
@@ -379,16 +443,32 @@
     }
   });
 
+  // Si se abre este enlace desde el correo de restablecimiento, Supabase
+  // entrega una sesión especial y dispara 'PASSWORD_RECOVERY' aquí: eso toma
+  // control de la pantalla para forzar elegir una contraseña nueva antes de
+  // dejar pasar al panel, sin importar en qué punto de boot() íbamos.
+  let recoveryHandled = false;
+  CLOUD.auth.onChange((session, event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      recoveryHandled = true;
+      S.session = session;
+      go('reset-password');
+    }
+  });
+
   async function boot() {
     S.view = 'loading';
     render();
     try {
       S.session = S.session || (await CLOUD.auth.getSession());
+      if (recoveryHandled) return;
       if (!S.session) return go('auth');
       S.isAdmin = await QFA.isAdmin();
+      if (recoveryHandled) return;
       if (!S.isAdmin) return go('not-admin');
       await openDashboard();
     } catch (e) {
+      if (recoveryHandled) return;
       toast(e.message);
       go('auth');
     }
