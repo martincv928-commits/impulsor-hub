@@ -157,6 +157,25 @@
     PENDIENTE: 'muted', VENCIDA: 'danger',
   };
 
+  // Estado de un pago individual: si al momento en que se recibió ya había
+  // algo vencido sin cubrir (según el plan de parcialidades, o si no hay
+  // plan, según el vencimiento general), llegó tarde; si no, a tiempo.
+  const PAYMENT_TIMELINESS_LABEL = { a_tiempo: 'A tiempo', atrasado: 'Atrasado' };
+  const PAYMENT_TIMELINESS_PILL = { a_tiempo: 'done', atrasado: 'danger' };
+  function paymentTimeliness(q, payment) {
+    const list = sortedInstallments(q);
+    if (list.length) {
+      const before = (q.payments || [])
+        .filter((p) => p.paidAt < payment.paidAt || (p.paidAt === payment.paidAt && p.id < payment.id))
+        .reduce((s, p) => s + p.amountCents, 0);
+      const requiredAsOf = list.filter((inst) => inst.dueAt <= payment.paidAt).reduce((s, inst) => s + inst.amountCents, 0);
+      return before < requiredAsOf ? 'atrasado' : 'a_tiempo';
+    }
+    const due = paymentDueAt(q);
+    if (!due) return null;
+    return payment.paidAt <= endOfDay(due) ? 'a_tiempo' : 'atrasado';
+  }
+
   // Reparte el total abonado (en cualquier fecha) entre las parcialidades en
   // orden ("cascada"): lo que sobra de llenar la 1 pasa a la 2, etc. Esto es
   // lo que dice si cada parcialidad quedó liquidada, parcial o sin pago.
@@ -737,23 +756,35 @@
 
   // Reestructura el plan con el SALDO PENDIENTE (no el total de la
   // cotización): las parcialidades ya liquidadas se quedan como historial
-  // (con su fecha original, para no perder si se pagaron a tiempo o no); lo
-  // que falta se reparte en un plan nuevo a partir de hoy.
+  // (con su fecha original, para no perder si se pagaron a tiempo o no). Una
+  // parcialidad con abono PARCIAL también se conserva por lo ya cubierto (con
+  // su fecha original), y solo lo que falta de ella entra al plan nuevo junto
+  // con el resto del saldo — así la suma del plan sigue cuadrando siempre con
+  // el total y no se pierde el abono ya hecho.
+  // Las fechas del plan nuevo se cuentan a partir de la fecha de la
+  // cotización (no de "hoy", el día en que se reestructura): si se contaran
+  // desde hoy, cada reestructuración correría los vencimientos hacia
+  // adelante y todo parecería "a tiempo" aunque en realidad ya iba atrasado.
   function restructurePlan(q, count, interval) {
     const balance = balanceCentsOf(q);
     if (balance <= 0) return false;
     const progress = installmentProgress(q);
-    const settled = progress.filter((p) => p.remaining <= 0).map((p) => ({ id: p.id, dueAt: p.dueAt, amountCents: p.amountCents }));
-    const base = Date.now();
+    const kept = [];
+    progress.forEach((p) => {
+      if (p.remaining <= 0) kept.push({ id: p.id, dueAt: p.dueAt, amountCents: p.amountCents });
+      else if (p.allocated > 0) kept.push({ id: p.id, dueAt: p.dueAt, amountCents: p.allocated });
+    });
+    q.installmentHistory = (q.installmentHistory || []).concat([{ installments: q.installments, replacedAt: Date.now() }]);
+    const base = q.generatedAt || q.updatedAt || Date.now();
     const per = Math.floor(balance / count);
     let assigned = 0;
     const fresh = [];
     for (let i = 0; i < count; i++) {
       const amt = i === count - 1 ? balance - assigned : per;
       assigned += amt;
-      fresh.push({ id: pid(), dueAt: base + interval * (i + 1) * 86400000, amountCents: amt });
+      fresh.push({ id: pid(), dueAt: base + interval * (kept.length + i + 1) * 86400000, amountCents: amt });
     }
-    q.installments = settled.concat(fresh);
+    q.installments = kept.concat(fresh);
     return true;
   }
 
@@ -829,6 +860,7 @@
             <textarea id="add-product-text" placeholder="Ej. 2 piezas de foco a 45 pesos" style="flex:1;min-height:60px"></textarea>
             <button type="button" class="icon-btn" data-act="add-product-voice" aria-label="Dictar producto">${icon.mic}</button>
           </div>
+          <div class="field"><label for="add-product-date">Fecha en que se agregó</label><input id="add-product-date" type="date" value="${todayInputStr()}" max="${todayInputStr()}"></div>
           <button class="btn primary block" data-act="add-product-submit">Agregar a la cotización</button>
         </div>
       ` : `<button class="btn block ghost" data-act="add-product-open">+ Agregar producto</button>`}`;
@@ -838,8 +870,9 @@
     const q = S.quote;
     const items = P.parseItems(text, { catalog: S.catalog });
     if (!items.length) return toast('No se entendió ningún producto. Intenta de nuevo.');
-    const now = Date.now();
-    items.forEach((it) => { it.addedAt = now; q.items.push(it); });
+    const dateInput = document.getElementById('add-product-date');
+    const addedAt = dateInput && dateInput.value ? new Date(dateInput.value + 'T12:00:00').getTime() : Date.now();
+    items.forEach((it) => { it.addedAt = addedAt; q.items.push(it); });
     persist(q.status);
     const incomplete = items.some((it) => it.qtyMilli === null || it.priceCents === null || (it.candidates && it.candidates.length));
     toast(incomplete ? 'Producto agregado; revisa cantidad/precio en Editar.' : 'Producto agregado: ' + items.map((i) => i.desc).join(', '));
@@ -868,12 +901,15 @@
         <tr><td class="muted">Pagado</td><td class="r">${fmt(paid)}</td></tr>
         <tr><td><b>Saldo</b></td><td class="r"><b>${fmt(balance)}</b></td></tr>
       </table></div>
-      ${payments.length ? `<div class="list">${payments.map((p) => `
+      ${payments.length ? `<div class="list">${payments.map((p) => {
+        const tl = paymentTimeliness(q, p);
+        return `
         <div class="qrow" style="grid-template-columns:1fr auto">
           <span class="client">${fmt(p.amountCents)} · ${esc(PAYMENT_METHOD_LABEL[p.method] || p.method)}${p.note ? ' · ' + esc(p.note) : ''}</span>
           <button class="x-btn" data-act="del-payment" data-id="${p.id}" aria-label="Eliminar pago">×</button>
-          <span class="meta">${dateStr(p.paidAt)}</span>
-        </div>`).join('')}</div>` : ''}
+          <span class="meta" style="display:flex;align-items:center;gap:6px">${dateStr(p.paidAt)}${tl ? statusChip(PAYMENT_TIMELINESS_PILL[tl], PAYMENT_TIMELINESS_LABEL[tl]) : ''}</span>
+        </div>`;
+      }).join('')}</div>` : ''}
       ${balance > 0 ? `
         <form class="stack" id="payment-form">
           <div class="two-col">
@@ -893,6 +929,15 @@
           <div class="field"><label for="pay-note">Nota (opcional)</label><input id="pay-note" name="note"></div>
           <button class="btn primary block" type="submit">Registrar pago</button>
         </form>` : ''}
+      ${(q.installmentHistory && q.installmentHistory.length) ? q.installmentHistory.map((h) => `
+        <div class="section-h"><h2>Plan anterior · reemplazado el ${dateStr(h.replacedAt)}</h2></div>
+        <div class="list muted">
+          ${h.installments.slice().sort((a, b) => a.dueAt - b.dueAt).map((inst, i) => `
+            <div class="qrow" style="grid-template-columns:1fr auto">
+              <span class="client">Parcialidad ${i + 1} · ${fmt(inst.amountCents)}</span>
+              <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
+            </div>`).join('')}
+        </div>`).join('') : ''}
       <div class="section-h"><h2>Plan de parcialidades</h2></div>
       ${progress.length ? `
         <div class="list">
@@ -1221,6 +1266,7 @@
       }
       case 'clear-installments': {
         q.installments = [];
+        q.installmentHistory = [];
         savePaymentsChange(q);
         toast('Plan de parcialidades eliminado');
         return render();
