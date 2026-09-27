@@ -466,3 +466,12 @@ test('parser: parseItems ignora un "agrega" inicial y usa el catálogo si no se 
   assert.equal(items.length, 1);
   assert.deepEqual([items[0].desc, items[0].qtyMilli, items[0].priceCents, items[0].priceSource], ['Cloro', 3000, 1200, 'catalogo']);
 });
+
+test('parser: conceptos sin conector ni unidad conocida se separan igual ("una crema", "un desodorante")', () => {
+  const r = parse('cotízame para el cliente teulada dos Diablitos negros en 175 cada uno una crema en $100 cada uno y un desodorante en $90');
+  assert.equal(r.quote.client, 'Teulada');
+  assert.equal(r.quote.items.length, 3);
+  assert.deepEqual([it(r, 0).desc, it(r, 0).qtyMilli, it(r, 0).priceCents], ['Diablitos negros', 2000, 17500]);
+  assert.deepEqual([it(r, 1).desc, it(r, 1).qtyMilli, it(r, 1).priceCents], ['Crema', 1000, 10000]);
+  assert.deepEqual([it(r, 2).desc, it(r, 2).qtyMilli, it(r, 2).priceCents], ['Desodorante', 1000, 9000]);
+});

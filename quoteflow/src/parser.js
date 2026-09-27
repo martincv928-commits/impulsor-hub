@@ -231,13 +231,18 @@
   const ITEM_END = '\\d(?:\\s*(?:pesos?|mxn))?(?:\\s+(?:cada\\s+\\S+|c/u|la\\s+\\S+|el\\s+\\S+))?';
   // Arranque de un concepto nuevo: cantidad + unidad conocida ("3 litros", "5 piezas"...).
   const ITEM_START = '(?:\\d+(?:\\.\\d+)?|' + NW + ')\\s+(?:' + UNIT_ALT + ')(?:\\b|\\s|$)';
+  // Arranque más laxo: cantidad/numeral seguido de cualquier palabra (sin unidad
+  // reconocida), p. ej. "una crema", "un desodorante". Solo aplica justo después
+  // de que un concepto ya se cerró (ITEM_END), para no partir cosas de más.
+  const ITEM_START_LOOSE = '(?:\\d+(?:\\.\\d+)?|' + NW + ')\\s+\\S+';
 
   const SPLIT = new RegExp(
     '\\s*[;,]\\s*' +
       '|\\s+y\\s+(?=\\$?\\d|(?:' + NW + ')\\s)' +
       '|(?<=' + ITEM_END + ')\\s+(?:y|m[aá]s|adem[aá]s|tambi[eé]n)\\s+' +
       // sin conector explícito: un concepto termina y el siguiente arranca de inmediato (habla corrida/dictado)
-      '|(?<=' + ITEM_END + ')\\s+(?=' + ITEM_START + ')',
+      '|(?<=' + ITEM_END + ')\\s+(?=' + ITEM_START + ')' +
+      '|(?<=' + ITEM_END + ')\\s+(?=' + ITEM_START_LOOSE + ')',
     'iu'
   );
 
