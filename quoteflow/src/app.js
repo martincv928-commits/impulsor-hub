@@ -711,6 +711,35 @@
     return null;
   }
 
+  // Si dos conceptos terminan siendo el mismo producto (misma clave de
+  // catálogo), mismo precio y misma unidad, se juntan en una sola línea
+  // sumando las cantidades, en vez de dejarlos duplicados. Esto cubre tanto
+  // un doble toque accidental (p. ej. en "agregar producto") como una
+  // autocorrección al dictar ("dos playeras... digo, tres playeras a 100
+  // cada una", que el reconocimiento de voz a veces repite completo). Nunca
+  // se juntan conceptos que aún necesitan revisión (sin cantidad/precio, o
+  // ambiguos con varios candidatos), ni uno agregado después con uno de la
+  // venta original, para no perder esa distinción.
+  function mergeDuplicateItems(items) {
+    const merged = [];
+    const index = new Map();
+    items.forEach((it) => {
+      const key = CAT.key(it.desc);
+      const canMerge = key && it.qtyMilli !== null && it.priceCents !== null && !(it.candidates && it.candidates.length);
+      if (canMerge) {
+        const dupKey = [key, it.priceCents, it.unit || '', it.addedAt || ''].join('|');
+        const idx = index.get(dupKey);
+        if (idx !== undefined) {
+          merged[idx].qtyMilli += it.qtyMilli;
+          return;
+        }
+        index.set(dupKey, merged.length);
+      }
+      merged.push(it);
+    });
+    return merged;
+  }
+
   function persist(status) {
     const q = S.quote;
     const now = Date.now();
@@ -722,6 +751,7 @@
     // venta pasada), no se pisa al volver a generar (p. ej. tras agregar un
     // producto).
     if (status === 'GENERADA' && !q.generatedAt) q.generatedAt = now;
+    q.items = mergeDuplicateItems(q.items);
     q.items.forEach((it) => { it.candidates = []; });
     reconcileInstallments(q);
     q.totals = totalsOf(q);
@@ -964,6 +994,10 @@
           ` : `<button class="btn block" data-act="restructure-open">Reestructurar plan</button>`}
         ` : ''}
         <button class="btn ghost danger block" data-act="clear-installments">Quitar plan de parcialidades</button>
+        <label class="check-row" style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <input type="checkbox" id="show-installments-pdf" ${q.showInstallmentsOnPdf === false ? '' : 'checked'}>
+          <span class="hint" style="margin:0">Mostrar el plan de parcialidades en el PDF del estado de cuenta</span>
+        </label>
       ` : `
         <form class="stack" id="installments-form">
           <p class="hint">Divide el total en pagos programados para saber si cada abono llega a tiempo.</p>
@@ -1281,8 +1315,10 @@
           if (ta) ta.value = text;
         });
       case 'add-product-submit': {
+        if (b.disabled) return;
         const text = document.getElementById('add-product-text').value.trim();
         if (!text) return toast('Escribe o dicta el producto primero.');
+        b.disabled = true;
         return addProductsToQuote(text);
       }
       case 'delete': S.confirmDelete = true; return render();
@@ -1395,6 +1431,11 @@
     if (S.view === 'editor') onEditorChange(e);
     if (e.target.id === 's-logo' && e.target.files[0]) readLogo(e.target.files[0]);
     if (e.target.id === 'backup-file' && e.target.files[0]) readBackupFile(e.target.files[0]);
+    if (e.target.id === 'show-installments-pdf') {
+      const q = S.quote;
+      q.showInstallmentsOnPdf = e.target.checked;
+      savePaymentsChange(q);
+    }
   });
   app.addEventListener('submit', async (e) => {
     e.preventDefault();

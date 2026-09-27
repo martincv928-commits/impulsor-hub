@@ -306,34 +306,11 @@
         y += 8;
       }
 
-      // Planes anteriores (si el plan se reestructuró alguna vez, se deja
-      // constancia del que había antes de cada reestructuración).
-      if (quote.installmentHistory && quote.installmentHistory.length) {
-        quote.installmentHistory.forEach((h) => {
-          const list = (h.installments || []).slice().sort((a, b) => a.dueAt - b.dueAt);
-          if (!list.length) return;
-          if (y + 10 > H - 30) { doc.addPage(); y = 20; }
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          doc.setTextColor(...MUTED);
-          doc.text(`PLAN ANTERIOR · REEMPLAZADO EL ${fmtDate(h.replacedAt)}`, L, y);
-          y += 6;
-          doc.setFontSize(9);
-          list.forEach((inst, i) => {
-            if (y + 6 > H - 30) { doc.addPage(); y = 20; }
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(...MUTED);
-            doc.text(`Parcialidad ${i + 1} · vence ${fmtDate(inst.dueAt)}`, L, y, { maxWidth: lx - L - 4 });
-            doc.setTextColor(...INK);
-            doc.text(money(inst.amountCents), R, y, { align: 'right' });
-            y += 5.5;
-          });
-          y += 4;
-        });
-      }
-
-      // Plan de parcialidades
-      if (quote.installments && quote.installments.length) {
+      // Plan de parcialidades: solo el vigente (la reestructuración final),
+      // nunca el historial de planes anteriores — eso es solo para consulta
+      // dentro de la app. Cada cotización puede además desactivar por
+      // completo esta sección en su PDF (settings.showInstallmentsOnPdf).
+      if (quote.showInstallmentsOnPdf !== false && quote.installments && quote.installments.length) {
         const list = quote.installments.slice().sort((a, b) => a.dueAt - b.dueAt);
         if (y + 10 > H - 30) { doc.addPage(); y = 20; }
         doc.setFont('helvetica', 'bold');
