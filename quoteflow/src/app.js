@@ -479,6 +479,11 @@
             <button class="btn primary" data-act="interpret">Interpretar</button>
           </div>` : `<button class="btn block" data-act="write">${icon.pen} Escribir cotización</button>`}
       </section>`}
+      ${S.settings.homeList === 'collections' ? collectionsListSection() : quotesListSection(quotes, shown)}`;
+  }
+
+  function quotesListSection(quotes, shown) {
+    return `
       <div class="section-h"><h2>Cotizaciones recientes</h2>${quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
       <div class="list">
         ${shown.length ? shown.map((q) => `
@@ -492,6 +497,13 @@
             </span>
           </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>`;
+  }
+
+  function collectionsListSection() {
+    const pending = pendingCollectionsQuotes();
+    return `
+      <div class="section-h"><h2>Pendientes por cobrar</h2><button class="btn ghost" data-act="collections">Ver cobranza</button></div>
+      <div class="list">${collectionsRows(pending)}</div>`;
   }
 
   /* ---------- voz ---------- */
@@ -1140,14 +1152,30 @@
   }
 
   /* ---------- cobranza: saldos pendientes de cobro ---------- */
-  function viewCollections() {
-    const pending = DB.getQuotes()
+  function pendingCollectionsQuotes() {
+    return DB.getQuotes()
       .filter((q) => q.status === 'GENERADA' && isConfirmed(q) && balanceCentsOf(q) > 0)
       .sort((a, b) => {
         const av = paymentDueStatus(a) === 'vencido' ? 0 : 1;
         const bv = paymentDueStatus(b) === 'vencido' ? 0 : 1;
         return av !== bv ? av - bv : balanceCentsOf(b) - balanceCentsOf(a);
       });
+  }
+  function collectionsRows(pending) {
+    return pending.length ? pending.map((q) => `
+      <button class="qrow" data-act="open" data-id="${q.id}">
+        <span class="client">${esc(q.client || 'Sin cliente')}</span>
+        <span class="total num">${fmt(balanceCentsOf(q))}</span>
+        <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+        <span style="display:flex;gap:6px;justify-self:end">
+          ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
+          ${paymentDueAt(q) ? statusChip(PAYMENT_DUE_PILL[paymentDueStatus(q)], PAYMENT_DUE_LABEL[paymentDueStatus(q)]) : ''}
+        </span>
+      </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>';
+  }
+
+  function viewCollections() {
+    const pending = pendingCollectionsQuotes();
     const totalPending = pending.reduce((s, q) => s + balanceCentsOf(q), 0);
     return `
       <header class="top">
@@ -1158,18 +1186,7 @@
         <div class="muted">Pendiente por cobrar</div>
         <div class="big num">${fmt(totalPending)}</div>
       </section>
-      <div class="list">
-        ${pending.length ? pending.map((q) => `
-          <button class="qrow" data-act="open" data-id="${q.id}">
-            <span class="client">${esc(q.client || 'Sin cliente')}</span>
-            <span class="total num">${fmt(balanceCentsOf(q))}</span>
-            <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
-            <span style="display:flex;gap:6px;justify-self:end">
-              ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
-              ${paymentDueAt(q) ? statusChip(PAYMENT_DUE_PILL[paymentDueStatus(q)], PAYMENT_DUE_LABEL[paymentDueStatus(q)]) : ''}
-            </span>
-          </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>'}
-      </div>`;
+      <div class="list">${collectionsRows(pending)}</div>`;
   }
 
   /* ---------- base de clientes (V0.4.3, opcional) ---------- */
@@ -1309,6 +1326,13 @@
           <div class="field"><label for="s-val">Vigencia (días)</label><input id="s-val" name="validityDays" inputmode="numeric" value="${esc(s.validityDays)}"></div>
         </div>
         <div class="field"><label for="s-payterm">Plazo de pago predeterminado (días, 0 = de contado)</label><input id="s-payterm" name="paymentTermDays" inputmode="numeric" value="${esc(s.paymentTermDays || 0)}"></div>
+        <div class="field">
+          <label for="s-homelist">Qué ver primero en el inicio</label>
+          <select id="s-homelist" name="homeList">
+            <option value="quotes" ${s.homeList !== 'collections' ? 'selected' : ''}>Cotizaciones recientes</option>
+            <option value="collections" ${s.homeList === 'collections' ? 'selected' : ''}>Pendientes por cobrar</option>
+          </select>
+        </div>
         <div class="section-h"><h2>Diseño del PDF</h2></div>
         <div class="two-col">
           <div class="field"><label for="s-pdfaccent">Color de tu marca</label><input id="s-pdfaccent" name="pdfAccent" type="color" value="${esc(s.pdfAccent || '#2743b8')}" style="width:100%;height:46px;padding:4px"></div>
@@ -1658,6 +1682,7 @@
       s.paymentTermDays = parseInt(f.get('paymentTermDays'), 10) || 0;
       s.pdfAccent = String(f.get('pdfAccent') || '#2743b8').trim();
       s.showRfcOnPdf = f.get('showRfcOnPdf') === 'on';
+      s.homeList = f.get('homeList') === 'collections' ? 'collections' : 'quotes';
       DB.saveSettings(s);
       toast('Configuración guardada');
       go('home');
