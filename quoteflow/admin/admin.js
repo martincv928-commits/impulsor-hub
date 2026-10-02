@@ -79,6 +79,15 @@
       if (error) throw new Error(error.message);
       return data;
     },
+    async listAnonymousFeedback() {
+      const { data, error } = await CLOUD.client().from('anonymous_feedback').select('*').order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    async setFeedbackStatus(id, status) {
+      const { error } = await CLOUD.client().from('anonymous_feedback').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw new Error(error.message);
+    },
     async auditLog(limit) {
       const { data, error } = await CLOUD.client().from('admin_audit_log').select('*').order('created_at', { ascending: false }).limit(limit || 50);
       if (error) throw new Error(error.message);

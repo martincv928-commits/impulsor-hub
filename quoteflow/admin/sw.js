@@ -2,7 +2,7 @@
  * con su propio ícono. No es una herramienta que se use sin conexión, así
  * que aquí no hay estrategia de caché elaborada: cachea lo básico para que
  * Chrome permita "Instalar app" y listo. */
-const CACHE_NAME = 'quoteflow-admin-v2';
+const CACHE_NAME = 'quoteflow-admin-v3';
 const STATIC_ASSETS = [
   './',
   'index.html',

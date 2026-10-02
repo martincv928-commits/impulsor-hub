@@ -377,8 +377,132 @@
     return `${prefix}_${quote.folio || 'borrador'}_${c}.pdf`;
   }
 
+  // Estado de cuenta de UN cliente que junta varias cotizaciones confirmadas:
+  // no mezcla los conceptos de cada una (eso seguiría viéndose confuso),
+  // solo el resumen de cada cotización (folio, fecha, total, pagado, saldo)
+  // y el total consolidado al final.
+  function buildClientStatement(clientName, quotes, settings) {
+    const ACCENT = hexToRgb(settings.pdfAccent, DEFAULT_ACCENT);
+    const SOFT = tint(ACCENT, 0.92);
+    const M = QF.money;
+    const { jsPDF } = root.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const L = 16;
+    const R = W - 16;
+    const cur = settings.currency || 'MXN';
+    const money = (c) => M.format(c, null);
+    let y = 16;
+
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text(settings.businessName || 'Mi negocio', L, y + 5);
+    doc.setTextColor(...ACCENT);
+    doc.setFontSize(18);
+    doc.text('ESTADO DE CUENTA DEL CLIENTE', R, y + 5, { align: 'right' });
+    y += 14;
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.6);
+    doc.line(L, y, R, y);
+    y += 7;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    doc.text('CLIENTE', L, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...INK);
+    doc.text(clientName || '—', L, y + 5.5);
+    y += 14;
+
+    const cols = [
+      { key: 'folio', title: 'Folio', w: 28, align: 'left' },
+      { key: 'fecha', title: 'Fecha', w: 26, align: 'left' },
+      { key: 'total', title: 'Total', w: 30, align: 'right' },
+      { key: 'pagado', title: 'Pagado', w: 30, align: 'right' },
+      { key: 'saldo', title: 'Saldo', w: 0, align: 'right' },
+    ];
+    const fixed = cols.reduce((s, c) => s + c.w, 0);
+    cols[cols.length - 1].w = R - L - fixed;
+    let x = L;
+    cols.forEach((c) => { c.x = x; x += c.w; });
+
+    function header() {
+      doc.setFillColor(...SOFT);
+      doc.rect(L, y - 4.5, R - L, 7, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...ACCENT);
+      cols.forEach((c) => doc.text(c.title, c.align === 'right' ? c.x + c.w - 2 : c.x + 2, y, { align: c.align }));
+      y += 6;
+    }
+    header();
+    doc.setFontSize(9.5);
+
+    let totalAll = 0, paidAll = 0;
+    quotes.forEach((q) => {
+      const t = M.computeTotals(q);
+      const paid = (q.payments || []).reduce((s, p) => s + p.amountCents, 0);
+      const saldo = Math.max(0, t.total - paid);
+      totalAll += t.total;
+      paidAll += paid;
+      if (y + 7 > H - 30) { doc.addPage(); y = 20; header(); doc.setFontSize(9.5); }
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...INK);
+      const vals = { folio: q.folio || '—', fecha: fmtDate(q.generatedAt || q.updatedAt || Date.now()), total: money(t.total), pagado: money(paid), saldo: money(saldo) };
+      cols.forEach((c) => doc.text(String(vals[c.key]), c.align === 'right' ? c.x + c.w - 2 : c.x + 2, y, { align: c.align }));
+      y += 6;
+      doc.setDrawColor(...LINE);
+      doc.setLineWidth(0.2);
+      doc.line(L, y - 3.6, R, y - 3.6);
+    });
+
+    const saldoAll = Math.max(0, totalAll - paidAll);
+    if (y + 26 > H - 20) { doc.addPage(); y = 20; }
+    y += 4;
+    const lx = R - 72;
+    doc.setFontSize(9.5);
+    [['Total cotizado', money(totalAll)], ['Pagado', money(paidAll)]].forEach(([k, v]) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text(k, lx, y);
+      doc.setTextColor(...INK);
+      doc.text(v, R - 2, y, { align: 'right' });
+      y += 5.5;
+    });
+    const saldoColor = saldoAll > 0 ? [154, 98, 18] : OK_RGB;
+    doc.setFillColor(...saldoColor);
+    doc.rect(lx - 3, y - 4, R - lx + 3, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11.5);
+    doc.text('SALDO PENDIENTE', lx, y + 2);
+    doc.text(money(saldoAll), R - 2, y + 2, { align: 'right' });
+
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...MUTED);
+      doc.text(`Precios en ${cur}`, L, H - 9);
+      doc.text(`Página ${i} de ${pages}`, R, H - 9, { align: 'right' });
+    }
+    return doc;
+  }
+
+  function clientStatementFilename(clientName) {
+    const c = (clientName || 'cliente').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    return `Estado_de_cuenta_${c}.pdf`;
+  }
+
   QF.pdf = {
     blob: (quote, settings, mode) => build(quote, settings, mode).output('blob'),
+    clientStatementBlob: (clientName, quotes, settings) => buildClientStatement(clientName, quotes, settings).output('blob'),
+    clientStatementFilename,
     filename,
     fmtDate,
   };
