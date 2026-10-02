@@ -79,6 +79,12 @@
       if (error) throw new Error(error.message);
       return data;
     },
+    async supportImageUrl(path) {
+      if (!path) return null;
+      const { data, error } = await CLOUD.client().storage.from('support-attachments').createSignedUrl(path, 3600);
+      if (error) throw new Error(error.message);
+      return data.signedUrl;
+    },
     async listAnonymousFeedback() {
       const { data, error } = await CLOUD.client().from('anonymous_feedback').select('*').order('created_at', { ascending: false });
       if (error) throw new Error(error.message);

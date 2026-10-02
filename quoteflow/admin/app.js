@@ -205,6 +205,7 @@
             </div>
             <div>${esc(f.description).replace(/\n/g, '<br>')}</div>
             <span class="hint" style="font-size:11px">${f.contact ? 'Contacto: ' + esc(f.contact) + ' · ' : ''}${dateStr(f.created_at)}</span>
+            ${f.image_path ? `<button class="btn ghost block" data-act="view-attachment" data-path="${esc(f.image_path)}">Ver imagen adjunta</button>` : ''}
             ${f.status !== 'RESOLVED' ? `<button class="btn ghost block" data-act="resolve-feedback" data-id="${f.id}">Marcar resuelto</button>` : ''}
           </div>`).join('')}</div>
       ` : ''}
@@ -229,6 +230,7 @@
       <div class="stack">
         <p class="hint">${esc((t.businesses && t.businesses.name) || '')} · prioridad ${t.priority}</p>
         <button class="btn block ghost" data-act="support-access">Ver datos del negocio (queda registrado)</button>
+        ${t.image_path ? `<button class="btn block ghost" data-act="view-attachment" data-path="${esc(t.image_path)}">Ver imagen adjunta</button>` : ''}
         ${S.supportView ? `<div class="sheet"><b>${esc(S.supportView.business.name)}</b><br>${esc(S.supportView.business.email || '')} · ${S.supportView.business.status}<br><br>
           <b>Usuarios</b><br>${S.supportView.members.map((m) => `${esc(m.email)} (${m.role}, ${m.status})`).join('<br>')}<br><br>
           <b>Últimas cotizaciones</b><br>${S.supportView.recent_quotes.map((q) => `${esc(q.folio)} · ${esc(q.client_name)} · ${q.status}`).join('<br>') || 'Ninguna'}</div>` : ''}
@@ -357,6 +359,12 @@
           await QFA.setFeedbackStatus(b.dataset.id, 'RESOLVED');
           S.feedback = S.feedback.map((f) => (f.id === b.dataset.id ? Object.assign({}, f, { status: 'RESOLVED' }) : f));
           render();
+        } catch (e) { toast(e.message); }
+        return;
+      case 'view-attachment':
+        try {
+          const url = await QFA.supportImageUrl(b.dataset.path);
+          if (url) window.open(url, '_blank');
         } catch (e) { toast(e.message); }
         return;
       case 'logout': await CLOUD.auth.signOut(); S.session = null; return go('auth');
