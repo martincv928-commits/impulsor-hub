@@ -26,7 +26,7 @@ RUN npx vite build
 FROM python:3.11-slim AS cloud-agent
 
 # git: GitAdapter (checkpoints, change manifest).
-# nodejs/npm: the `claude` CLI. curl/unzip: Godot + template download below.
+# nodejs/npm: AI provider CLIs (Claude Code, Codex, Gemini). curl/unzip: Godot + template download below.
 # The libX11/libgl1/fontconfig family: Godot's Linux binary dynamically
 # links against these even under --headless -- absent, it fails to start
 # at all, not just to render.
@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgl1 libglu1-mesa fontconfig \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli \
     && rm -rf /var/lib/apt/lists/*
 
 ARG GODOT_VERSION=4.2.2-stable
