@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-_SUSPICIOUS = re.compile(r"IMPULSOR_HUB_AGENT_TOKEN\s*[:=]\s*['\"a-zA-Z0-9_\-]{8,}")
+_SUSPICIOUS = re.compile(r"IMPULSOR_HUB_AGENT_TOKEN\\s*[:=]\\s*['\\\"a-zA-Z0-9_\\-]{8,}")
 
 
 def test_windows_workflow_has_no_embedded_token():
@@ -29,7 +29,7 @@ def test_launcher_py_never_hardcodes_a_token():
     assert "IMPULSOR_HUB_AGENT_TOKEN" not in text
 
 
-_ACCESS_CODE_SUSPICIOUS = re.compile(r"IMPULSOR_HUB_CLOUD_ACCESS_CODE\s*[:=]\s*['\"a-zA-Z0-9_\-]{4,}")
+_ACCESS_CODE_SUSPICIOUS = re.compile(r"IMPULSOR_HUB_CLOUD_ACCESS_CODE\\s*[:=]\\s*['\\\"a-zA-Z0-9_\\-]{4,}")
 
 
 def test_cloud_agent_dockerfile_never_hardcodes_the_access_code_or_a_token():
@@ -38,3 +38,11 @@ def test_cloud_agent_dockerfile_never_hardcodes_the_access_code_or_a_token():
     assert not _SUSPICIOUS.search(text)
     assert not _ACCESS_CODE_SUSPICIOUS.search(text)
     assert "ENV IMPULSOR_HUB_CLOUD_ACCESS_CODE" not in text
+
+
+def test_cloud_agent_installs_all_registered_ai_provider_clis():
+    dockerfile = REPO_ROOT / "docker" / "Dockerfile.cloud-agent"
+    text = dockerfile.read_text()
+    assert "@anthropic-ai/claude-code" in text
+    assert "@openai/codex" in text
+    assert "@google/gemini-cli" in text
