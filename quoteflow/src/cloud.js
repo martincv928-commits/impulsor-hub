@@ -288,16 +288,30 @@
   };
 
   /* ---------- soporte (lado cliente): el negocio abre y sigue sus tickets ---------- */
+  // Una imagen adjunta (captura de pantalla del problema, foto de un ticket
+  // físico, etc.) se sube aparte al bucket privado "support-attachments";
+  // solo queda guardada su ruta en el ticket. Nadie más que el admin puede
+  // verla (RLS del bucket).
+  async function uploadSupportImage(file) {
+    if (!file) return null;
+    const ext = (file.name && file.name.split('.').pop()) || 'jpg';
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await client().storage.from('support-attachments').upload(path, file, { contentType: file.type || 'image/jpeg' });
+    if (error) throw new Error(friendlyError(error));
+    return path;
+  }
+
   const support = {
     async list(businessId) {
       const { data, error } = await client().from('support_tickets').select('*').eq('business_id', businessId).order('updated_at', { ascending: false });
       if (error) throw new Error(friendlyError(error));
       return data;
     },
-    async create(businessId, userId, subject, description) {
+    async create(businessId, userId, subject, description, imageFile) {
+      const image_path = await uploadSupportImage(imageFile);
       const { data, error } = await client()
         .from('support_tickets')
-        .insert({ business_id: businessId, user_id: userId, subject, description })
+        .insert({ business_id: businessId, user_id: userId, subject, description, image_path })
         .select()
         .single();
       if (error) throw new Error(friendlyError(error));
@@ -319,8 +333,9 @@
     // no hay a qué ticket "del negocio" atarlo, así que se guarda aparte en
     // una tabla de retroalimentación anónima que el panel de admin también
     // revisa. No requiere sesión iniciada.
-    async createAnonymous(subject, description, contact) {
-      const { error } = await client().from('anonymous_feedback').insert({ subject, description, contact: contact || '' });
+    async createAnonymous(subject, description, contact, imageFile) {
+      const image_path = await uploadSupportImage(imageFile);
+      const { error } = await client().from('anonymous_feedback').insert({ subject, description, contact: contact || '', image_path });
       if (error) throw new Error(friendlyError(error));
     },
   };

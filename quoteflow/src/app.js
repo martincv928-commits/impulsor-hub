@@ -365,7 +365,14 @@
       </header>
       <form class="stack" id="support-new-form">
         <div class="field"><label for="t-subject">Asunto</label><input id="t-subject" name="subject" required></div>
-        <div class="field"><label for="t-desc">Cuéntanos qué pasa</label><textarea id="t-desc" name="description" required style="min-height:120px"></textarea></div>
+        <div class="field">
+          <label for="t-desc">Cuéntanos qué pasa</label>
+          <div class="row">
+            <textarea id="t-desc" name="description" required style="min-height:120px;flex:1"></textarea>
+            <button type="button" class="icon-btn" data-act="support-desc-voice" aria-label="Dictar descripción">${icon.mic}</button>
+          </div>
+        </div>
+        <div class="field"><label for="t-image">Foto o captura de pantalla (opcional)</label><input id="t-image" type="file" accept="image/*"></div>
         <button class="btn primary block" type="submit">Enviar</button>
       </form>`;
   }
@@ -383,7 +390,14 @@
       <form class="stack" id="feedback-form">
         <p class="hint">¿Tienes un problema o una sugerencia? Mándanosla; no necesitas haber iniciado sesión.</p>
         <div class="field"><label for="fb-subject">Asunto</label><input id="fb-subject" name="subject" required></div>
-        <div class="field"><label for="fb-desc">Cuéntanos qué pasa</label><textarea id="fb-desc" name="description" required style="min-height:120px"></textarea></div>
+        <div class="field">
+          <label for="fb-desc">Cuéntanos qué pasa</label>
+          <div class="row">
+            <textarea id="fb-desc" name="description" required style="min-height:120px;flex:1"></textarea>
+            <button type="button" class="icon-btn" data-act="feedback-desc-voice" aria-label="Dictar descripción">${icon.mic}</button>
+          </div>
+        </div>
+        <div class="field"><label for="fb-image">Foto o captura de pantalla (opcional)</label><input id="fb-image" type="file" accept="image/*"></div>
         <div class="field"><label for="fb-contact">Tu correo o teléfono (opcional, para responderte)</label><input id="fb-contact" name="contact"></div>
         <button class="btn primary block" type="submit">Enviar</button>
       </form>`;
@@ -1520,6 +1534,16 @@
           const ta = document.getElementById('add-product-text');
           if (ta) ta.value = text;
         });
+      case 'support-desc-voice':
+      case 'feedback-desc-voice': {
+        if (!VOICE.supported()) return toast('Este navegador no tiene dictado. Escríbelo directamente.');
+        const id = act === 'support-desc-voice' ? 't-desc' : 'fb-desc';
+        return dictate((text) => {
+          if (!text) return toast('No se escuchó nada.');
+          const ta = document.getElementById(id);
+          if (ta) ta.value = ta.value ? ta.value + ' ' + text : text;
+        });
+      }
       case 'add-product-submit': {
         if (b.disabled) return;
         const text = document.getElementById('add-product-text').value.trim();
@@ -1747,8 +1771,9 @@
       const subject = String(f.get('subject') || '').trim();
       const description = String(f.get('description') || '').trim();
       if (!subject) return toast('Escribe un asunto.');
+      const imageFile = document.getElementById('t-image').files[0] || null;
       try {
-        const t = await CLOUD.support.create(S.cloudBusiness.id, S.cloudSession.user.id, subject, description);
+        const t = await CLOUD.support.create(S.cloudBusiness.id, S.cloudSession.user.id, subject, description, imageFile);
         toast('Solicitud enviada');
         S.tickets = [t, ...S.tickets];
         return openSupportTicket(t.id);
@@ -1763,8 +1788,9 @@
       const contact = String(f.get('contact') || '').trim();
       if (!subject) return toast('Escribe un asunto.');
       if (!cloudOn) return toast('Esta app no tiene conexión configurada; no se puede enviar en este momento.');
+      const imageFile = document.getElementById('fb-image').files[0] || null;
       try {
-        await CLOUD.support.createAnonymous(subject, description, contact);
+        await CLOUD.support.createAnonymous(subject, description, contact, imageFile);
         toast('Mensaje enviado, gracias');
         return go(S.cloudSession ? 'settings' : 'auth');
       } catch (err) {
