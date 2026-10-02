@@ -165,6 +165,10 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.45; }
 /* resumen */
 .summary { text-align: center; padding-block: 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .summary .big { font-family: var(--display); font-weight: 800; font-size: 40px; letter-spacing: -0.02em; }
+.stat-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-block: 10px; }
+.stat-pair .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.stat-pair .stat .lbl { font-size: 12px; color: var(--muted); }
+.stat-pair .stat .val { font-family: var(--display); font-weight: 800; font-size: 19px; letter-spacing: -0.01em; }
 .sheet { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; font-size: 14px; }
 .sheet table { width: 100%; border-collapse: collapse; }
 .sheet td { padding: 6px 0; border-top: 1px solid var(--line); vertical-align: top; }

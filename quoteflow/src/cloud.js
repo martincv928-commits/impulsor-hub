@@ -155,6 +155,7 @@
       folio: q.folio,
       client_name: q.client || '',
       status: q.status,
+      confirmation: q.confirmation || null,
       discount_type: (q.discount && q.discount.type) || 'pct',
       discount_value: (q.discount && q.discount.value) || 0,
       iva_mode: q.ivaMode,
@@ -184,6 +185,7 @@
       }));
     return {
       id: row.id, folio: row.folio, client: row.client_name, status: row.status,
+      confirmation: row.confirmation || undefined,
       items, discount: { type: row.discount_type, value: row.discount_value },
       ivaMode: row.iva_mode, ivaRateBp: row.iva_rate_bp, validityDays: row.validity_days,
       paymentTermDays: row.payment_term_days || 0,
@@ -311,6 +313,14 @@
     },
     async reply(ticketId, userId, body) {
       const { error } = await client().from('support_ticket_messages').insert({ ticket_id: ticketId, author_id: userId, author_role: 'customer', body });
+      if (error) throw new Error(friendlyError(error));
+    },
+    // Para quien todavía no tiene cuenta/negocio (solo está probando la app):
+    // no hay a qué ticket "del negocio" atarlo, así que se guarda aparte en
+    // una tabla de retroalimentación anónima que el panel de admin también
+    // revisa. No requiere sesión iniciada.
+    async createAnonymous(subject, description, contact) {
+      const { error } = await client().from('anonymous_feedback').insert({ subject, description, contact: contact || '' });
       if (error) throw new Error(friendlyError(error));
     },
   };

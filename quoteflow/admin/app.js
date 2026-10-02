@@ -18,6 +18,7 @@
     stats: null, businesses: [], search: '',
     business: null, businessStats: null, members: [],
     tickets: [], ticket: null, messages: [],
+    feedback: [],
     audit: [],
   };
 
@@ -43,6 +44,7 @@
   const STATUS_LABEL = { TRIAL: 'Prueba', ACTIVE: 'Activo', PAST_DUE: 'Pago vencido', SUSPENDED: 'Suspendido', CANCELLED: 'Cancelado' };
   const statusPill = (s) => `<span class="pill ${s === 'ACTIVE' ? 'done' : s === 'SUSPENDED' || s === 'CANCELLED' ? '' : 'draft'}" style="${s === 'SUSPENDED' || s === 'CANCELLED' ? 'background:var(--danger);color:#fff' : ''}">${STATUS_LABEL[s] || s}</span>`;
   const TICKET_LABEL = { OPEN: 'Abierto', IN_PROGRESS: 'En proceso', WAITING_CUSTOMER: 'Espera cliente', RESOLVED: 'Resuelto', CLOSED: 'Cerrado' };
+  const FEEDBACK_LABEL = { OPEN: 'Abierto', IN_PROGRESS: 'En proceso', RESOLVED: 'Resuelto' };
   const ticketDone = (t) => t.status === 'RESOLVED' || t.status === 'CLOSED';
 
   /* ---------- vistas ---------- */
@@ -192,7 +194,22 @@
     return `
       <header class="top"><div class="brand">QuoteFlow<small>Admin</small></div></header>
       ${nav('tickets')}
-      <div class="list" style="margin-top:14px">${S.tickets.map((t) => `
+      ${S.feedback.length ? `
+        <div class="section-h" style="margin-top:14px"><h2>Mensajes sin cuenta</h2></div>
+        <p class="hint">Gente probando la app sin haber iniciado sesión.</p>
+        <div class="list">${S.feedback.map((f) => `
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <b>${esc(f.subject)}</b>
+              <span class="pill ${f.status === 'RESOLVED' ? 'done' : 'draft'}">${FEEDBACK_LABEL[f.status] || f.status}</span>
+            </div>
+            <div>${esc(f.description).replace(/\n/g, '<br>')}</div>
+            <span class="hint" style="font-size:11px">${f.contact ? 'Contacto: ' + esc(f.contact) + ' · ' : ''}${dateStr(f.created_at)}</span>
+            ${f.status !== 'RESOLVED' ? `<button class="btn ghost block" data-act="resolve-feedback" data-id="${f.id}">Marcar resuelto</button>` : ''}
+          </div>`).join('')}</div>
+      ` : ''}
+      <div class="section-h" style="margin-top:14px"><h2>Tickets</h2></div>
+      <div class="list">${S.tickets.map((t) => `
         <button class="qrow" data-act="open-ticket" data-id="${t.id}">
           <span class="client">${esc(t.subject)}</span>
           <span class="pill ${ticketDone(t) ? 'done' : 'draft'}">${TICKET_LABEL[t.status]}</span>
@@ -296,6 +313,7 @@
   async function openTickets() {
     try {
       S.tickets = await QFA.listTickets();
+      S.feedback = await QFA.listAnonymousFeedback();
       go('tickets');
     } catch (e) {
       toast(e.message);
@@ -334,6 +352,13 @@
       case 'nav': return NAV[b.dataset.v]();
       case 'open-business': return openBusiness(b.dataset.id);
       case 'open-ticket': return openTicket(b.dataset.id);
+      case 'resolve-feedback':
+        try {
+          await QFA.setFeedbackStatus(b.dataset.id, 'RESOLVED');
+          S.feedback = S.feedback.map((f) => (f.id === b.dataset.id ? Object.assign({}, f, { status: 'RESOLVED' }) : f));
+          render();
+        } catch (e) { toast(e.message); }
+        return;
       case 'logout': await CLOUD.auth.signOut(); S.session = null; return go('auth');
       case 'forgot-password': return go('forgot-password');
       case 'back-to-login': return go('auth');

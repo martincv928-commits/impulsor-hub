@@ -64,6 +64,13 @@
     S.confirmDelete = false;
     render();
     window.scrollTo(0, 0);
+    // Atrapa el botón/gesto de "atrás" del celular: cada pantalla que no sea
+    // el inicio deja una marca en el historial del navegador, así que al
+    // tocar atrás el sistema la navega igual que tocar la flecha de la app
+    // (ver popstate más abajo), en vez de salir de la app de un jalón.
+    if (view !== 'home') {
+      try { history.pushState({ qfTrap: true }, '', location.href); } catch (e) { /* navegador sin historial: sin problema */ }
+    }
     if (view === 'home' && cloudOn && S.cloudBusiness) {
       CLOUD.business
         .getMine()
@@ -74,6 +81,16 @@
         .catch(() => {});
     }
   }
+
+  // El botón/gesto de "atrás" del celular simplemente toca la misma flecha
+  // de "volver" que ya está en la pantalla actual, para que haga exactamente
+  // lo mismo (ir un nivel hacia atrás) sin tener que llegar hasta la flecha
+  // con el dedo. Si no hay flecha visible (p. ej. ya estamos en el inicio),
+  // no se hace nada y el siguiente "atrás" sale de la app con normalidad.
+  window.addEventListener('popstate', () => {
+    const btn = app.querySelector('header.top .icon-btn[aria-label^="Volver"]');
+    if (btn) btn.click();
+  });
 
   const BLOCKED_STATUS = ['SUSPENDED', 'CANCELLED'];
   function isBusinessBlocked() {
@@ -94,6 +111,21 @@
   const PAYMENT_PILL = { SIN_PAGO: 'draft', PARCIAL: 'info', PAGADO: 'done' };
   const paidCentsOf = (q) => (q.payments || []).reduce((s, p) => s + p.amountCents, 0);
   const balanceCentsOf = (q) => Math.max(0, totalsOf(q).total - paidCentsOf(q));
+  // Separa "cotizar" de "cobrar": una cotización GENERADA puede traer un plan
+  // de pagos propuesto, pero el cobro real (registrar pagos) solo se habilita
+  // cuando el cliente la confirma. Las cotizaciones de antes de este cambio
+  // (sin este campo) que YA tenían pagos o plan registrados se tratan como
+  // confirmadas automáticamente, para no esconderles su historial.
+  function isConfirmed(q) {
+    if (q.confirmation === 'CONFIRMADA') return true;
+    if (q.confirmation === 'RECHAZADA') return false;
+    if (q.confirmation === null) return false; // cotización nueva, pendiente de confirmar a propósito
+    // cotización de antes de este cambio (ni siquiera tiene el campo): se
+    // trata como confirmada si ya tenía pagos o plan en curso, para no
+    // esconderle de golpe su historial de cobro ya empezado.
+    return !!((q.payments && q.payments.length) || (q.installments && q.installments.length));
+  }
+  const isRejected = (q) => q.confirmation === 'RECHAZADA';
   function paymentStatusOf(q) {
     const total = totalsOf(q).total;
     const paid = paidCentsOf(q);
@@ -215,8 +247,9 @@
     const key = CAT.key(name);
     if (!key) return { debt: 0, moroso: false, quotes: [] };
     const quotes = DB.getQuotes().filter((q) => q.status === 'GENERADA' && CAT.key(q.client) === key);
-    const debt = quotes.reduce((s, q) => s + balanceCentsOf(q), 0);
-    const moroso = quotes.some((q) => balanceCentsOf(q) > 0 && paymentDueStatus(q) === 'vencido');
+    const confirmed = quotes.filter((q) => !isRejected(q) && isConfirmed(q));
+    const debt = confirmed.reduce((s, q) => s + balanceCentsOf(q), 0);
+    const moroso = confirmed.some((q) => balanceCentsOf(q) > 0 && paymentDueStatus(q) === 'vencido');
     return { debt, moroso, quotes };
   }
   function saveCustomer(name) {
@@ -245,7 +278,8 @@
         <div class="field"><label for="a-pass">Contraseña</label><input id="a-pass" name="password" type="password" required minlength="6" autocomplete="${login ? 'current-password' : 'new-password'}"></div>
         <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Un momento…' : login ? 'Entrar' : 'Crear cuenta'}</button>
         <button class="btn ghost block" type="button" data-act="auth-toggle">${login ? '¿No tienes cuenta? Créala' : '¿Ya tienes cuenta? Inicia sesión'}</button>
-      </form>`;
+      </form>
+      <button class="btn ghost block" type="button" data-act="feedback-open" style="margin-top:4px">¿Tienes un problema o una duda? Escríbenos</button>`;
   }
 
   function viewBusinessNew() {
@@ -336,6 +370,25 @@
       </form>`;
   }
 
+  // Para quien aún no tiene cuenta/negocio (solo está probando la app, sin
+  // haber iniciado sesión): un formulario simple que no depende de un
+  // negocio ni de sesión, y que de todos modos le llega al panel de admin.
+  function viewFeedback() {
+    const backTo = cloudOn && S.cloudSession ? 'settings' : 'auth';
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="${backTo}" aria-label="Volver">${icon.back}</button>
+        <div class="title">Soporte</div>
+      </header>
+      <form class="stack" id="feedback-form">
+        <p class="hint">¿Tienes un problema o una sugerencia? Mándanosla; no necesitas haber iniciado sesión.</p>
+        <div class="field"><label for="fb-subject">Asunto</label><input id="fb-subject" name="subject" required></div>
+        <div class="field"><label for="fb-desc">Cuéntanos qué pasa</label><textarea id="fb-desc" name="description" required style="min-height:120px"></textarea></div>
+        <div class="field"><label for="fb-contact">Tu correo o teléfono (opcional, para responderte)</label><input id="fb-contact" name="contact"></div>
+        <button class="btn primary block" type="submit">Enviar</button>
+      </form>`;
+  }
+
   function viewSupportTicket() {
     const t = S.activeTicket;
     return `
@@ -386,6 +439,9 @@
     const quotes = DB.getQuotes();
     const shown = S.showAll ? quotes : quotes.slice(0, 12);
     const name = S.settings.businessName;
+    const generated = quotes.filter((q) => q.status === 'GENERADA' && !isRejected(q));
+    const totalCotizado = generated.reduce((s, q) => s + totalsOf(q).total, 0);
+    const totalPendiente = generated.filter(isConfirmed).reduce((s, q) => s + balanceCentsOf(q), 0);
     return `
       <header class="top">
         <div class="brand">${icon.brand}<span>QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</span></div>
@@ -395,6 +451,14 @@
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
       </header>
       ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
+      ${generated.length ? `
+      <div class="stat-pair">
+        <div class="stat"><div class="lbl">Total cotizado</div><div class="val">${fmt(totalCotizado)}</div></div>
+        <button class="stat" data-act="collections" style="text-align:left;cursor:pointer">
+          <div class="lbl">Pendiente por cobrar</div>
+          <div class="val" style="${totalPendiente > 0 ? 'color:var(--danger)' : ''}">${fmt(totalPendiente)}</div>
+        </button>
+      </div>` : ''}
       ${isBusinessBlocked() ? `
         <div class="banner baja">
           <div class="head">! Negocio ${S.cloudBusiness.status === 'CANCELLED' ? 'cancelado' : 'suspendido'}</div>
@@ -423,8 +487,8 @@
             <span class="total num">${fmt(totalsOf(q).total)}</span>
             <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
             <span style="display:flex;gap:6px;justify-self:end">
-              <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
-              ${q.status === 'GENERADA' ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
+              ${q.status === 'GENERADA' && q.confirmation ? statusChip(CONFIRMATION_PILL[q.confirmation], CONFIRMATION_LABEL[q.confirmation]) : `<span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status === 'GENERADA' && q.confirmation === null ? 'Por confirmar' : q.status}</span>`}
+              ${q.status === 'GENERADA' && isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
             </span>
           </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>`;
@@ -750,7 +814,13 @@
     // tenía una (la de hoy, o una que el usuario haya puesto a mano para una
     // venta pasada), no se pisa al volver a generar (p. ej. tras agregar un
     // producto).
-    if (status === 'GENERADA' && !q.generatedAt) q.generatedAt = now;
+    if (status === 'GENERADA' && !q.generatedAt) {
+      q.generatedAt = now;
+      // Marca explícitamente que esta cotización (nueva, de aquí en
+      // adelante) todavía espera que el cliente la confirme o la rechace;
+      // las de antes de este cambio ni siquiera tienen este campo.
+      if (q.confirmation === undefined) q.confirmation = null;
+    }
     q.items = mergeDuplicateItems(q.items);
     q.items.forEach((it) => { it.candidates = []; });
     reconcileInstallments(q);
@@ -841,15 +911,21 @@
   }
 
   /* ---------- resumen / compartir ---------- */
+  const CONFIRMATION_LABEL = { CONFIRMADA: 'Confirmada', RECHAZADA: 'Rechazada' };
+  const CONFIRMATION_PILL = { CONFIRMADA: 'done', RECHAZADA: 'danger' };
+
   function viewSummary() {
     const q = S.quote;
     const t = totalsOf(q);
+    const confirmed = isConfirmed(q);
+    const rejected = isRejected(q);
+    const explicit = q.confirmation === 'CONFIRMADA' || q.confirmation === 'RECHAZADA';
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
         <div class="title mono">${esc(q.folio)}</div>
         <span class="spacer"></span>
-        <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
+        <span class="pill ${explicit ? CONFIRMATION_PILL[q.confirmation] : q.status === 'GENERADA' ? 'done' : 'draft'}">${explicit ? CONFIRMATION_LABEL[q.confirmation] : q.status}</span>
       </header>
       <section class="summary">
         <div class="muted">${esc(q.client)}</div>
@@ -862,6 +938,23 @@
           <button class="btn" data-act="view-pdf">Ver PDF</button>
           <button class="btn" data-act="download">Descargar</button>
         </div>
+        ${q.status === 'GENERADA' && !confirmed && !rejected ? `
+          <div class="banner media">
+            <div class="head">¿El cliente ya confirmó esta cotización?</div>
+            <p style="margin:0">Mientras no la confirmes, puedes proponer un plan de pagos, pero no se registran cobros todavía.</p>
+          </div>
+          <div class="two-col">
+            <button class="btn primary block" data-act="confirm-quote">Confirmar</button>
+            <button class="btn ghost danger block" data-act="reject-quote">Rechazar</button>
+          </div>
+        ` : ''}
+        ${rejected ? `
+          <div class="banner baja">
+            <div class="head">Cotización rechazada</div>
+            <p style="margin:0">El cliente no aceptó esta cotización. No cuenta en tu pendiente por cobrar.</p>
+          </div>
+          <button class="btn ghost block" data-act="confirm-quote">Marcarla como confirmada en su lugar</button>
+        ` : ''}
         <div class="sheet"><table class="num">
           ${q.items.map((it) => `<tr><td>${esc(M.milliToStr(it.qtyMilli))} ${esc(it.unit)} · ${esc(it.desc)}<div class="muted">${fmt(it.priceCents)} c/u</div>${it.addedAt ? `<div class="muted" style="font-size:11px;font-style:italic">Agregado el ${dateStr(it.addedAt)}</div>` : ''}</td><td class="r">${fmt(M.lineAmount(it))}</td></tr>`).join('')}
           <tr><td class="muted">Subtotal</td><td class="r">${fmt(t.subtotal)}</td></tr>
@@ -870,7 +963,7 @@
           <tr><td><b>Total</b></td><td class="r"><b>${fmt(t.total)}</b></td></tr>
         </table></div>
         ${addProductSection()}
-        ${paymentsSection(q)}
+        ${!rejected ? paymentsSection(q) : ''}
         <div class="two-col">
           <button class="btn" data-act="edit">Editar</button>
           <button class="btn" data-act="new">Nueva cotización</button>
@@ -915,7 +1008,38 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  // Antes de que el cliente confirme, solo se puede PROPONER un plan de
+  // pagos (parte de la cotización); una vez confirmada se habilita el cobro
+  // real (registrar abonos, ver estado de cuenta). Separar esto evita
+  // "cobrar" sobre algo que el cliente todavía ni acepta.
+  function proposedPlanSection(q) {
+    const total = totalsOf(q).total;
+    const progress = installmentProgress(q);
+    return `
+      <div class="section-h"><h2>Plan de pagos propuesto</h2></div>
+      <p class="hint">Puedes proponer cómo se pagaría esta cotización. El cobro real se habilita hasta que la confirmes.</p>
+      ${progress.length ? `
+        <div class="list">
+          ${progress.map((inst, i) => `
+            <div class="qrow" style="grid-template-columns:1fr auto">
+              <span class="client">Parcialidad ${i + 1} · ${fmt(inst.amountCents)}</span>
+              <span class="meta">Vence ${dateStr(inst.dueAt)}</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn ghost danger block" data-act="clear-installments">Quitar plan propuesto</button>
+      ` : `
+        <form class="stack" id="installments-form">
+          <div class="two-col">
+            <div class="field"><label for="inst-count">Número de parcialidades</label><input id="inst-count" name="count" inputmode="numeric" class="num" value="3"></div>
+            <div class="field"><label for="inst-interval">Días entre cada una</label><input id="inst-interval" name="interval" inputmode="numeric" class="num" value="30"></div>
+          </div>
+          <button class="btn block" type="submit">Proponer plan</button>
+        </form>
+      `}`;
+  }
+
   function paymentsSection(q) {
+    if (!isConfirmed(q)) return proposedPlanSection(q);
     const total = totalsOf(q).total;
     const paid = paidCentsOf(q);
     const balance = balanceCentsOf(q);
@@ -1018,7 +1142,7 @@
   /* ---------- cobranza: saldos pendientes de cobro ---------- */
   function viewCollections() {
     const pending = DB.getQuotes()
-      .filter((q) => q.status === 'GENERADA' && balanceCentsOf(q) > 0)
+      .filter((q) => q.status === 'GENERADA' && isConfirmed(q) && balanceCentsOf(q) > 0)
       .sort((a, b) => {
         const av = paymentDueStatus(a) === 'vencido' ? 0 : 1;
         const bv = paymentDueStatus(b) === 'vencido' ? 0 : 1;
@@ -1080,6 +1204,7 @@
     const c = S.activeCustomer;
     const info = customerInfo(c.name);
     const quotes = info.quotes.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+    const confirmedQuotes = quotes.filter(isConfirmed);
     return `
       <header class="top">
         <button class="icon-btn" data-act="clients" aria-label="Volver a clientes">${icon.back}</button>
@@ -1089,6 +1214,9 @@
         <div class="muted">${info.moroso ? '⚠ Cliente moroso: tiene pagos vencidos' : info.debt > 0 ? 'Tiene saldo pendiente' : 'Al corriente'}</div>
         <div class="big num">${fmt(info.debt)}</div>
       </section>
+      ${confirmedQuotes.length > 1 ? `
+        <button class="btn primary block" data-act="client-statement">Ver estado de cuenta completo (${confirmedQuotes.length} cotizaciones)</button>
+      ` : ''}
       <div class="section-h"><h2>Cotizaciones generadas</h2></div>
       <div class="list">
         ${quotes.length ? quotes.map((q) => `
@@ -1096,11 +1224,48 @@
             <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
             <span class="total num">${fmt(balanceCentsOf(q))}</span>
             <span class="meta">${dateStr(q.updatedAt)}</span>
-            ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
+            ${isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : q.confirmation === 'RECHAZADA' ? statusChip('danger', 'Rechazada') : statusChip('info', 'Por confirmar')}
           </button>`).join('') : '<div class="empty">Sin cotizaciones generadas todavía.</div>'}
       </div>
       <div class="stack" style="margin-top:20px">
         <button class="btn ghost danger block" data-act="delete-client">Quitar de clientes guardados</button>
+      </div>`;
+  }
+
+  // Estado de cuenta combinado de un cliente: junta todas sus cotizaciones ya
+  // confirmadas (una por una siguen teniendo su propio PDF detallado; este es
+  // el resumen de conjunto que se pidió para cuando hay varias).
+  function viewClientStatement() {
+    const c = S.activeCustomer;
+    const quotes = customerInfo(c.name).quotes.filter(isConfirmed).sort((a, b) => (b.generatedAt || b.updatedAt) - (a.generatedAt || a.updatedAt));
+    const totalAll = quotes.reduce((s, q) => s + totalsOf(q).total, 0);
+    const paidAll = quotes.reduce((s, q) => s + paidCentsOf(q), 0);
+    const saldoAll = Math.max(0, totalAll - paidAll);
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="open-client" data-id="${c.id}" aria-label="Volver al cliente">${icon.back}</button>
+        <div class="title">${esc(c.name)}</div>
+      </header>
+      <section class="summary">
+        <div class="muted">Estado de cuenta completo · ${quotes.length} cotizaciones</div>
+        <div class="big num">${fmt(saldoAll)}</div>
+        <div class="muted" style="font-size:14px">de ${fmt(totalAll)} cotizado, ${fmt(paidAll)} pagado</div>
+      </section>
+      <div class="stack">
+        <button class="btn primary block" data-act="share-client-statement">${icon.share} Compartir estado de cuenta</button>
+        <div class="two-col">
+          <button class="btn" data-act="view-client-statement">Ver PDF</button>
+          <button class="btn" data-act="download-client-statement">Descargar</button>
+        </div>
+        <div class="list">
+          ${quotes.map((q) => `
+            <button class="qrow" data-act="open" data-id="${q.id}">
+              <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
+              <span class="total num">${fmt(balanceCentsOf(q))}</span>
+              <span class="meta">${dateStr(q.generatedAt || q.updatedAt)}</span>
+              ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
+            </button>`).join('')}
+        </div>
       </div>`;
   }
 
@@ -1164,7 +1329,12 @@
           <p class="hint">Sesión iniciada como ${esc(S.cloudSession.user.email)}</p>
           <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
-        </div>` : ''}
+        </div>` : `
+        <div class="section-h"><h2>Soporte</h2></div>
+        <div class="stack">
+          <p class="hint">¿Algo no funciona bien o tienes una sugerencia? Puedes avisarnos aunque no hayas iniciado sesión.</p>
+          <button class="btn block" data-act="feedback-open">Enviar mensaje</button>
+        </div>`}
       <div class="section-h"><h2>Respaldo</h2></div>
       <div class="stack">
         <p class="hint">Guarda un archivo con tu configuración, catálogo e historial. Sirve para recuperarlos si cambias de teléfono o borras los datos del navegador.</p>
@@ -1289,6 +1459,18 @@
         persist('GENERADA');
         return go('summary');
       }
+      case 'confirm-quote': {
+        q.confirmation = 'CONFIRMADA';
+        savePaymentsChange(q);
+        toast('Cotización confirmada');
+        return render();
+      }
+      case 'reject-quote': {
+        q.confirmation = 'RECHAZADA';
+        savePaymentsChange(q);
+        toast('Cotización marcada como rechazada');
+        return render();
+      }
       case 'edit': S.interp = null; return go('editor');
       case 'new': S.writeOpen = false; return go('home');
       case 'pay-voice': return startPaymentVoice();
@@ -1368,6 +1550,30 @@
         if (blob) SHARE.download(blob, PDF.filename(q, 'estado'));
         return;
       }
+      case 'client-statement': return go('client-statement');
+      case 'share-client-statement': {
+        const cu = S.activeCustomer;
+        const quotes = customerInfo(cu.name).quotes.filter(isConfirmed);
+        const blob = PDF.clientStatementBlob(cu.name, quotes, S.settings);
+        const r = await SHARE.sharePdf(blob, PDF.clientStatementFilename(cu.name), 'Estado de cuenta de ' + cu.name, `Estado de cuenta de ${cu.name}: ${quotes.length} cotizaciones`);
+        if (r === 'downloaded') toast('Tu navegador no permite compartir archivos; se descargó el PDF.');
+        return;
+      }
+      case 'view-client-statement': {
+        const cu = S.activeCustomer;
+        const quotes = customerInfo(cu.name).quotes.filter(isConfirmed);
+        const blob = PDF.clientStatementBlob(cu.name, quotes, S.settings);
+        const url = URL.createObjectURL(blob);
+        if (!window.open(url, '_blank')) location.href = url;
+        return;
+      }
+      case 'download-client-statement': {
+        const cu = S.activeCustomer;
+        const quotes = customerInfo(cu.name).quotes.filter(isConfirmed);
+        const blob = PDF.clientStatementBlob(cu.name, quotes, S.settings);
+        SHARE.download(blob, PDF.clientStatementFilename(cu.name));
+        return;
+      }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
       case 'backup-export': {
         const data = DB.exportBackup();
@@ -1387,6 +1593,7 @@
       }
       case 'restore-no': S.pendingBackup = null; return render();
       case 'auth-toggle': S.authMode = S.authMode === 'login' ? 'register' : 'login'; return render();
+      case 'auth': return go('auth');
       case 'logout': {
         await CLOUD.auth.signOut();
         S.cloudSession = null;
@@ -1422,6 +1629,7 @@
       }
       case 'support-home': return openSupportHome();
       case 'support-new': return go('support-new');
+      case 'feedback-open': return go('feedback');
       case 'support-open': return openSupportTicket(b.dataset.id);
     }
   });
@@ -1524,6 +1732,21 @@
       }
     }
 
+    if (e.target.id === 'feedback-form') {
+      const subject = String(f.get('subject') || '').trim();
+      const description = String(f.get('description') || '').trim();
+      const contact = String(f.get('contact') || '').trim();
+      if (!subject) return toast('Escribe un asunto.');
+      if (!cloudOn) return toast('Esta app no tiene conexión configurada; no se puede enviar en este momento.');
+      try {
+        await CLOUD.support.createAnonymous(subject, description, contact);
+        toast('Mensaje enviado, gracias');
+        return go(S.cloudSession ? 'settings' : 'auth');
+      } catch (err) {
+        return toast(err.message);
+      }
+    }
+
     if (e.target.id === 'payment-form') {
       const amountCents = M.toCents(f.get('amount'));
       if (!amountCents || amountCents <= 0) return toast('Escribe un monto válido.');
@@ -1596,8 +1819,8 @@
     const views = {
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
-      'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket,
-      collections: viewCollections, clients: viewClients, 'client-detail': viewClientDetail,
+      'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket, feedback: viewFeedback,
+      collections: viewCollections, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
     };
     app.innerHTML = views[S.view]();
   }
