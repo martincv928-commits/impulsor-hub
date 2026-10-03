@@ -62,3 +62,10 @@ def test_api_builds_frontend_when_cloud_workspace_has_no_dist():
     text = main.read_text()
     assert 'subprocess.run(["npm", "run", "build"]' in text
     assert "if not _UI_DIST.is_dir()" in text
+
+
+def test_same_origin_auth_bootstrap_precedes_frontend_bundle():
+    """The Agent token must exist before Vite modules initialize activeToken()."""
+    source = Path("app/api/main.py").read_text(encoding="utf-8")
+    assert 'replace("<head>", "<head>" + bootstrap, 1)' in source
+    assert "json.dumps(token)" in source
