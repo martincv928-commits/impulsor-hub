@@ -50,6 +50,25 @@ _DISALLOWED_GIT_TOOLS = [
     "Bash(git reflog *)",
 ]
 
+def _cli_failure_reason(exit_code: int, stdout: str, stderr: str) -> str:
+    """Return a useful, bounded CLI failure reason for the UI.
+
+    Claude sometimes reports authentication, configuration, quota, or
+    invocation errors on stdout rather than stderr. Keep the full streams in
+    the existing log files, but surface the first useful text so a remote
+    mobile user does not have to open a terminal to diagnose a failed run.
+    """
+    detail = (stderr or "").strip() or (stdout or "").strip()
+    if not detail:
+        return f"claude CLI exited with code {exit_code}"
+    # Failure reasons are persisted and rendered in the task UI. Bound them
+    # so an unexpectedly verbose CLI response cannot flood that screen.
+    detail = " ".join(detail.split())
+    if len(detail) > 1000:
+        detail = detail[:997] + "..."
+    return f"claude CLI exited with code {exit_code}: {detail}"
+
+
 class ClaudeCodeAdapter(AIExecutorAdapter):
     adapter_key = "claude_code"
 
@@ -199,7 +218,7 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
                 stdout=stdout,
                 stderr=stderr,
                 structured_result=None,
-                failure_reason=f"claude CLI exited with code {exit_code}",
+                failure_reason=_cli_failure_reason(exit_code, stdout, stderr),
             )
 
         try:
