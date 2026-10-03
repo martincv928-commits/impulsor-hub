@@ -26,6 +26,9 @@ function safeSet(key: string, value: string) {
 }
 
 export function getMode(): WorkspaceModeValue | null {
+  // When the UI came from the Agent itself, no workspace selection or
+  // access-code exchange is needed: use the same origin and injected token.
+  if (typeof window !== "undefined" && window.__IMPULSOR_SAME_ORIGIN__) return "local";
   const v = safeGet(MODE_KEY);
   return v === "local" || v === "cloud" ? v : null;
 }
