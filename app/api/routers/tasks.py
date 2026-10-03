@@ -61,6 +61,7 @@ def _run_in_background(task_id: str, timeout_seconds: int) -> None:
                 # an earlier terminal state was already reached.
                 if task is not None and task.status in {
                     TaskStatus.VALIDATING,
+                    TaskStatus.LOCKING,
                     TaskStatus.CHECKPOINTING,
                     TaskStatus.RUNNING,
                     TaskStatus.VERIFYING,
