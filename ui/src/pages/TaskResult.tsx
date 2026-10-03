@@ -360,7 +360,14 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
                       {e.severity}
                     </span>
                   </td>
-                  <td>{e.type}</td>
+                  <td>
+                    <div>{e.type}</div>
+                    {typeof e.payload?.error === "string" && (
+                      <div className="discrepancy" style={{ marginTop: 4 }}>
+                        {e.payload.error}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
