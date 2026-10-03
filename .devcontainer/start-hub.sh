@@ -3,7 +3,8 @@ set -euo pipefail
 cd /workspaces/impulsor-hub
 
 # Codespaces may resume an old workspace. Always fast-forward before serving.
-git pull --ff-only
+git fetch origin master
+git reset --hard origin/master
 
 # Build the UI from the same checkout the API imports.
 # Rebuild on every Codespace start so the served UI always matches the
