@@ -23,6 +23,7 @@ declare global {
     // instead -- a developer running the two processes separately must
     // set it to match IMPULSOR_HUB_AGENT_TOKEN on the backend.
     __IMPULSOR_AGENT_TOKEN__?: string;
+    __IMPULSOR_SAME_ORIGIN__?: boolean;
   }
 }
 
