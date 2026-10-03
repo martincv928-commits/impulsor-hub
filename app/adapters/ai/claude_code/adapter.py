@@ -8,7 +8,7 @@ this environment, `claude --help` / `claude doctor` / `claude auth status`):
   so health checks never "consume unnecessary work" per CLAUDE_M1
   Checkpoint B).
 - Execution: `claude -p <prompt> --output-format json --permission-mode
-  acceptEdits --permission-prompts none --disallowedTools <git history
+  acceptEdits --disallowedTools <git history
   subcommands> --strict-mcp-config`, run with `cwd=workspace` and never via
   a shell (argument array, no string interpolation into a shell command —
   SPEC line 189).
@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.adapters.ai.base import AIExecutorAdapter, ExecuteOutcome, ExecuteRequest
+from app.database.models import ExecutorResult
 from app.adapters.ai.result_parsing import parse_executor_result as _parse_executor_result
 from app.core.permissions.policy import RESULT_SCHEMA_INSTRUCTION, build_task_envelope
 
