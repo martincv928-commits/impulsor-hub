@@ -174,7 +174,17 @@ export default function TaskResultPage({ taskId, onBack }: { taskId: string; onB
             Herramientas utilizadas
           </p>
           <p style={{ margin: 0 }}>Git ✓</p>
-          {run?.structured_result && <p style={{ margin: 0 }}>Claude Code ✓</p>}
+          {run?.structured_result && (
+            <p style={{ margin: 0 }}>
+              {run.executor_resource_id === "resource-codex"
+                ? "Codex"
+                : run.executor_resource_id === "resource-gemini"
+                  ? "Gemini"
+                  : run.executor_resource_id === "resource-claude-code"
+                    ? "Claude Code"
+                    : "IA seleccionada"} ✓
+            </p>
+          )}
           {hasValidator && <p style={{ margin: 0 }}>Godot ✓</p>}
         </div>
       )}
