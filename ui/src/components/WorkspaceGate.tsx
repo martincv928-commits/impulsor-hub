@@ -35,6 +35,13 @@ export default function WorkspaceGate({ children }: { children: React.ReactNode 
     setError(null);
   };
 
+  // When the page is served by the Agent itself, authentication is already
+  // bootstrapped. Render the real Hub immediately and never expose the
+  // remote/local chooser or cloud access-code form.
+  if (sameOrigin) {
+    return <AgentGate mode="local">{children}</AgentGate>;
+  }
+
   if (mode === null) {
     return (
       <div className="app-root">
