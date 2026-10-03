@@ -111,8 +111,10 @@ if _UI_DIST.is_dir():
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def serve_ui() -> str:
-        if _cloud_mode():
-            return _INDEX_HTML
+        # The Hub UI is served by the Agent itself. Bootstrap that same-origin
+        # UI with the Agent token in both local and Codespaces modes so the
+        # owner never has to copy workspace URLs/access codes into the app.
+        # Cross-origin callers still cannot read/use this token through CORS.
         token = get_or_create_agent_token()
-        injected = f'<script>window.__IMPULSOR_AGENT_TOKEN__={token!r};</script></head>'
+        injected = f'<script>window.__IMPULSOR_AGENT_TOKEN__={token!r};window.__IMPULSOR_SAME_ORIGIN__=true;</script></head>'
         return _INDEX_HTML.replace("</head>", injected, 1)
