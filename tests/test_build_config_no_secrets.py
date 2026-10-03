@@ -46,3 +46,19 @@ def test_cloud_agent_installs_all_registered_ai_provider_clis():
     assert "@anthropic-ai/claude-code" in text
     assert "@openai/codex" in text
     assert "@google/gemini-cli" in text
+
+
+def test_cloud_launcher_can_replace_a_stale_hub_without_external_process_tools():
+    launcher = REPO_ROOT / "app" / "launcher.py"
+    text = launcher.read_text()
+    assert "_stop_stale_hub()" in text
+    assert "/proc/net/tcp" in text
+    assert "pkill" not in text
+    assert "fuser" not in text
+
+
+def test_api_builds_frontend_when_cloud_workspace_has_no_dist():
+    main = REPO_ROOT / "app" / "api" / "main.py"
+    text = main.read_text()
+    assert 'subprocess.run(["npm", "run", "build"]' in text
+    assert "if not _UI_DIST.is_dir()" in text
