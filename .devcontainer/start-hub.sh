@@ -6,9 +6,9 @@ cd /workspaces/impulsor-hub
 git pull --ff-only
 
 # Build the UI from the same checkout the API imports.
-if [ ! -d ui/dist ]; then
-  (cd ui && npm install --silent && npm run build)
-fi
+# Rebuild on every Codespace start so the served UI always matches the
+# fast-forwarded checkout instead of a stale dist from an older session.
+(cd ui && npm install --silent && npm run build)
 
 # Stop any previous Hub instance, including the image-baked /srv copy.
 python - <<'PY'
