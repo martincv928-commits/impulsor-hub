@@ -38,6 +38,25 @@ def _run_in_background(task_id: str, timeout_seconds: int) -> None:
             orchestrator.run_task(conn, task_id=task_id, router=get_router(), timeout_seconds=timeout_seconds)
         except orchestrator.OrchestratorError:
             pass  # already logged as an event inside the orchestrator / lock path
+        except Exception as exc:
+            # Never leave the mobile UI with a blank failure card. Persist the
+            # unexpected backend exception as an event so the real cause is
+            # visible remotely without terminal/log access.
+            try:
+                task = tasks_service.get_task(conn, task_id)
+                from app.core.events.events import log_event
+                from app.database.models import EventSeverity
+                log_event(
+                    conn,
+                    type="task.unexpected_error",
+                    severity=EventSeverity.ERROR,
+                    project_id=task.project_id if task else None,
+                    task_id=task_id,
+                    payload={"error": f"{type(exc).__name__}: {exc}"},
+                )
+                conn.commit()
+            except Exception:
+                pass
 
 
 @router.post("/projects/{project_id}/tasks", response_model=Task)
