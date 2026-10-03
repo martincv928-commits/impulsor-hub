@@ -77,6 +77,33 @@ def test_execute_parses_conforming_structured_result(monkeypatch, tmp_path: Path
     assert outcome.structured_result.files_claimed_modified == ["a.py"]
 
 
+def test_execute_uses_supported_noninteractive_cli_flags(monkeypatch, tmp_path: Path):
+    adapter = ClaudeCodeAdapter()
+    payload = {
+        "task_id": "TASK-1",
+        "status": "completed",
+        "summary": "ok",
+        "files_claimed_modified": [],
+        "files_claimed_created": [],
+        "files_claimed_deleted": [],
+    }
+    captured = {}
+
+    def _popen(args, **kwargs):
+        captured["args"] = args
+        return _FakePopen(stdout=_envelope(payload), stderr="", returncode=0)
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    outcome = adapter.execute(
+        ExecuteRequest(task_id="TASK-1", run_id="run-flags", workspace=tmp_path, objective="x", timeout_seconds=30)
+    )
+
+    assert outcome.run_status == "completed"
+    assert "--permission-prompts" not in captured["args"]
+    assert "--permission-prompt" not in captured["args"]
+    assert captured["args"][captured["args"].index("--permission-mode") + 1] == "acceptEdits"
+
+
 def test_execute_extracts_json_from_prose_prefixed_fenced_block(monkeypatch, tmp_path: Path):
     """Regression test for a real observation against the live `claude` CLI:
     despite the envelope saying 'no text before or after the JSON object',
