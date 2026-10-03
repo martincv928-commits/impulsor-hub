@@ -57,8 +57,10 @@ def init_db(db_path: Path | str | None = None) -> None:
 @contextmanager
 def get_connection(db_path: Path | str | None = None):
     db_path = Path(db_path) if db_path is not None else _default_db_path()
-    if not db_path.exists():
-        init_db(db_path)
+    # A Codespace can preserve an older hub.db across source/image updates.
+    # Always apply the idempotent schema + additive migrations before opening
+    # a request connection, not only when the database file is brand new.
+    init_db(db_path)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
