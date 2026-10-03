@@ -17,11 +17,7 @@ import {
 import AgentGate from "./AgentGate";
 
 export default function WorkspaceGate({ children }: { children: React.ReactNode }) {
-  // Same-origin Agent bootstrap (including Codespaces) must never show the
-  // workspace chooser. The backend already injected the authenticated token.
-  const sameOrigin = typeof window !== "undefined" && !!window.__IMPULSOR_AGENT_TOKEN__;
-  const initialMode: WorkspaceModeValue | null = sameOrigin ? "local" : getMode();
-  const [mode, setModeState] = useState<WorkspaceModeValue | null>(initialMode);
+  const [mode, setModeState] = useState<WorkspaceModeValue | null>(getMode());
   const [sessionReady, setSessionReady] = useState(hasCloudSession());
   const [cloudUrl, setCloudUrl] = useState(configuredCloudAgentUrl() ?? "");
   const [accessCode, setAccessCode] = useState("");
