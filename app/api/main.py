@@ -96,6 +96,15 @@ if getattr(sys, "frozen", False):
     _UI_DIST = Path(getattr(sys, "_MEIPASS")) / "ui" / "dist"
 else:
     _UI_DIST = Path(__file__).resolve().parents[2] / "ui" / "dist"
+if not _UI_DIST.is_dir():
+    # Source/cloud workspaces may not have a prebuilt frontend yet. Build it
+    # once at Agent startup so opening forwarded port 8000 always serves the Hub UI.
+    import subprocess
+
+    _UI_ROOT = _UI_DIST.parent
+    if (_UI_ROOT / "package.json").is_file():
+        subprocess.run(["npm", "run", "build"], cwd=str(_UI_ROOT), check=False, timeout=120)
+
 if _UI_DIST.is_dir():
     _INDEX_HTML = (_UI_DIST / "index.html").read_text(encoding="utf-8")
     app.mount("/assets", StaticFiles(directory=str(_UI_DIST / "assets")), name="ui-assets")
