@@ -10,7 +10,7 @@ from app.core.events.events import list_events
 from app.core.orchestrator import orchestrator
 from app.core.router.router import get_router
 from app.database.db import get_connection
-from app.database.models import FileChange, Task, TaskCreateRequest, TaskRun
+from app.database.models import FileChange, Task, TaskCreateRequest, TaskRun, TaskStatus
 from app.projects import service as projects_service
 from app.tasks import service as tasks_service
 
@@ -46,14 +46,26 @@ def _run_in_background(task_id: str, timeout_seconds: int) -> None:
                 task = tasks_service.get_task(conn, task_id)
                 from app.core.events.events import log_event
                 from app.database.models import EventSeverity
+                error_text = f"{type(exc).__name__}: {exc}"
                 log_event(
                     conn,
                     type="task.unexpected_error",
                     severity=EventSeverity.ERROR,
                     project_id=task.project_id if task else None,
                     task_id=task_id,
-                    payload={"error": f"{type(exc).__name__}: {exc}"},
+                    payload={"error": error_text},
                 )
+                # Do not leave a crashed background task stuck in an active
+                # state. Persist a terminal failure when the state machine
+                # allows it; the event above remains the source of truth when
+                # an earlier terminal state was already reached.
+                if task is not None and task.status in {
+                    TaskStatus.VALIDATING,
+                    TaskStatus.CHECKPOINTING,
+                    TaskStatus.RUNNING,
+                    TaskStatus.VERIFYING,
+                }:
+                    tasks_service.transition_task(conn, task_id, TaskStatus.FAILED)
                 conn.commit()
             except Exception:
                 pass
