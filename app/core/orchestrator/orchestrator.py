@@ -163,8 +163,14 @@ def run_task(
             )
             return tasks_service.transition_task(conn, task_id, TaskStatus.FAILED)
 
+        # Persist the executor actually selected by the provider-agnostic
+        # router. Never label Codex/Gemini runs as Claude.
+        executor_key = getattr(ai_executor, "adapter_key", "unknown")
         task_run = tasks_service.create_task_run(
-            conn, task_id=task_id, executor_resource_id="resource-claude-code", timeout_seconds=timeout_seconds
+            conn,
+            task_id=task_id,
+            executor_resource_id=f"resource-{executor_key.replace('_', '-')}",
+            timeout_seconds=timeout_seconds,
         )
         checkpoint = tasks_service.create_checkpoint(
             conn,
