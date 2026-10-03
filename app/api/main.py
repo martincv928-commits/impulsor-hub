@@ -116,5 +116,18 @@ if _UI_DIST.is_dir():
         # owner never has to copy workspace URLs/access codes into the app.
         # Cross-origin callers still cannot read/use this token through CORS.
         token = get_or_create_agent_token()
-        injected = f'<script>window.__IMPULSOR_AGENT_TOKEN__={token!r};window.__IMPULSOR_SAME_ORIGIN__=true;</script></head>'
-        return _INDEX_HTML.replace("</head>", injected, 1)
+        # Use JSON encoding, not Python repr: JavaScript does not reliably
+        # accept Python string literal syntax. This token must be available
+        # before the frontend bundle executes.
+        import json
+        bootstrap = (
+            "<script>"
+            f"window.__IMPULSOR_AGENT_TOKEN__={json.dumps(token)};"
+            "window.__IMPULSOR_SAME_ORIGIN__=true;"
+            "</script>"
+        )
+        # Vite loads its module scripts from <head>. Inject immediately after
+        # <head> so activeToken() sees the token during module initialization.
+        if "<head>" in _INDEX_HTML:
+            return _INDEX_HTML.replace("<head>", "<head>" + bootstrap, 1)
+        return bootstrap + _INDEX_HTML
