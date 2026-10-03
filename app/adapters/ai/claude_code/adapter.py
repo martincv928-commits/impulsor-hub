@@ -137,8 +137,6 @@ class ClaudeCodeAdapter(AIExecutorAdapter):
             "json",
             "--permission-mode",
             "acceptEdits",
-            "--permission-prompts",
-            "none",
             "--strict-mcp-config",
             "--disallowedTools",
             *_DISALLOWED_GIT_TOOLS,
