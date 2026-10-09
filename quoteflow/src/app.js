@@ -1534,7 +1534,16 @@
       }
       case 'iva': q.ivaMode = b.dataset.v; return render();
       case 'disc-type': q.discount = { type: b.dataset.v, value: (q.discount && q.discount.value) || 0 }; return render();
-      case 'save': persist('BORRADOR'); toast('Borrador guardado · ' + q.folio); return go('home');
+      case 'save': {
+        // Si ya estaba generada (con folio enviado al cliente, tal vez ya con
+        // pagos), "Guardar" solo debe guardar el cambio, no regresarla a
+        // borrador: eso la sacaba de Cobranza, del pendiente por cobrar y de
+        // la deuda del cliente aunque sus pagos siguieran ahí.
+        const wasGenerated = q.status === 'GENERADA';
+        persist(wasGenerated ? 'GENERADA' : 'BORRADOR');
+        toast(wasGenerated ? 'Cambios guardados · ' + q.folio : 'Borrador guardado · ' + q.folio);
+        return go(wasGenerated ? 'summary' : 'home');
+      }
       case 'generate': {
         const err = validate(q);
         if (err) { render(); return toast(err); }
