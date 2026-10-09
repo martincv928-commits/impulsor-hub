@@ -120,10 +120,13 @@
     if (q.confirmation === 'CONFIRMADA') return true;
     if (q.confirmation === 'RECHAZADA') return false;
     if (q.confirmation === null) return false; // cotización nueva, pendiente de confirmar a propósito
-    // cotización de antes de este cambio (ni siquiera tiene el campo): se
-    // trata como confirmada si ya tenía pagos o plan en curso, para no
-    // esconderle de golpe su historial de cobro ya empezado.
-    return !!((q.payments && q.payments.length) || (q.installments && q.installments.length));
+    // cotización de antes de este cambio: ni siquiera tiene el campo
+    // (sigue siendo "undefined"), así que se trata como confirmada sin
+    // condición. Antes esto solo aplicaba si ya tenía pagos o plan
+    // registrado, pero eso escondía de Cobranza y de "pendiente por cobrar"
+    // cualquier cotización vieja que todavía no había recibido su primer
+    // abono, haciendo parecer que esas cotizaciones habían desaparecido.
+    return true;
   }
   const isRejected = (q) => q.confirmation === 'RECHAZADA';
   function paymentStatusOf(q) {
