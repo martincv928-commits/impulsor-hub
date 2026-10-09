@@ -148,6 +148,21 @@
     return rows.map((r) => ({ key: r.key, name: r.name, unit: r.unit, priceCents: r.price_cents, uses: r.uses, updatedAt: new Date(r.updated_at).getTime() }));
   }
 
+  /* ---------- clientes guardados (antes solo vivían en este dispositivo) ---------- */
+  function customerRow(businessId, key, c) {
+    return {
+      business_id: businessId,
+      key,
+      name: c.name,
+      phone: c.phone || '',
+      notes: c.notes || '',
+      updated_at: new Date(c.updatedAt || Date.now()).toISOString(),
+    };
+  }
+  function customersFromRows(rows) {
+    return rows.map((r) => ({ id: r.id, name: r.name, phone: r.phone || '', notes: r.notes || '', createdAt: new Date(r.created_at).getTime(), updatedAt: new Date(r.updated_at).getTime() }));
+  }
+
   /* ---------- cotizaciones ---------- */
   function quoteRow(businessId, q) {
     const row = {
@@ -167,6 +182,8 @@
       source_text: q.sourceText || '',
       updated_at: new Date(q.updatedAt || Date.now()).toISOString(),
       generated_at: q.generatedAt ? new Date(q.generatedAt).toISOString() : null,
+      installment_history: q.installmentHistory || [],
+      show_installments_on_pdf: q.showInstallmentsOnPdf !== false,
     };
     if (looksLikeUuid(q.id)) row.id = q.id; // ya sincronizada antes: se actualiza el mismo renglón
     return row;
@@ -194,6 +211,8 @@
       generatedAt: row.generated_at ? new Date(row.generated_at).getTime() : undefined,
       payments: paymentsFromRows(row.quote_payments),
       installments: installmentsFromRows(row.quote_installments),
+      installmentHistory: row.installment_history || [],
+      showInstallmentsOnPdf: row.show_installments_on_pdf !== false,
     };
   }
 
@@ -232,13 +251,27 @@
     // (nunca borra local-only que aún no se haya subido).
     async pull(businessId) {
       const c = client();
-      const [{ data: products, error: e1 }, { data: quotes, error: e2 }] = await Promise.all([
+      const [{ data: products, error: e1 }, { data: quotes, error: e2 }, { data: customers, error: e3 }] = await Promise.all([
         c.from('products').select('*').eq('business_id', businessId),
         c.from('quotes').select('*, quote_items(*), quote_payments(*), quote_installments(*)').eq('business_id', businessId),
+        c.from('customers').select('*').eq('business_id', businessId),
       ]);
       if (e1) throw new Error(friendlyError(e1));
       if (e2) throw new Error(friendlyError(e2));
-      return { catalog: catalogFromRows(products || []), quotes: (quotes || []).map(quoteFromRow) };
+      if (e3) throw new Error(friendlyError(e3));
+      return { catalog: catalogFromRows(products || []), quotes: (quotes || []).map(quoteFromRow), customers: customersFromRows(customers || []) };
+    },
+
+    // Sube o actualiza un cliente guardado. Es "upsert" por nombre normalizado
+    // (la misma clave que usa el catálogo), así que repetirlo no duplica.
+    async pushCustomer(businessId, key, entry) {
+      const { error } = await client().from('customers').upsert(customerRow(businessId, key, entry), { onConflict: 'business_id,key' });
+      if (error) throw new Error(friendlyError(error));
+    },
+
+    async deleteCustomer(businessId, key) {
+      const { error } = await client().from('customers').delete().eq('business_id', businessId).eq('key', key);
+      if (error) throw new Error(friendlyError(error));
     },
 
     // Solo los folios (para detectar choques al importar cotizaciones locales

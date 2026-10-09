@@ -19,6 +19,7 @@
     customers: DB.getCustomers(),
     activeCustomer: null,
     writeOpen: false,
+    homeSearch: '',
     addProductOpen: false,
     restructureOpen: false,
     showAll: false,
@@ -47,6 +48,7 @@
     share: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>',
     cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>',
     brand: '<svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2f3f9e"/><stop offset="100%" stop-color="#5a3fc0"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#bmg)"/><path d="M28 34 Q28 26 36 26 L64 26 Q72 26 72 34 L72 56 Q72 64 64 64 L46 64 L34 74 Q31 76 31 72 L31 64 L36 64 Q28 64 28 56 Z" fill="#fff"/><rect x="40" y="50" width="7" height="9" rx="2" fill="#ffb648"/><rect x="50" y="43" width="7" height="16" rx="2" fill="#ffb648"/><rect x="60" y="35" width="7" height="24" rx="2" fill="#3a2fae"/></svg>',
   };
 
@@ -246,6 +248,15 @@
     const key = CAT.key(name);
     return key ? S.customers.find((c) => CAT.key(c.name) === key) || null : null;
   }
+  // Enlace de WhatsApp con un recordatorio de cobro prellenado — sin backend
+  // ni integración, solo abre la conversación con el texto listo para enviar.
+  function waReminderLink(c, debtCents) {
+    const digits = String(c.phone || '').replace(/\D/g, '');
+    const biz = S.settings.businessName || 'nosotros';
+    const msg = `Hola ${c.name}, de parte de ${biz}: tienes un saldo pendiente de ${fmt(debtCents)}. ¿Cuándo podrías cubrirlo? Gracias.`;
+    return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+  }
+
   function customerInfo(name) {
     const key = CAT.key(name);
     if (!key) return { debt: 0, moroso: false, quotes: [] };
@@ -255,12 +266,29 @@
     const moroso = confirmed.some((q) => balanceCentsOf(q) > 0 && paymentDueStatus(q) === 'vencido');
     return { debt, moroso, quotes };
   }
-  function saveCustomer(name) {
+  function saveCustomer(name, phone, notes) {
     const clean = String(name || '').trim();
     if (!clean || findCustomer(clean)) return false;
-    S.customers = S.customers.concat([{ id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: clean, createdAt: Date.now() }]);
+    const c = { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: clean, phone: String(phone || '').trim(), notes: String(notes || '').trim(), createdAt: Date.now(), updatedAt: Date.now() };
+    S.customers = S.customers.concat([c]);
     DB.saveCustomers(S.customers);
+    syncCustomerToCloud(c);
     return true;
+  }
+
+  // Edita teléfono/notas de un cliente ya guardado (antes solo se podía
+  // agregar o quitar, nunca cambiar sus datos).
+  function updateCustomer(id, fields) {
+    const c = S.customers.find((x) => x.id === id);
+    if (!c) return;
+    Object.assign(c, fields, { updatedAt: Date.now() });
+    DB.saveCustomers(S.customers);
+    syncCustomerToCloud(c);
+  }
+
+  function syncCustomerToCloud(c) {
+    if (!(cloudOn && S.cloudBusiness)) return;
+    CLOUD.data.pushCustomer(S.cloudBusiness.id, CAT.key(c.name), c).catch((e) => toast('No se sincronizó el cliente con la nube: ' + e.message));
   }
 
   /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
@@ -329,23 +357,31 @@
     S.settings = DB.getSettings();
     DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
     S.settings = DB.getSettings();
-    const { catalog, quotes } = await CLOUD.data.pull(S.cloudBusiness.id);
+    const { catalog, quotes, customers } = await CLOUD.data.pull(S.cloudBusiness.id);
     DB.saveCatalog(catalog);
     S.catalog = catalog;
     quotes.forEach((q) => DB.saveQuote(q));
+    // Clientes: se mezclan por nombre normalizado en vez de reemplazar todo,
+    // para no perder uno guardado localmente que aún no se haya subido.
+    const localCustomers = DB.getCustomers();
+    const byKey = new Map(localCustomers.map((c) => [CAT.key(c.name), c]));
+    (customers || []).forEach((c) => byKey.set(CAT.key(c.name), c));
+    S.customers = Array.from(byKey.values());
+    DB.saveCustomers(S.customers);
   }
 
-  // Cotizaciones que nunca llegaron a la nube (su id sigue siendo el local,
-  // no un UUID real) — ya sea porque nunca se importaron, o porque un
-  // intento anterior falló para algunas.
-  const pendingSyncQuotes = () => DB.getQuotes().filter((q) => !CLOUD.looksLikeUuid(q.id));
+  // Cotizaciones que no están al día en la nube: o nunca se importaron (su
+  // id sigue siendo el local, no un UUID real), o ya tenían un id de la nube
+  // pero una edición posterior falló al sincronizar (_syncFailed).
+  const pendingSyncQuotes = () => DB.getQuotes().filter((q) => !CLOUD.looksLikeUuid(q.id) || q._syncFailed);
 
   // Sube catálogo y cotizaciones locales a la cuenta. Si el negocio ya tenía
   // sus propias cotizaciones (otro dispositivo, u otra persona probando la
   // misma cuenta) y un folio local choca con uno que ya existe en la nube,
   // se le asigna un folio nuevo en vez de dejar que la subida falle en
   // silencio — así ninguna cotización se queda nada más en este dispositivo
-  // por una coincidencia de folio.
+  // por una coincidencia de folio. Una cotización que YA tenía id de la nube
+  // (solo falló una edición) no se renumera, solo se reintenta tal cual.
   async function importLocalDataToCloud(bizId) {
     let failed = 0;
     for (const entry of DB.getCatalog()) {
@@ -354,7 +390,8 @@
     const pending = pendingSyncQuotes();
     const taken = new Set(await CLOUD.data.folios(bizId).catch(() => []));
     for (const iq of pending) {
-      if (!iq.folio || taken.has(iq.folio)) {
+      const isNew = !CLOUD.looksLikeUuid(iq.id);
+      if (isNew && (!iq.folio || taken.has(iq.folio))) {
         let folio;
         do { folio = DB.nextFolio(); } while (taken.has(folio));
         iq.folio = folio;
@@ -362,6 +399,7 @@
       taken.add(iq.folio);
       try {
         const cloudId = await CLOUD.data.pushQuote(bizId, iq);
+        delete iq._syncFailed;
         if (cloudId !== iq.id) { DB.deleteQuote(iq.id); iq.id = cloudId; DB.saveQuote(iq); }
         else DB.saveQuote(iq);
       } catch (e) { failed++; }
@@ -401,11 +439,11 @@
         <div class="title">Nueva solicitud</div>
       </header>
       <form class="stack" id="support-new-form">
-        <div class="field"><label for="t-subject">Asunto</label><input id="t-subject" name="subject" required></div>
+        <div class="field"><label for="t-subject">Asunto</label><input id="t-subject" name="subject" required maxlength="200"></div>
         <div class="field">
           <label for="t-desc">Cuéntanos qué pasa</label>
           <div class="row">
-            <textarea id="t-desc" name="description" required style="min-height:120px;flex:1"></textarea>
+            <textarea id="t-desc" name="description" required maxlength="5000" style="min-height:120px;flex:1"></textarea>
             <button type="button" class="icon-btn" data-act="support-desc-voice" aria-label="Dictar descripción">${icon.mic}</button>
           </div>
         </div>
@@ -426,16 +464,16 @@
       </header>
       <form class="stack" id="feedback-form">
         <p class="hint">¿Tienes un problema o una sugerencia? Mándanosla; no necesitas haber iniciado sesión.</p>
-        <div class="field"><label for="fb-subject">Asunto</label><input id="fb-subject" name="subject" required></div>
+        <div class="field"><label for="fb-subject">Asunto</label><input id="fb-subject" name="subject" required maxlength="200"></div>
         <div class="field">
           <label for="fb-desc">Cuéntanos qué pasa</label>
           <div class="row">
-            <textarea id="fb-desc" name="description" required style="min-height:120px;flex:1"></textarea>
+            <textarea id="fb-desc" name="description" required maxlength="5000" style="min-height:120px;flex:1"></textarea>
             <button type="button" class="icon-btn" data-act="feedback-desc-voice" aria-label="Dictar descripción">${icon.mic}</button>
           </div>
         </div>
         <div class="field"><label for="fb-image">Foto o captura de pantalla (opcional)</label><input id="fb-image" type="file" accept="image/*"></div>
-        <div class="field"><label for="fb-contact">Tu correo o teléfono (opcional, para responderte)</label><input id="fb-contact" name="contact"></div>
+        <div class="field"><label for="fb-contact">Tu correo o teléfono (opcional, para responderte)</label><input id="fb-contact" name="contact" maxlength="200"></div>
         <button class="btn primary block" type="submit">Enviar</button>
       </form>`;
   }
@@ -497,6 +535,7 @@
       <header class="top">
         <div class="brand">${icon.brand}<span>QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</span></div>
         <span class="spacer"></span>
+        <button class="icon-btn" data-act="reports" aria-label="Reportes">${icon.chart}</button>
         <button class="icon-btn" data-act="collections" aria-label="Cobranza">${icon.cash}</button>
         <button class="icon-btn" data-act="clients" aria-label="Clientes">${icon.people}</button>
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
@@ -533,20 +572,47 @@
       ${S.settings.homeList === 'collections' ? collectionsListSection() : quotesListSection(quotes, shown)}`;
   }
 
-  function quotesListSection(quotes, shown) {
+  function quoteRowHtml(q) {
     return `
-      <div class="section-h"><h2>Cotizaciones recientes</h2>${quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
-      <div class="list">
-        ${shown.length ? shown.map((q) => `
-          <button class="qrow" data-act="open" data-id="${q.id}">
-            <span class="client">${esc(q.client || 'Sin cliente')}</span>
-            <span class="total num">${fmt(totalsOf(q).total)}</span>
-            <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
-            <span style="display:flex;gap:6px;justify-self:end">
-              ${q.status === 'GENERADA' && q.confirmation ? statusChip(CONFIRMATION_PILL[q.confirmation], CONFIRMATION_LABEL[q.confirmation]) : `<span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status === 'GENERADA' && q.confirmation === null ? 'Por confirmar' : q.status}</span>`}
-              ${q.status === 'GENERADA' && isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
-            </span>
-          </button>`).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
+      <button class="qrow" data-act="open" data-id="${q.id}">
+        <span class="client">${esc(q.client || 'Sin cliente')}</span>
+        <span class="total num">${fmt(totalsOf(q).total)}</span>
+        <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+        <span style="display:flex;gap:6px;justify-self:end">
+          ${q.status === 'GENERADA' && q.confirmation ? statusChip(CONFIRMATION_PILL[q.confirmation], CONFIRMATION_LABEL[q.confirmation]) : `<span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status === 'GENERADA' && q.confirmation === null ? 'Por confirmar' : q.status}</span>`}
+          ${q.status === 'GENERADA' && isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
+        </span>
+      </button>`;
+  }
+
+  function filterQuotesBySearch(quotes, search) {
+    const s = search.trim().toLowerCase();
+    if (!s) return null; // null = sin búsqueda activa
+    return quotes.filter((x) => (x.client || '').toLowerCase().includes(s) || (x.folio || '').toLowerCase().includes(s));
+  }
+
+  // La lista de resultados se actualiza tecla por tecla sin volver a dibujar
+  // toda la pantalla (eso le quitaría el foco al campo de búsqueda a media
+  // palabra); solo se reescribe el contenido de la lista.
+  function refreshHomeSearch() {
+    const listEl = document.getElementById('home-quotes-list');
+    const headEl = document.getElementById('home-quotes-head');
+    if (!listEl) return;
+    const quotes = DB.getQuotes();
+    const filtered = filterQuotesBySearch(quotes, S.homeSearch);
+    const shown = filtered || (S.showAll ? quotes : quotes.slice(0, 12));
+    listEl.innerHTML = shown.length ? shown.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.'}</div>`;
+    if (headEl) headEl.textContent = filtered ? 'Resultados' : 'Cotizaciones recientes';
+  }
+
+  function quotesListSection(quotes, shown) {
+    const filtered = filterQuotesBySearch(quotes, S.homeSearch);
+    const rows = filtered || shown;
+    return `
+      <div class="field" style="margin-top:10px"><input id="home-search" placeholder="Buscar por cliente o folio…" value="${esc(S.homeSearch)}"></div>
+      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : 'Cotizaciones recientes'}</h2>${!filtered && quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
+      <div class="list" id="home-quotes-list">
+        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>`;
   }
 
@@ -960,13 +1026,22 @@
     CLOUD.data
       .pushQuote(bizId, q)
       .then((cloudId) => {
+        delete q._syncFailed;
         if (cloudId !== q.id) {
           DB.deleteQuote(q.id);
           q.id = cloudId;
-          DB.saveQuote(q);
         }
+        DB.saveQuote(q);
       })
-      .catch((e) => toast('Se guardó en este dispositivo, pero no se sincronizó con la nube: ' + e.message));
+      .catch((e) => {
+        // Se marca para que "Sincronización pendiente" en Configuración lo
+        // detecte y se pueda reintentar, aunque esta cotización YA tuviera
+        // un id real de la nube (de lo contrario un fallo en una edición
+        // posterior a la primera subida pasaba totalmente desapercibido).
+        q._syncFailed = true;
+        DB.saveQuote(q);
+        toast('Se guardó en este dispositivo, pero no se sincronizó con la nube: ' + e.message);
+      });
     q.items.forEach((it) => {
       const entry = cat.find((c) => c.key === CAT.key(it.desc));
       if (entry) CLOUD.data.pushProduct(bizId, entry).catch(() => {});
@@ -1240,6 +1315,67 @@
       <div class="list">${collectionsRows(pending)}</div>`;
   }
 
+  /* ---------- reportes: ventas y cobros por mes, mejores clientes ---------- */
+  function monthKey(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function monthLabel(key) {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+  }
+  function viewReports() {
+    const quotes = DB.getQuotes().filter((q) => q.status === 'GENERADA' && !isRejected(q));
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) months.push(monthKey(new Date(now.getFullYear(), now.getMonth() - i, 1).getTime()));
+    const byMonth = Object.fromEntries(months.map((k) => [k, { cotizado: 0, cobrado: 0 }]));
+    quotes.forEach((q) => {
+      const k = monthKey(q.generatedAt || q.updatedAt);
+      if (byMonth[k]) byMonth[k].cotizado += totalsOf(q).total;
+      (q.payments || []).forEach((p) => {
+        const pk = monthKey(p.paidAt);
+        if (byMonth[pk]) byMonth[pk].cobrado += p.amountCents;
+      });
+    });
+    const maxVal = Math.max(1, ...months.map((k) => Math.max(byMonth[k].cotizado, byMonth[k].cobrado)));
+    const byClient = new Map();
+    quotes.filter(isConfirmed).forEach((q) => {
+      const name = q.client || 'Sin cliente';
+      const cur = byClient.get(name) || { total: 0, count: 0 };
+      cur.total += totalsOf(q).total;
+      cur.count += 1;
+      byClient.set(name, cur);
+    });
+    const topClients = Array.from(byClient.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total).slice(0, 5);
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">Reportes</div>
+      </header>
+      <div class="section-h"><h2>Últimos 6 meses</h2></div>
+      <div class="sheet">
+        ${months.map((k) => `
+          <div style="margin-bottom:10px">
+            <div class="row" style="justify-content:space-between;font-size:13px"><b style="text-transform:capitalize">${monthLabel(k)}</b><span class="muted">${fmt(byMonth[k].cotizado)} cotizado · ${fmt(byMonth[k].cobrado)} cobrado</span></div>
+            <div style="display:flex;gap:3px;height:8px;margin-top:4px">
+              <div style="flex:${byMonth[k].cotizado / maxVal};background:var(--accent);border-radius:3px;min-width:2px"></div>
+              <div style="flex:${byMonth[k].cobrado / maxVal};background:var(--ok);border-radius:3px;min-width:2px"></div>
+            </div>
+          </div>`).join('')}
+        <p class="hint" style="margin:0">■ Cotizado &nbsp; ■ Cobrado</p>
+      </div>
+      <div class="section-h"><h2>Mejores clientes</h2></div>
+      <div class="list">
+        ${topClients.length ? topClients.map((c) => `
+          <div class="qrow" style="grid-template-columns:1fr auto">
+            <span class="client">${esc(c.name)}</span>
+            <span class="total num">${fmt(c.total)}</span>
+            <span class="meta">${c.count} cotización(es) confirmada(s)</span>
+          </div>`).join('') : '<div class="empty">Aún no hay cotizaciones confirmadas.</div>'}
+      </div>`;
+  }
+
   /* ---------- base de clientes (V0.4.3, opcional) ---------- */
   function viewClients() {
     const rows = S.customers
@@ -1282,9 +1418,18 @@
         <div class="muted">${info.moroso ? '⚠ Cliente moroso: tiene pagos vencidos' : info.debt > 0 ? 'Tiene saldo pendiente' : 'Al corriente'}</div>
         <div class="big num">${fmt(info.debt)}</div>
       </section>
+      ${info.debt > 0 && c.phone ? `<a class="btn primary block" href="${waReminderLink(c, info.debt)}" target="_blank" rel="noopener">${icon.share} Recordar por WhatsApp</a>` : ''}
       ${confirmedQuotes.length > 1 ? `
         <button class="btn primary block" data-act="client-statement">Ver estado de cuenta completo (${confirmedQuotes.length} cotizaciones)</button>
       ` : ''}
+      <div class="section-h"><h2>Datos de contacto</h2></div>
+      <form class="stack" id="customer-edit-form">
+        <div class="two-col">
+          <div class="field"><label for="cc-phone">Teléfono (WhatsApp)</label><input id="cc-phone" name="phone" type="tel" value="${esc(c.phone || '')}" placeholder="10 dígitos"></div>
+          <div class="field"><label for="cc-notes">Notas</label><input id="cc-notes" name="notes" value="${esc(c.notes || '')}" placeholder="Ej. prefiere transferencia"></div>
+        </div>
+        <button class="btn block" type="submit">Guardar datos</button>
+      </form>
       <div class="section-h"><h2>Cotizaciones generadas</h2></div>
       <div class="list">
         ${quotes.length ? quotes.map((q) => `
@@ -1335,6 +1480,18 @@
             </button>`).join('')}
         </div>
       </div>`;
+  }
+
+  // CSV con BOM (para que Excel detecte acentos bien) y comillas dobladas
+  // donde haga falta, sin librerías externas.
+  function downloadCsv(rows, filename) {
+    const csvField = (v) => {
+      const s = String(v == null ? '' : v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const text = '﻿' + rows.map((r) => r.map(csvField).join(',')).join('\r\n');
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    SHARE.download(blob, filename);
   }
 
   function makePdf(mode) {
@@ -1417,6 +1574,15 @@
           <p class="hint">¿Algo no funciona bien o tienes una sugerencia? Puedes avisarnos aunque no hayas iniciado sesión.</p>
           <button class="btn block" data-act="feedback-open">Enviar mensaje</button>
         </div>`}
+      <div class="section-h"><h2>Exportar a Excel/CSV</h2></div>
+      <div class="stack">
+        <p class="hint">Archivos que puedes abrir directo en Excel o pasarle a tu contador.</p>
+        <div class="two-col">
+          <button class="btn block" data-act="export-quotes-csv">Cotizaciones</button>
+          <button class="btn block" data-act="export-payments-csv">Pagos</button>
+        </div>
+        <button class="btn block" data-act="export-clients-csv">Clientes</button>
+      </div>
       <div class="section-h"><h2>Respaldo</h2></div>
       <div class="stack">
         <p class="hint">Guarda un archivo con tu configuración, catálogo e historial. Sirve para recuperarlos si cambias de teléfono o borras los datos del navegador.</p>
@@ -1481,11 +1647,14 @@
       case 'settings': return go('settings');
       case 'home': S.writeOpen = false; return go('home');
       case 'collections': return go('collections');
+      case 'reports': return go('reports');
       case 'clients': S.customers = DB.getCustomers(); return go('clients');
       case 'open-client': S.activeCustomer = S.customers.find((c) => c.id === b.dataset.id); return go('client-detail');
       case 'delete-client': {
+        const key = CAT.key(S.activeCustomer.name);
         S.customers = S.customers.filter((c) => c.id !== S.activeCustomer.id);
         DB.saveCustomers(S.customers);
+        if (cloudOn && S.cloudBusiness) CLOUD.data.deleteCustomer(S.cloudBusiness.id, key).catch(() => {});
         toast('Cliente eliminado de guardados');
         return go('clients');
       }
@@ -1676,6 +1845,29 @@
         return;
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
+      case 'export-quotes-csv': {
+        const rows = [['Folio', 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
+        DB.getQuotes().filter((q) => q.status === 'GENERADA').forEach((q) => {
+          const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? 'Confirmada' : q.confirmation === null ? 'Por confirmar' : 'Confirmada';
+          rows.push([q.folio || '', q.client || '', dateStr(q.generatedAt || q.updatedAt), q.status, conf, M.centsToStr(totalsOf(q).total), M.centsToStr(paidCentsOf(q)), M.centsToStr(balanceCentsOf(q))]);
+        });
+        downloadCsv(rows, 'cotizaciones.csv');
+        return;
+      }
+      case 'export-payments-csv': {
+        const rows = [['Folio', 'Cliente', 'Fecha de pago', 'Monto', 'Método', 'Nota']];
+        DB.getQuotes().forEach((q) => (q.payments || []).forEach((p) => {
+          rows.push([q.folio || '', q.client || '', dateStr(p.paidAt), M.centsToStr(p.amountCents), PAYMENT_METHOD_LABEL[p.method] || p.method, p.note || '']);
+        }));
+        downloadCsv(rows, 'pagos.csv');
+        return;
+      }
+      case 'export-clients-csv': {
+        const rows = [['Nombre', 'Teléfono', 'Notas', 'Deuda actual']];
+        S.customers.forEach((c) => rows.push([c.name, c.phone || '', c.notes || '', M.centsToStr(customerInfo(c.name).debt)]));
+        downloadCsv(rows, 'clientes.csv');
+        return;
+      }
       case 'backup-export': {
         const data = DB.exportBackup();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1736,7 +1928,10 @@
     }
   });
 
-  app.addEventListener('input', (e) => { if (S.view === 'editor') onEditorInput(e); });
+  app.addEventListener('input', (e) => {
+    if (S.view === 'editor') onEditorInput(e);
+    if (e.target.id === 'home-search') { S.homeSearch = e.target.value; refreshHomeSearch(); }
+  });
   app.addEventListener('change', (e) => {
     if (S.view === 'editor') onEditorChange(e);
     if (e.target.id === 's-logo' && e.target.files[0]) readLogo(e.target.files[0]);
@@ -1908,6 +2103,13 @@
       return render();
     }
 
+    if (e.target.id === 'customer-edit-form') {
+      updateCustomer(S.activeCustomer.id, { phone: String(f.get('phone') || '').trim(), notes: String(f.get('notes') || '').trim() });
+      S.activeCustomer = S.customers.find((c) => c.id === S.activeCustomer.id);
+      toast('Datos guardados');
+      return render();
+    }
+
     if (e.target.id === 'support-reply-form') {
       const body = String(f.get('body') || '').trim();
       if (!body) return;
@@ -1925,7 +2127,7 @@
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket, feedback: viewFeedback,
-      collections: viewCollections, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
+      collections: viewCollections, reports: viewReports, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
     };
     app.innerHTML = views[S.view]();
   }
@@ -1951,6 +2153,19 @@
       go('auth');
     }
   }
+
+  // Si se recupera la conexión, se reintenta solo lo que haya quedado
+  // pendiente (nunca se importó, o falló al sincronizar una edición) sin que
+  // el usuario tenga que acordarse de entrar a Configuración.
+  window.addEventListener('online', async () => {
+    if (!(cloudOn && S.cloudBusiness)) return;
+    if (!pendingSyncQuotes().length) return;
+    try {
+      const { failed, total } = await importLocalDataToCloud(S.cloudBusiness.id);
+      if (!failed) toast(`${total} cotización(es) sincronizada(s) automáticamente`);
+      if (S.view === 'settings') render();
+    } catch (e) { /* sin red todavía de verdad: se reintentará la próxima vez */ }
+  });
 
   boot();
 })();
