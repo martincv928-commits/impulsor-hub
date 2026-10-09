@@ -332,6 +332,40 @@
     quotes.forEach((q) => DB.saveQuote(q));
   }
 
+  // Cotizaciones que nunca llegaron a la nube (su id sigue siendo el local,
+  // no un UUID real) — ya sea porque nunca se importaron, o porque un
+  // intento anterior falló para algunas.
+  const pendingSyncQuotes = () => DB.getQuotes().filter((q) => !CLOUD.looksLikeUuid(q.id));
+
+  // Sube catálogo y cotizaciones locales a la cuenta. Si el negocio ya tenía
+  // sus propias cotizaciones (otro dispositivo, u otra persona probando la
+  // misma cuenta) y un folio local choca con uno que ya existe en la nube,
+  // se le asigna un folio nuevo en vez de dejar que la subida falle en
+  // silencio — así ninguna cotización se queda nada más en este dispositivo
+  // por una coincidencia de folio.
+  async function importLocalDataToCloud(bizId) {
+    let failed = 0;
+    for (const entry of DB.getCatalog()) {
+      try { await CLOUD.data.pushProduct(bizId, entry); } catch (e) { failed++; }
+    }
+    const pending = pendingSyncQuotes();
+    const taken = new Set(await CLOUD.data.folios(bizId).catch(() => []));
+    for (const iq of pending) {
+      if (!iq.folio || taken.has(iq.folio)) {
+        let folio;
+        do { folio = DB.nextFolio(); } while (taken.has(folio));
+        iq.folio = folio;
+      }
+      taken.add(iq.folio);
+      try {
+        const cloudId = await CLOUD.data.pushQuote(bizId, iq);
+        if (cloudId !== iq.id) { DB.deleteQuote(iq.id); iq.id = cloudId; DB.saveQuote(iq); }
+        else DB.saveQuote(iq);
+      } catch (e) { failed++; }
+    }
+    return { failed, total: pending.length };
+  }
+
   /* ---------- soporte (lado cliente) ---------- */
   function ticketStatusLabel(s) {
     return { OPEN: 'Abierto', IN_PROGRESS: 'En proceso', WAITING_CUSTOMER: 'Esperando tu respuesta', RESOLVED: 'Resuelto', CLOSED: 'Cerrado' }[s] || s;
@@ -1365,6 +1399,13 @@
         <div class="section-h"><h2>Cuenta</h2></div>
         <div class="stack">
           <p class="hint">Sesión iniciada como ${esc(S.cloudSession.user.email)}</p>
+          ${pendingSyncQuotes().length ? `
+            <div class="banner media">
+              <div class="head">${pendingSyncQuotes().length} cotización(es) sin sincronizar</div>
+              <p style="margin:0">Están guardadas en este dispositivo, pero aún no en tu cuenta. No se pierden, pero conviene sincronizarlas antes de borrar datos del navegador o cambiar de teléfono.</p>
+            </div>
+            <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
+          ` : ''}
           <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
         </div>` : `
@@ -1652,23 +1693,24 @@
       case 'import-yes': {
         S.authBusy = true;
         render();
-        const bizId = S.cloudBusiness.id;
-        let failed = 0;
-        for (const entry of DB.getCatalog()) {
-          try { await CLOUD.data.pushProduct(bizId, entry); } catch (e) { failed++; }
-        }
-        for (const iq of DB.getQuotes()) {
-          try {
-            const cloudId = await CLOUD.data.pushQuote(bizId, iq);
-            if (cloudId !== iq.id) { DB.deleteQuote(iq.id); iq.id = cloudId; DB.saveQuote(iq); }
-          } catch (e) { failed++; }
-        }
+        const { failed } = await importLocalDataToCloud(S.cloudBusiness.id);
         DB.setImportDecided();
         S.authBusy = false;
-        if (failed) toast(`Se importó lo posible; ${failed} elemento(s) no se pudieron subir. Vuelve a intentar más tarde desde Configuración.`);
+        if (failed) toast(`Se importó lo posible; ${failed} elemento(s) no se pudieron subir. Puedes reintentar desde Configuración, tus datos siguen guardados en este dispositivo.`);
         else toast('Datos importados a tu cuenta');
         await pullAndMerge();
         return go('home');
+      }
+      case 'resync-pending': {
+        S.authBusy = true;
+        render();
+        const { failed, total } = await importLocalDataToCloud(S.cloudBusiness.id);
+        S.authBusy = false;
+        if (!total) toast('No hay nada pendiente por sincronizar.');
+        else if (failed) toast(`${total - failed} de ${total} sincronizados; ${failed} siguen pendientes (revisa tu conexión e inténtalo de nuevo).`);
+        else toast('Todo sincronizado con tu cuenta');
+        await pullAndMerge();
+        return render();
       }
       case 'import-no': {
         DB.setImportDecided();

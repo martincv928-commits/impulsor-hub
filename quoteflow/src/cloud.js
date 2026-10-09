@@ -241,6 +241,14 @@
       return { catalog: catalogFromRows(products || []), quotes: (quotes || []).map(quoteFromRow) };
     },
 
+    // Solo los folios (para detectar choques al importar cotizaciones locales
+    // a un negocio que ya tenía las suyas, sin traer todo lo demás).
+    async folios(businessId) {
+      const { data, error } = await client().from('quotes').select('folio').eq('business_id', businessId);
+      if (error) throw new Error(friendlyError(error));
+      return (data || []).map((r) => r.folio).filter(Boolean);
+    },
+
     // Sube o actualiza un producto del catálogo. Es "upsert": repetirlo no duplica.
     async pushProduct(businessId, entry) {
       const { error } = await client().from('products').upsert(productRow(businessId, entry), { onConflict: 'business_id,key' });
