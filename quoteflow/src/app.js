@@ -273,10 +273,13 @@
   }
   // Enlace de WhatsApp con un recordatorio de cobro prellenado — sin backend
   // ni integración, solo abre la conversación con el texto listo para enviar.
-  function waReminderLink(c, debtCents) {
+  // Si hay algo VENCIDO se dice explícitamente (no solo "saldo pendiente").
+  function waReminderLink(c, debtCents, overdueCents) {
     const digits = String(c.phone || '').replace(/\D/g, '');
     const biz = S.settings.businessName || 'nosotros';
-    const msg = `Hola ${c.name}, de parte de ${biz}: tienes un saldo pendiente de ${fmt(debtCents)}. ¿Cuándo podrías cubrirlo? Gracias.`;
+    const msg = overdueCents > 0
+      ? `Hola ${c.name}, de parte de ${biz}: tienes un pago VENCIDO por ${fmt(overdueCents)} (saldo total pendiente: ${fmt(debtCents)}). ¿Cuándo podrías cubrirlo? Gracias.`
+      : `Hola ${c.name}, de parte de ${biz}: tienes un saldo pendiente de ${fmt(debtCents)}. ¿Cuándo podrías cubrirlo? Gracias.`;
     return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
   }
 
@@ -1351,12 +1354,27 @@
     return items.sort((a, b) => a.dueAt - b.dueAt);
   }
 
+  // Agrupa lo vencido por cliente (uno puede tener varias parcialidades/cotizaciones
+  // vencidas) para poder mandar un solo recordatorio de WhatsApp por cliente en vez
+  // de uno por cada renglón del reporte.
+  function overdueByClient() {
+    const map = new Map();
+    overdueItemsReport().forEach((it) => {
+      const key = CAT.key(it.client);
+      const cur = map.get(key) || { name: it.client, amount: 0 };
+      cur.amount += it.amount;
+      map.set(key, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }
+
   function viewCollections() {
     const pending = pendingCollectionsQuotes();
     const totalPending = pending.reduce((s, q) => s + balanceCentsOf(q), 0);
     const overdueItems = overdueItemsReport();
     const totalOverdue = overdueItems.reduce((s, it) => s + it.amount, 0);
     const daysLate = (dueAt) => Math.max(0, Math.floor((Date.now() - endOfDay(dueAt)) / 86400000));
+    const reminders = overdueByClient();
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
@@ -1380,6 +1398,23 @@
               <span class="meta"><span class="mono">${esc(it.folio || '—')}</span> · ${it.label}</span>
               <span class="meta">Venció ${dateStr(it.dueAt)} · ${daysLate(it.dueAt)} día(s) de atraso</span>
             </button>`).join('')}
+        </div>
+      ` : ''}
+      ${reminders.length ? `
+        <div class="section-h"><h2>Recordatorios pendientes</h2></div>
+        <p class="hint" style="margin-top:0">Un WhatsApp listo para mandar por cada cliente con algo vencido.</p>
+        <div class="list">
+          ${reminders.map((r) => {
+            const cust = findCustomer(r.name);
+            return `
+            <div class="qrow" style="grid-template-columns:1fr auto">
+              <span class="client">${esc(r.name)}</span>
+              <span class="total num" style="color:var(--danger)">${fmt(r.amount)}</span>
+              ${cust && cust.phone
+                ? `<a class="btn primary" style="grid-column:1/-1" href="${waReminderLink(cust, customerInfo(r.name).debt, r.amount)}" target="_blank" rel="noopener">${icon.share} Recordar por WhatsApp</a>`
+                : `<span class="meta" style="grid-column:1/-1">Sin teléfono guardado — agrégalo en la ficha del cliente</span>`}
+            </div>`;
+          }).join('')}
         </div>
       ` : ''}
       <div class="section-h"><h2>Todo lo pendiente</h2></div>
@@ -1480,6 +1515,9 @@
     const info = customerInfo(c.name);
     const quotes = info.quotes.slice().sort((a, b) => b.updatedAt - a.updatedAt);
     const confirmedQuotes = quotes.filter(isConfirmed);
+    const overdueCents = overdueItemsReport()
+      .filter((it) => CAT.key(it.client) === CAT.key(c.name))
+      .reduce((s, it) => s + it.amount, 0);
     return `
       <header class="top">
         <button class="icon-btn" data-act="clients" aria-label="Volver a clientes">${icon.back}</button>
@@ -1489,7 +1527,7 @@
         <div class="muted">${info.moroso ? '⚠ Cliente moroso: tiene pagos vencidos' : info.debt > 0 ? 'Tiene saldo pendiente' : 'Al corriente'}</div>
         <div class="big num">${fmt(info.debt)}</div>
       </section>
-      ${info.debt > 0 && c.phone ? `<a class="btn primary block" href="${waReminderLink(c, info.debt)}" target="_blank" rel="noopener">${icon.share} Recordar por WhatsApp</a>` : ''}
+      ${info.debt > 0 && c.phone ? `<a class="btn primary block" href="${waReminderLink(c, info.debt, overdueCents)}" target="_blank" rel="noopener">${icon.share} Recordar por WhatsApp</a>` : ''}
       ${confirmedQuotes.length > 1 ? `
         <button class="btn primary block" data-act="client-statement">Ver estado de cuenta completo (${confirmedQuotes.length} cotizaciones)</button>
       ` : ''}
