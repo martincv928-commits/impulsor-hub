@@ -274,6 +274,25 @@
       if (error) throw new Error(friendlyError(error));
     },
 
+    // Guarda la suscripción a notificaciones push de este celular/navegador
+    // para este negocio. "endpoint" es único por dispositivo+navegador, así
+    // que repetirlo (p. ej. al reactivar) no duplica.
+    async pushSubscription(businessId, sub) {
+      const json = sub.toJSON ? sub.toJSON() : sub;
+      const { error } = await client().from('push_subscriptions').upsert({
+        business_id: businessId,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+      }, { onConflict: 'endpoint' });
+      if (error) throw new Error(friendlyError(error));
+    },
+
+    async deletePushSubscription(endpoint) {
+      const { error } = await client().from('push_subscriptions').delete().eq('endpoint', endpoint);
+      if (error) throw new Error(friendlyError(error));
+    },
+
     // Solo los folios (para detectar choques al importar cotizaciones locales
     // a un negocio que ya tenía las suyas, sin traer todo lo demás).
     async folios(businessId) {

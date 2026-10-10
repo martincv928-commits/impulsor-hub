@@ -33,6 +33,7 @@
     tickets: [],
     activeTicket: null,
     ticketMessages: [],
+    pushStatus: 'unknown', // 'unknown' | 'off' | 'on' | 'unsupported' | 'denied'
   };
 
   /* ---------- utilidades ---------- */
@@ -283,6 +284,58 @@
     return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
   }
 
+  /* ---------- notificaciones push (al celular de quien maneja la app) ---------- */
+  function urlBase64ToUint8Array(base64) {
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+    const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  }
+  function pushSupported() {
+    return cloudOn && !!window.QF.config.vapidPublicKey && 'serviceWorker' in navigator && 'PushManager' in window;
+  }
+  async function checkPushStatus() {
+    if (!pushSupported()) { S.pushStatus = 'unsupported'; return; }
+    if (Notification.permission === 'denied') { S.pushStatus = 'denied'; return; }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      S.pushStatus = sub ? 'on' : 'off';
+    } catch (e) { S.pushStatus = 'off'; }
+  }
+  async function enablePush() {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { S.pushStatus = 'denied'; return render(); }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(window.QF.config.vapidPublicKey),
+      });
+      await CLOUD.data.pushSubscription(S.cloudBusiness.id, sub);
+      S.pushStatus = 'on';
+      toast('Notificaciones activadas en este celular');
+    } catch (e) {
+      toast('No se pudo activar: ' + e.message);
+    }
+    render();
+  }
+  async function disablePush() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sub.unsubscribe();
+        CLOUD.data.deletePushSubscription(sub.endpoint).catch(() => {});
+      }
+      S.pushStatus = 'off';
+      toast('Notificaciones desactivadas en este celular');
+    } catch (e) {
+      toast('No se pudo desactivar: ' + e.message);
+    }
+    render();
+  }
+
   function customerInfo(name) {
     const key = CAT.key(name);
     if (!key) return { debt: 0, moroso: false, quotes: [] };
@@ -376,6 +429,7 @@
     const hasLocal = DB.getQuotes().length > 0 || DB.getCatalog().length > 0;
     if (hasLocal && !DB.isImportDecided()) return go('import-prompt');
     await pullAndMerge();
+    checkPushStatus().then(() => { if (S.view === 'settings') render(); });
     go('home');
   }
 
@@ -1677,7 +1731,17 @@
           ` : ''}
           <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
-        </div>` : `
+        </div>
+        ${S.pushStatus === 'on' || S.pushStatus === 'off' ? `
+        <div class="section-h"><h2>Notificaciones</h2></div>
+        <div class="stack">
+          <p class="hint">Recibe un aviso en este celular cuando haya cobros vencidos o por vencer. Actívalo en el celular de quien le da seguimiento a la cobranza.</p>
+          ${S.pushStatus === 'on'
+            ? `<button class="btn block ghost" data-act="disable-push">Desactivar en este celular</button>`
+            : `<button class="btn block" data-act="enable-push">Activar notificaciones en este celular</button>`}
+        </div>` : S.pushStatus === 'denied' ? `
+        <div class="section-h"><h2>Notificaciones</h2></div>
+        <p class="hint">Bloqueaste las notificaciones para esta app en el navegador. Actívalas desde los ajustes del sitio si quieres recibir avisos de cobranza.</p>` : ''}` : `
         <div class="section-h"><h2>Soporte</h2></div>
         <div class="stack">
           <p class="hint">¿Algo no funciona bien o tienes una sugerencia? Puedes avisarnos aunque no hayas iniciado sesión.</p>
@@ -2062,6 +2126,8 @@
         await pullAndMerge();
         return render();
       }
+      case 'enable-push': return enablePush();
+      case 'disable-push': return disablePush();
       case 'import-no': {
         DB.setImportDecided();
         await pullAndMerge();

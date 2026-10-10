@@ -3,7 +3,7 @@
  * Estrategia: se sirve del caché al instante y, si hay red, se actualiza el
  * caché en segundo plano para la próxima vez ("stale-while-revalidate").
  * Sube CACHE_NAME cuando cambie esta lista para forzar limpieza del caché viejo. */
-const CACHE_NAME = 'quoteflow-v0.7.4';
+const CACHE_NAME = 'quoteflow-v0.7.5';
 const STATIC_ASSETS = [
   './',
   'index.html',
@@ -28,6 +28,34 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+  );
+});
+
+// Notificación push del reporte diario de cobranza (quién debe o está
+// atrasado). El payload lo arma el servidor; si no viene nada legible se
+// muestra un mensaje genérico en vez de fallar.
+self.addEventListener('push', (event) => {
+  let payload = { title: 'QuoteFlow', body: 'Tienes novedades de cobranza.' };
+  try { if (event.data) payload = Object.assign(payload, event.data.json()); } catch (e) { /* payload no era JSON */ }
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      data: { url: payload.url || './' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((list) => {
+      const existing = list.find((c) => c.url.includes(location.origin));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
   );
 });
 
