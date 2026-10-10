@@ -9,5 +9,9 @@
   QF.config = {
     supabaseUrl: 'https://rhdsbymoxllfegderalu.supabase.co',
     supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoZHNieW1veGxsZmVnZGVyYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODEwMTYsImV4cCI6MjEwNTg1NzAxNn0.Y3fIkxHBNJdz0cMLf29-GiSxct2-yF3NvCQoTRweOuU',
+    // Llave pública para notificaciones push (Web Push / VAPID). Es pública
+    // por diseño (la privada vive solo del lado del servidor); si está vacía,
+    // la opción de notificaciones simplemente no aparece en Ajustes.
+    vapidPublicKey: 'BLZ16YFhi1NOWzAJWQf9vSkg9KpUNg0ppwQZFQWhBqPA9ZFobYT4y4Wffd-aQJXM983nj9d9i2bZg2-HOx5Akk8',
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
