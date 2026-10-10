@@ -243,6 +243,29 @@
     });
   }
 
+  // Cuánto de una cotización está vencido AHORA MISMO. Antes "vencido" en
+  // Cobranza y en el cliente moroso solo miraba el plazo de pago GENERAL
+  // (paymentTermDays), así que un negocio que solo usa plan de
+  // parcialidades (sin poner un plazo general) nunca veía nada marcado como
+  // vencido ahí, aunque alguna parcialidad sí lo estuviera.
+  function quoteOverdueAmount(q) {
+    const progress = installmentProgress(q);
+    if (progress.length) {
+      return progress.filter((p) => p.timeliness === 'VENCIDA' || p.timeliness === 'PARCIAL_VENCIDA').reduce((s, p) => s + p.remaining, 0);
+    }
+    return paymentDueStatus(q) === 'vencido' ? balanceCentsOf(q) : 0;
+  }
+  const isQuoteOverdue = (q) => quoteOverdueAmount(q) > 0;
+  // Fecha de vencimiento más antigua sin cubrir, para decir desde cuándo.
+  function earliestOverdueDate(q) {
+    const progress = installmentProgress(q);
+    if (progress.length) {
+      const overdue = progress.filter((p) => p.timeliness === 'VENCIDA' || p.timeliness === 'PARCIAL_VENCIDA');
+      return overdue.length ? overdue[0].dueAt : null;
+    }
+    return paymentDueStatus(q) === 'vencido' ? paymentDueAt(q) : null;
+  }
+
   /* ---------- base de clientes (V0.4.3, opcional: nada obliga a guardar) ---------- */
   function findCustomer(name) {
     const key = CAT.key(name);
@@ -263,7 +286,7 @@
     const quotes = DB.getQuotes().filter((q) => q.status === 'GENERADA' && CAT.key(q.client) === key);
     const confirmed = quotes.filter((q) => !isRejected(q) && isConfirmed(q));
     const debt = confirmed.reduce((s, q) => s + balanceCentsOf(q), 0);
-    const moroso = confirmed.some((q) => balanceCentsOf(q) > 0 && paymentDueStatus(q) === 'vencido');
+    const moroso = confirmed.some(isQuoteOverdue);
     return { debt, moroso, quotes };
   }
   function saveCustomer(name, phone, notes) {
@@ -1282,27 +1305,58 @@
     return DB.getQuotes()
       .filter((q) => q.status === 'GENERADA' && isConfirmed(q) && balanceCentsOf(q) > 0)
       .sort((a, b) => {
-        const av = paymentDueStatus(a) === 'vencido' ? 0 : 1;
-        const bv = paymentDueStatus(b) === 'vencido' ? 0 : 1;
+        const av = isQuoteOverdue(a) ? 0 : 1;
+        const bv = isQuoteOverdue(b) ? 0 : 1;
         return av !== bv ? av - bv : balanceCentsOf(b) - balanceCentsOf(a);
       });
   }
   function collectionsRows(pending) {
-    return pending.length ? pending.map((q) => `
+    return pending.length ? pending.map((q) => {
+      const overdue = isQuoteOverdue(q);
+      const dueChip = overdue
+        ? statusChip('danger', 'Vencido')
+        : paymentDueAt(q)
+          ? statusChip(PAYMENT_DUE_PILL[paymentDueStatus(q)], PAYMENT_DUE_LABEL[paymentDueStatus(q)])
+          : (q.installments && q.installments.length ? statusChip('info', 'Vigente') : '');
+      return `
       <button class="qrow" data-act="open" data-id="${q.id}">
         <span class="client">${esc(q.client || 'Sin cliente')}</span>
         <span class="total num">${fmt(balanceCentsOf(q))}</span>
         <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
         <span style="display:flex;gap:6px;justify-self:end">
           ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
-          ${paymentDueAt(q) ? statusChip(PAYMENT_DUE_PILL[paymentDueStatus(q)], PAYMENT_DUE_LABEL[paymentDueStatus(q)]) : ''}
+          ${dueChip}
         </span>
-      </button>`).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>';
+      </button>`;
+    }).join('') : '<div class="empty">No hay saldos pendientes. Todo lo cobrado está al día.</div>';
+  }
+
+  // Un renglón por cada cosa vencida (cada parcialidad vencida por
+  // separado, o la cotización completa si no usa plan de parcialidades) —
+  // el reporte de cobranza que se pidió, no solo el indicador por cotización.
+  function overdueItemsReport() {
+    const items = [];
+    pendingCollectionsQuotes().forEach((q) => {
+      const progress = installmentProgress(q);
+      if (progress.length) {
+        progress.forEach((p, i) => {
+          if (p.timeliness === 'VENCIDA' || p.timeliness === 'PARCIAL_VENCIDA') {
+            items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.folio, label: `Parcialidad ${i + 1}`, amount: p.remaining, dueAt: p.dueAt });
+          }
+        });
+      } else if (isQuoteOverdue(q)) {
+        items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.folio, label: 'Saldo total', amount: balanceCentsOf(q), dueAt: earliestOverdueDate(q) });
+      }
+    });
+    return items.sort((a, b) => a.dueAt - b.dueAt);
   }
 
   function viewCollections() {
     const pending = pendingCollectionsQuotes();
     const totalPending = pending.reduce((s, q) => s + balanceCentsOf(q), 0);
+    const overdueItems = overdueItemsReport();
+    const totalOverdue = overdueItems.reduce((s, it) => s + it.amount, 0);
+    const daysLate = (dueAt) => Math.max(0, Math.floor((Date.now() - endOfDay(dueAt)) / 86400000));
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
@@ -1312,6 +1366,23 @@
         <div class="muted">Pendiente por cobrar</div>
         <div class="big num">${fmt(totalPending)}</div>
       </section>
+      ${overdueItems.length ? `
+        <div class="stat-pair">
+          <div class="stat"><div class="lbl">Vencido</div><div class="val" style="color:var(--danger)">${fmt(totalOverdue)}</div></div>
+          <div class="stat"><div class="lbl">Pagos/parcialidades vencidas</div><div class="val">${overdueItems.length}</div></div>
+        </div>
+        <div class="section-h"><h2>Reporte de vencidos</h2><button class="btn ghost" data-act="export-overdue-csv">Exportar CSV</button></div>
+        <div class="list">
+          ${overdueItems.map((it) => `
+            <button class="qrow" data-act="open" data-id="${it.quoteId}">
+              <span class="client">${esc(it.client)}</span>
+              <span class="total num" style="color:var(--danger)">${fmt(it.amount)}</span>
+              <span class="meta"><span class="mono">${esc(it.folio || '—')}</span> · ${it.label}</span>
+              <span class="meta">Venció ${dateStr(it.dueAt)} · ${daysLate(it.dueAt)} día(s) de atraso</span>
+            </button>`).join('')}
+        </div>
+      ` : ''}
+      <div class="section-h"><h2>Todo lo pendiente</h2></div>
       <div class="list">${collectionsRows(pending)}</div>`;
   }
 
@@ -1897,6 +1968,12 @@
         const rows = [['Nombre', 'Teléfono', 'Notas', 'Deuda actual']];
         S.customers.forEach((c) => rows.push([c.name, c.phone || '', c.notes || '', M.centsToStr(customerInfo(c.name).debt)]));
         downloadCsv(rows, 'clientes.csv');
+        return;
+      }
+      case 'export-overdue-csv': {
+        const rows = [['Cliente', 'Folio', 'Concepto', 'Monto vencido', 'Venció el']];
+        overdueItemsReport().forEach((it) => rows.push([it.client, it.folio || '', it.label, M.centsToStr(it.amount), dateStr(it.dueAt)]));
+        downloadCsv(rows, 'vencidos.csv');
         return;
       }
       case 'backup-export': {
