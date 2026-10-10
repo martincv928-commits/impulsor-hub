@@ -42,13 +42,20 @@
   }
 
   // Devuelve { stop() }. Callbacks: onText(texto, esFinal), onEnd(textoFinal), onError(codigo)
+  //
+  // El navegador deja de escuchar solo tras unos segundos de silencio (error
+  // "no-speech"), incluso si el usuario no alcanzó a empezar a hablar
+  // todavía — eso se sentía como que el micrófono "se cerraba muy rápido".
+  // Mientras el usuario no cancele ni toque "Listo", ese silencio no cierra
+  // el dictado: se reinicia solo el reconocimiento por dentro y se sigue
+  // escuchando, sin que se note nada en la pantalla.
   function start(cb) {
-    const rec = new SR();
-    rec.lang = 'es-MX';
-    rec.continuous = true;
-    rec.interimResults = true;
+    let rec;
     let finalText = '';
     let failed = false;
+    let stopped = false;
+    let restarting = false;
+
     function merge(results, onlyFinal) {
       const parts = [];
       for (let i = 0; i < results.length; i++) {
@@ -58,20 +65,40 @@
       }
       return clean(parts.join(' '));
     }
-    rec.onresult = (ev) => {
-      finalText = merge(ev.results, true);
-      cb.onText && cb.onText(merge(ev.results, false));
-    };
-    rec.onerror = (ev) => {
-      if (ev.error === 'no-speech' || ev.error === 'aborted') return;
-      failed = true;
-      cb.onError && cb.onError(ev.error);
-    };
-    rec.onend = () => {
-      if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
-    };
+
+    function makeRecognizer() {
+      const r = new SR();
+      r.lang = 'es-MX';
+      r.continuous = true;
+      r.interimResults = true;
+      r.onresult = (ev) => {
+        finalText = merge(ev.results, true);
+        cb.onText && cb.onText(merge(ev.results, false));
+      };
+      r.onerror = (ev) => {
+        if (ev.error === 'no-speech' && !stopped) { restarting = true; return; }
+        if (ev.error === 'aborted') return;
+        failed = true;
+        cb.onError && cb.onError(ev.error);
+      };
+      r.onend = () => {
+        if (restarting) {
+          restarting = false;
+          rec = makeRecognizer();
+          try { rec.start(); } catch (e) { /* se reinició demasiado rápido: se ignora, ya quedó escuchando */ }
+          return;
+        }
+        if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
+      };
+      return r;
+    }
+
+    rec = makeRecognizer();
     rec.start();
-    return { stop: () => rec.stop(), abort: () => { failed = true; rec.abort(); } };
+    return {
+      stop: () => { stopped = true; rec.stop(); },
+      abort: () => { stopped = true; failed = true; rec.abort(); },
+    };
   }
 
   QF.voice = { supported, start, clean };
