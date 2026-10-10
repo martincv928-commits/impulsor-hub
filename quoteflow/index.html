@@ -21,23 +21,51 @@
 
   <script src="vendor/jspdf.umd.min.js"></script>
   <script src="vendor/supabase.umd.js"></script>
-  <script src="src/config.js?v=0.7.0"></script>
-  <script src="src/money.js?v=0.7.0"></script>
-  <script src="src/catalog.js?v=0.7.0"></script>
-  <script src="src/parser.js?v=0.7.0"></script>
-  <script src="src/interpreter.js?v=0.7.0"></script>
-  <script src="src/storage.js?v=0.7.0"></script>
-  <script src="src/cloud.js?v=0.7.0"></script>
-  <script src="src/pdf.js?v=0.7.0"></script>
-  <script src="src/voice.js?v=0.7.0"></script>
-  <script src="src/share.js?v=0.7.0"></script>
-  <script src="src/app.js?v=0.7.0"></script>
+  <script src="src/config.js?v=0.7.1"></script>
+  <script src="src/money.js?v=0.7.1"></script>
+  <script src="src/catalog.js?v=0.7.1"></script>
+  <script src="src/parser.js?v=0.7.1"></script>
+  <script src="src/interpreter.js?v=0.7.1"></script>
+  <script src="src/storage.js?v=0.7.1"></script>
+  <script src="src/cloud.js?v=0.7.1"></script>
+  <script src="src/pdf.js?v=0.7.1"></script>
+  <script src="src/voice.js?v=0.7.1"></script>
+  <script src="src/share.js?v=0.7.1"></script>
+  <script src="src/app.js?v=0.7.1"></script>
   <script>
     // Registra el service worker para poder instalar la app y usarla sin conexión.
     // Si falla (navegador viejo, http sin https), la app sigue funcionando normal.
+    //
+    // Además: antes, una vez instalada, la app podía tardar en darse cuenta de
+    // que había una versión nueva (el navegador solo revisa el archivo del
+    // service worker de vez en cuando). Para que las actualizaciones lleguen
+    // solas sin tener que borrar caché a mano:
+    // 1) se pide revisar si hay versión nueva cada vez que se abre/vuelve a
+    //    la app (no solo al cargarla por primera vez);
+    // 2) en cuanto una versión nueva toma el control, se recarga sola una vez.
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      // "controllerchange" también dispara la primerísima vez que el
+      // service worker toma control (instalación nueva, sin nada que
+      // actualizar) — recargar ahí de más solo sería una recarga rara e
+      // innecesaria para quien abre la app por primera vez. Solo se recarga
+      // cuando YA había un service worker controlando antes (eso sí es una
+      // actualización real).
+      let hadController = !!navigator.serviceWorker.controller;
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController) { hadController = true; return; }
+        if (reloading) return;
+        reloading = true;
+        location.reload();
+      });
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('sw.js');
+          reg.update().catch(() => {});
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          });
+        } catch (e) { /* navegador viejo o sin https: la app sigue sin instalarse */ }
       });
     }
   </script>

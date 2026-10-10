@@ -1598,6 +1598,35 @@
       <div style="height:24px"></div>`;
   }
 
+  // Color "de marca" más frecuente en el logo: se ignoran blancos, negros y
+  // grises casi puros (casi siempre son el fondo o el texto, no la marca) y
+  // los pixeles transparentes; de lo que queda, se agrupa por tonos
+  // parecidos y se usa el grupo más común. Si el logo es puro blanco/negro
+  // (sin color), no se sugiere nada y se deja el color que ya había.
+  function detectLogoColor(canvas) {
+    const ctx = canvas.getContext('2d');
+    let data;
+    try { data = ctx.getImageData(0, 0, canvas.width, canvas.height).data; } catch (e) { return null; }
+    const buckets = new Map();
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (a < 128) continue;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max > 235 && min > 215) continue; // casi blanco
+      if (max < 25) continue; // casi negro
+      if (max - min < 18) continue; // gris (poco saturado)
+      const key = [Math.round(r / 24), Math.round(g / 24), Math.round(b / 24)].join(',');
+      const entry = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+      entry.count++; entry.r += r; entry.g += g; entry.b += b;
+      buckets.set(key, entry);
+    }
+    let best = null;
+    buckets.forEach((v) => { if (!best || v.count > best.count) best = v; });
+    if (!best) return null;
+    const toHex = (n) => Math.round(n / best.count).toString(16).padStart(2, '0');
+    return '#' + toHex(best.r) + toHex(best.g) + toHex(best.b);
+  }
+
   function readLogo(file) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1609,9 +1638,11 @@
         c.height = Math.round(img.height * k);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
         S.settings.logo = c.toDataURL('image/png');
+        const detected = detectLogoColor(c);
+        if (detected) S.settings.pdfAccent = detected;
         DB.saveSettings(S.settings);
         render();
-        toast('Logo guardado');
+        toast(detected ? 'Logo guardado y color de marca detectado (puedes cambiarlo abajo)' : 'Logo guardado');
       };
       img.onerror = () => toast('No se pudo leer la imagen.');
       img.src = reader.result;
