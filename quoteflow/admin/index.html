@@ -21,14 +21,34 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="../vendor/supabase.umd.js"></script>
-  <script src="../src/config.js?v=0.3.6"></script>
-  <script src="../src/cloud.js?v=0.3.6"></script>
-  <script src="admin.js?v=0.3.6"></script>
-  <script src="app.js?v=0.3.6"></script>
+  <script src="../src/config.js?v=0.3.7"></script>
+  <script src="../src/cloud.js?v=0.3.7"></script>
+  <script src="admin.js?v=0.3.7"></script>
+  <script src="app.js?v=0.3.7"></script>
   <script>
+    // Igual que la app principal: revisa versión nueva al volver a la
+    // pestaña y se recarga sola en cuanto hay una, sin depender de borrar
+    // caché a mano.
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      // Solo recargar en una actualización real (ya había un service worker
+      // controlando antes); el primer "controllerchange" de una instalación
+      // nueva no debe recargar nada.
+      let hadController = !!navigator.serviceWorker.controller;
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController) { hadController = true; return; }
+        if (reloading) return;
+        reloading = true;
+        location.reload();
+      });
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('sw.js');
+          reg.update().catch(() => {});
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          });
+        } catch (e) { /* navegador viejo o sin https */ }
       });
     }
   </script>
