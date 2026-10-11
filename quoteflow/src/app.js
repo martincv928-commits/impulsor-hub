@@ -377,6 +377,19 @@
   }
 
   function viewAuth() {
+    if (S.authMode === 'recover') {
+      return `
+        <div class="hero" style="padding-top:14px">
+          <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
+        </div>
+        <form class="stack" id="recover-form">
+          <h2 class="title">Recuperar contraseña</h2>
+          <p class="hint">Te mandamos un enlace a tu correo para crear una contraseña nueva.</p>
+          <div class="field"><label for="r-email">Correo</label><input id="r-email" name="email" type="email" required autocomplete="email"></div>
+          <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Enviando…' : 'Mandar enlace'}</button>
+          <button class="btn ghost block" type="button" data-act="auth-back-to-login">Volver a iniciar sesión</button>
+        </form>`;
+    }
     const login = S.authMode === 'login';
     return `
       <div class="hero" style="padding-top:14px">
@@ -387,9 +400,22 @@
         <div class="field"><label for="a-email">Correo</label><input id="a-email" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="a-pass">Contraseña</label><input id="a-pass" name="password" type="password" required minlength="6" autocomplete="${login ? 'current-password' : 'new-password'}"></div>
         <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Un momento…' : login ? 'Entrar' : 'Crear cuenta'}</button>
+        ${login ? `<button class="btn ghost block" type="button" data-act="auth-recover">¿Olvidaste tu contraseña?</button>` : ''}
         <button class="btn ghost block" type="button" data-act="auth-toggle">${login ? '¿No tienes cuenta? Créala' : '¿Ya tienes cuenta? Inicia sesión'}</button>
       </form>
       <button class="btn ghost block" type="button" data-act="feedback-open" style="margin-top:4px">¿Tienes un problema o una duda? Escríbenos</button>`;
+  }
+
+  function viewSetPassword() {
+    return `
+      <div class="hero" style="padding-top:14px">
+        <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
+      </div>
+      <form class="stack" id="set-password-form">
+        <h2 class="title">Crea tu nueva contraseña</h2>
+        <div class="field"><label for="sp-pass">Nueva contraseña</label><input id="sp-pass" name="password" type="password" required minlength="6" autocomplete="new-password"></div>
+        <button class="btn primary block" type="submit" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Guardando…' : 'Guardar contraseña'}</button>
+      </form>`;
   }
 
   function viewBusinessNew() {
@@ -2096,6 +2122,8 @@
       }
       case 'restore-no': S.pendingBackup = null; return render();
       case 'auth-toggle': S.authMode = S.authMode === 'login' ? 'register' : 'login'; return render();
+      case 'auth-recover': S.authMode = 'recover'; return render();
+      case 'auth-back-to-login': S.authMode = 'login'; return render();
       case 'auth': return go('auth');
       case 'logout': {
         await CLOUD.auth.signOut();
@@ -2195,6 +2223,40 @@
           S.cloudSession = res.session;
           await afterLogin();
         }
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        S.authBusy = false;
+        render();
+      }
+      return;
+    }
+
+    if (e.target.id === 'recover-form') {
+      const email = String(f.get('email') || '').trim();
+      S.authBusy = true;
+      render();
+      try {
+        await CLOUD.auth.resetPasswordForEmail(email, location.href.split('#')[0].split('?')[0]);
+        toast('Listo, revisa tu correo (y spam) para el enlace.');
+        S.authMode = 'login';
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        S.authBusy = false;
+        render();
+      }
+      return;
+    }
+
+    if (e.target.id === 'set-password-form') {
+      const password = String(f.get('password') || '');
+      S.authBusy = true;
+      render();
+      try {
+        await CLOUD.auth.updatePassword(password);
+        toast('Contraseña actualizada');
+        await afterLogin();
       } catch (err) {
         toast(err.message);
       } finally {
@@ -2337,7 +2399,7 @@
   function render() {
     const views = {
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
-      loading: viewLoading, auth: viewAuth, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
+      loading: viewLoading, auth: viewAuth, 'set-password': viewSetPassword, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket, feedback: viewFeedback,
       collections: viewCollections, reports: viewReports, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
     };
@@ -2349,7 +2411,11 @@
     S.view = 'loading';
     render();
     try {
-      CLOUD.auth.onChange((session) => {
+      CLOUD.auth.onChange((session, event) => {
+        if (event === 'PASSWORD_RECOVERY') { // volvió del enlace de "olvidé mi contraseña"
+          S.cloudSession = session;
+          return go('set-password');
+        }
         if (!session && S.cloudSession) { // se cerró la sesión en otra pestaña, o expiró
           S.cloudSession = null;
           S.cloudBusiness = null;
