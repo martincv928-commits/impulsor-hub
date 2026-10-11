@@ -20,6 +20,7 @@
     activeCustomer: null,
     writeOpen: false,
     homeSearch: '',
+    ordersSearch: '',
     addProductOpen: false,
     restructureOpen: false,
     showAll: false,
@@ -50,6 +51,7 @@
     cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg>',
     people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>',
+    order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z"/><path d="M9 13l2 2 4-4"/></svg>',
     brand: '<svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#323fa0"/><stop offset="100%" stop-color="#171d57"/></linearGradient><linearGradient id="bmb" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffc24d"/><stop offset="100%" stop-color="#f29a1f"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#bmg)"/><path d="M36 20 H60 Q66 20 66 26 V66 L61.5 61 L57 66 L52.5 61 L48 66 L43.5 61 L39 66 L34.5 61 L30 66 V26 Q30 20 36 20 Z" fill="#fff"/><rect x="37" y="33" width="22" height="5" rx="2.5" fill="#c7cbe8"/><rect x="37" y="43" width="16" height="5" rx="2.5" fill="#c7cbe8"/><circle cx="66" cy="68" r="15" fill="url(#bmb)" stroke="#fff" stroke-width="2.5"/><text x="66" y="74" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="18" fill="#fff">$</text></svg>',
   };
 
@@ -132,6 +134,16 @@
     return true;
   }
   const isRejected = (q) => q.confirmation === 'RECHAZADA';
+  // Pill de estado para mostrar: se basa en isConfirmed/isRejected (no en si
+  // el campo "confirmation" vino explícito o no), para que las órdenes de
+  // venta de antes de este cambio (confirmadas sin ese campo) también
+  // digan "Orden de venta" en vez de quedarse en "GENERADA".
+  function statusPillInfo(q) {
+    if (q.status !== 'GENERADA') return { cls: 'draft', label: q.status };
+    if (isRejected(q)) return { cls: 'danger', label: 'Rechazada' };
+    if (isConfirmed(q)) return { cls: 'done', label: 'Orden de venta' };
+    return { cls: 'info', label: 'Por confirmar' };
+  }
   function paymentStatusOf(q) {
     const total = totalsOf(q).total;
     const paid = paidCentsOf(q);
@@ -657,6 +669,7 @@
       <header class="top">
         <div class="brand">${icon.brand}<span>QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</span></div>
         <span class="spacer"></span>
+        <button class="icon-btn" data-act="orders" aria-label="Órdenes de venta">${icon.order}</button>
         <button class="icon-btn" data-act="reports" aria-label="Reportes">${icon.chart}</button>
         <button class="icon-btn" data-act="collections" aria-label="Cobranza">${icon.cash}</button>
         <button class="icon-btn" data-act="clients" aria-label="Clientes">${icon.people}</button>
@@ -703,7 +716,7 @@
         <span class="total num">${fmt(totalsOf(q).total)}</span>
         <span class="meta"><span class="mono">${esc(displayFolio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
         <span style="display:flex;gap:6px;justify-self:end">
-          ${q.status === 'GENERADA' && q.confirmation ? statusChip(CONFIRMATION_PILL[q.confirmation], CONFIRMATION_LABEL[q.confirmation]) : `<span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status === 'GENERADA' && q.confirmation === null ? 'Por confirmar' : q.status}</span>`}
+          ${statusChip(statusPillInfo(q).cls, statusPillInfo(q).label)}
           ${isOrder ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
         </span>
       </button>`;
@@ -750,7 +763,7 @@
         ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>
       ${!filtered || orderRows.length ? `
-      <div class="section-h"><h2>Órdenes de venta</h2></div>
+      <div class="section-h"><h2>Órdenes de venta</h2><button class="btn ghost" data-act="orders">Ver todas</button></div>
       <div class="list" id="home-orders-list">
         ${orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">Aún no tienes órdenes de venta. Se crean al confirmar una cotización.</div>`}
       </div>` : ''}`;
@@ -1194,22 +1207,20 @@
   // (OV-0001...) aparte del de cotización. "Regresar a cotización" la
   // descongela para poder editarla; si se vuelve a confirmar, reusa el
   // mismo folio de orden (no se generan huecos en la numeración).
-  const CONFIRMATION_LABEL = { CONFIRMADA: 'Orden de venta', RECHAZADA: 'Rechazada' };
-  const CONFIRMATION_PILL = { CONFIRMADA: 'done', RECHAZADA: 'danger' };
 
   function viewSummary() {
     const q = S.quote;
     const t = totalsOf(q);
     const confirmed = isConfirmed(q);
     const rejected = isRejected(q);
-    const explicit = q.confirmation === 'CONFIRMADA' || q.confirmation === 'RECHAZADA';
+    const pill = statusPillInfo(q);
     const displayFolio = confirmed && q.orderFolio ? q.orderFolio : q.folio;
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
         <div class="title mono">${esc(displayFolio)}</div>
         <span class="spacer"></span>
-        <span class="pill ${explicit ? CONFIRMATION_PILL[q.confirmation] : q.status === 'GENERADA' ? 'done' : 'draft'}">${explicit ? CONFIRMATION_LABEL[q.confirmation] : q.status}</span>
+        <span class="pill ${pill.cls}">${pill.label}</span>
       </header>
       <section class="summary">
         <div class="muted">${esc(q.client)}${confirmed ? ` · cotización ${esc(q.folio)}` : ''}</div>
@@ -1493,6 +1504,40 @@
       map.set(key, cur);
     });
     return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }
+
+  // Apartado propio de Órdenes de venta (todas las cotizaciones ya
+  // confirmadas), separado de "Cotizaciones" y de "Cobranza": aquí se ve
+  // el total vendido y cada orden, sin importar si ya se cobró o no (eso
+  // es justo lo que ve Cobranza).
+  function viewOrders() {
+    const orders = DB.getQuotes().filter(isOrderRow).sort((a, b) => (b.generatedAt || b.updatedAt) - (a.generatedAt || a.updatedAt));
+    const totalVendido = orders.reduce((s, q) => s + totalsOf(q).total, 0);
+    const search = S.ordersSearch || '';
+    const filtered = filterQuotesBySearch(orders, search);
+    const rows = filtered || orders;
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
+        <div class="title">Órdenes de venta</div>
+      </header>
+      <section class="summary">
+        <div class="muted">Total vendido · ${orders.length} orden(es)</div>
+        <div class="big num">${fmt(totalVendido)}</div>
+      </section>
+      <div class="field" style="margin-top:10px"><input id="orders-search" placeholder="Buscar por cliente o folio…" value="${esc(search)}"></div>
+      <div class="list" id="orders-list">
+        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`}
+      </div>`;
+  }
+
+  function refreshOrdersSearch() {
+    const listEl = document.getElementById('orders-list');
+    if (!listEl) return;
+    const orders = DB.getQuotes().filter(isOrderRow).sort((a, b) => (b.generatedAt || b.updatedAt) - (a.generatedAt || a.updatedAt));
+    const filtered = filterQuotesBySearch(orders, S.ordersSearch || '');
+    const rows = filtered || orders;
+    listEl.innerHTML = rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`;
   }
 
   function viewCollections() {
@@ -1924,6 +1969,7 @@
       case 'settings': return go('settings');
       case 'home': S.writeOpen = false; return go('home');
       case 'collections': return go('collections');
+      case 'orders': return go('orders');
       case 'reports': return go('reports');
       case 'clients': S.customers = DB.getCustomers(); return go('clients');
       case 'open-client': S.activeCustomer = S.customers.find((c) => c.id === b.dataset.id); return go('client-detail');
@@ -2225,6 +2271,7 @@
   app.addEventListener('input', (e) => {
     if (S.view === 'editor') onEditorInput(e);
     if (e.target.id === 'home-search') { S.homeSearch = e.target.value; refreshHomeSearch(); }
+    if (e.target.id === 'orders-search') { S.ordersSearch = e.target.value; refreshOrdersSearch(); }
   });
   app.addEventListener('change', (e) => {
     if (S.view === 'editor') onEditorChange(e);
@@ -2455,7 +2502,7 @@
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'set-password': viewSetPassword, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket, feedback: viewFeedback,
-      collections: viewCollections, reports: viewReports, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
+      collections: viewCollections, orders: viewOrders, reports: viewReports, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
     };
     app.innerHTML = views[S.view]();
   }
