@@ -455,8 +455,24 @@
     const hasLocal = DB.getQuotes().length > 0 || DB.getCatalog().length > 0;
     if (hasLocal && !DB.isImportDecided()) return go('import-prompt');
     await pullAndMerge();
+    backfillOrderFolios();
     checkPushStatus().then(() => { if (S.view === 'settings') render(); });
     go('home');
+  }
+
+  // Órdenes de venta confirmadas antes de que existiera el folio de orden
+  // (V0.8.0): les asigna uno la primera vez que se detectan, para que dejen
+  // de mostrar su folio de cotización. Se corre después de traer la nube
+  // (para no pisar lo recién asignado con un order_folio vacío del servidor)
+  // y sube de inmediato lo asignado.
+  function backfillOrderFolios() {
+    DB.getQuotes().forEach((q) => {
+      if (isConfirmed(q) && !q.orderFolio) {
+        q.orderFolio = DB.nextOrderFolio();
+        DB.saveQuote(q);
+        if (cloudOn && S.cloudSession && S.cloudBusiness) syncQuoteToCloud(q, S.catalog);
+      }
+    });
   }
 
   async function pullAndMerge() {
@@ -2445,7 +2461,7 @@
   }
 
   async function boot() {
-    if (!cloudOn) return render(); // sin Supabase configurado: exactamente el comportamiento de V0.2
+    if (!cloudOn) { backfillOrderFolios(); return render(); } // sin Supabase configurado: exactamente el comportamiento de V0.2
     S.view = 'loading';
     render();
     try {
