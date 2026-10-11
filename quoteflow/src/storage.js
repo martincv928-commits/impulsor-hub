@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
-  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', importDecided: 'qf.importDecided', customers: 'qf.customers' };
+  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', orderFolio: 'qf.orderFolio', importDecided: 'qf.importDecided', customers: 'qf.customers' };
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
@@ -55,6 +55,14 @@
       write(K.folio, n);
       return 'COT-' + String(n).padStart(4, '0');
     },
+    // Folio de Orden de venta: se asigna aparte (secuencia propia OV-0001...)
+    // la primera vez que se confirma una cotización, para no mezclarlo con
+    // el folio de cotización que ya traía desde antes.
+    nextOrderFolio() {
+      const n = (read(K.orderFolio, 0) || 0) + 1;
+      write(K.orderFolio, n);
+      return 'OV-' + String(n).padStart(4, '0');
+    },
 
     // Respaldo: un solo archivo con todo lo que vive en este dispositivo.
     exportBackup() {
@@ -67,6 +75,7 @@
         quotes: read(K.quotes, []),
         customers: read(K.customers, []),
         folio: read(K.folio, 0),
+        orderFolio: read(K.orderFolio, 0),
       };
     },
 
@@ -94,6 +103,7 @@
       write(K.quotes, data.quotes);
       if (Array.isArray(data.customers)) write(K.customers, data.customers);
       if (typeof data.folio === 'number') write(K.folio, data.folio);
+      if (typeof data.orderFolio === 'number') write(K.orderFolio, data.orderFolio);
       return true;
     },
 

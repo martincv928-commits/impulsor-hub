@@ -169,6 +169,7 @@
     const row = {
       business_id: businessId,
       folio: q.folio,
+      order_folio: q.orderFolio || null,
       client_name: q.client || '',
       status: q.status,
       confirmation: q.confirmation || null,
@@ -202,7 +203,7 @@
         flags: [], candidates: [],
       }));
     return {
-      id: row.id, folio: row.folio, client: row.client_name, status: row.status,
+      id: row.id, folio: row.folio, orderFolio: row.order_folio || null, client: row.client_name, status: row.status,
       confirmation: row.confirmation || undefined,
       items, discount: { type: row.discount_type, value: row.discount_value },
       ivaMode: row.iva_mode, ivaRateBp: row.iva_rate_bp, validityDays: row.validity_days,
