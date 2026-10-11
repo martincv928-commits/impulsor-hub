@@ -29,6 +29,7 @@
     if (/already registered|already exists/i.test(m)) return 'Ya existe una cuenta con ese correo.';
     if (/password/i.test(m) && /least|short|6 characters/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres.';
     if (/network|fetch/i.test(m)) return 'No hay conexión con el servidor. Intenta de nuevo.';
+    if (/row-level security/i.test(m)) return 'No se pudo guardar: tu sesión puede haber expirado. Cierra sesión, vuelve a entrar e inténtalo de nuevo.';
     return m || 'Ocurrió un error inesperado.';
   }
 
