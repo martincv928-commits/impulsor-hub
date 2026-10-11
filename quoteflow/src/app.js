@@ -679,14 +679,16 @@
   }
 
   function quoteRowHtml(q) {
+    const isOrder = q.status === 'GENERADA' && isConfirmed(q);
+    const displayFolio = isOrder && q.orderFolio ? q.orderFolio : q.folio;
     return `
       <button class="qrow" data-act="open" data-id="${q.id}">
         <span class="client">${esc(q.client || 'Sin cliente')}</span>
         <span class="total num">${fmt(totalsOf(q).total)}</span>
-        <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+        <span class="meta"><span class="mono">${esc(displayFolio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
         <span style="display:flex;gap:6px;justify-self:end">
           ${q.status === 'GENERADA' && q.confirmation ? statusChip(CONFIRMATION_PILL[q.confirmation], CONFIRMATION_LABEL[q.confirmation]) : `<span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status === 'GENERADA' && q.confirmation === null ? 'Por confirmar' : q.status}</span>`}
-          ${q.status === 'GENERADA' && isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
+          ${isOrder ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : ''}
         </span>
       </button>`;
   }
@@ -700,26 +702,42 @@
   // La lista de resultados se actualiza tecla por tecla sin volver a dibujar
   // toda la pantalla (eso le quitaría el foco al campo de búsqueda a media
   // palabra); solo se reescribe el contenido de la lista.
+  const isOrderRow = (q) => q.status === 'GENERADA' && isConfirmed(q);
+
   function refreshHomeSearch() {
     const listEl = document.getElementById('home-quotes-list');
     const headEl = document.getElementById('home-quotes-head');
+    const ordersListEl = document.getElementById('home-orders-list');
     if (!listEl) return;
     const quotes = DB.getQuotes();
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
-    const shown = filtered || (S.showAll ? quotes : quotes.slice(0, 12));
+    const quotesOnly = quotes.filter((q) => !isOrderRow(q));
+    const shown = filtered ? filtered.filter((q) => !isOrderRow(q)) : (S.showAll ? quotesOnly : quotesOnly.slice(0, 12));
     listEl.innerHTML = shown.length ? shown.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.'}</div>`;
     if (headEl) headEl.textContent = filtered ? 'Resultados' : 'Cotizaciones recientes';
+    if (ordersListEl) {
+      const orderRows = filtered ? filtered.filter(isOrderRow) : quotes.filter(isOrderRow).slice(0, 12);
+      ordersListEl.innerHTML = orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? '' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`;
+    }
   }
 
   function quotesListSection(quotes, shown) {
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
-    const rows = filtered || shown;
+    const quotesOnly = quotes.filter((q) => !isOrderRow(q));
+    const ordersOnly = quotes.filter(isOrderRow);
+    const rows = filtered ? filtered.filter((q) => !isOrderRow(q)) : shown.filter((q) => !isOrderRow(q));
+    const orderRows = filtered ? filtered.filter(isOrderRow) : ordersOnly.slice(0, 12);
     return `
       <div class="field" style="margin-top:10px"><input id="home-search" placeholder="Buscar por cliente o folio…" value="${esc(S.homeSearch)}"></div>
-      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : 'Cotizaciones recientes'}</h2>${!filtered && quotes.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
+      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : 'Cotizaciones recientes'}</h2>${!filtered && quotesOnly.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
       <div class="list" id="home-quotes-list">
         ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
-      </div>`;
+      </div>
+      ${!filtered || orderRows.length ? `
+      <div class="section-h"><h2>Órdenes de venta</h2></div>
+      <div class="list" id="home-orders-list">
+        ${orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">Aún no tienes órdenes de venta. Se crean al confirmar una cotización.</div>`}
+      </div>` : ''}`;
   }
 
   function collectionsListSection() {
@@ -1155,7 +1173,12 @@
   }
 
   /* ---------- resumen / compartir ---------- */
-  const CONFIRMATION_LABEL = { CONFIRMADA: 'Confirmada', RECHAZADA: 'Rechazada' };
+  // Al confirmar, la cotización se convierte en Orden de venta: queda
+  // congelada (no se le cambian productos/precios) y tiene su propio folio
+  // (OV-0001...) aparte del de cotización. "Regresar a cotización" la
+  // descongela para poder editarla; si se vuelve a confirmar, reusa el
+  // mismo folio de orden (no se generan huecos en la numeración).
+  const CONFIRMATION_LABEL = { CONFIRMADA: 'Orden de venta', RECHAZADA: 'Rechazada' };
   const CONFIRMATION_PILL = { CONFIRMADA: 'done', RECHAZADA: 'danger' };
 
   function viewSummary() {
@@ -1164,15 +1187,16 @@
     const confirmed = isConfirmed(q);
     const rejected = isRejected(q);
     const explicit = q.confirmation === 'CONFIRMADA' || q.confirmation === 'RECHAZADA';
+    const displayFolio = confirmed && q.orderFolio ? q.orderFolio : q.folio;
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
-        <div class="title mono">${esc(q.folio)}</div>
+        <div class="title mono">${esc(displayFolio)}</div>
         <span class="spacer"></span>
         <span class="pill ${explicit ? CONFIRMATION_PILL[q.confirmation] : q.status === 'GENERADA' ? 'done' : 'draft'}">${explicit ? CONFIRMATION_LABEL[q.confirmation] : q.status}</span>
       </header>
       <section class="summary">
-        <div class="muted">${esc(q.client)}</div>
+        <div class="muted">${esc(q.client)}${confirmed ? ` · cotización ${esc(q.folio)}` : ''}</div>
         <div class="big num">${fmt(t.total)}</div>
         <div class="muted" style="font-size:14px">${dateStr(q.generatedAt || q.updatedAt)} · vigencia ${esc(q.validityDays)} días</div>
       </section>
@@ -1185,12 +1209,19 @@
         ${q.status === 'GENERADA' && !confirmed && !rejected ? `
           <div class="banner media">
             <div class="head">¿El cliente ya confirmó esta cotización?</div>
-            <p style="margin:0">Mientras no la confirmes, puedes proponer un plan de pagos, pero no se registran cobros todavía.</p>
+            <p style="margin:0">Al confirmar se convierte en Orden de venta: queda congelada (ya no se le cambian productos ni precios) y empieza a contar en tu cobranza.</p>
           </div>
           <div class="two-col">
             <button class="btn primary block" data-act="confirm-quote">Confirmar</button>
             <button class="btn ghost danger block" data-act="reject-quote">Rechazar</button>
           </div>
+        ` : ''}
+        ${confirmed ? `
+          <div class="banner media">
+            <div class="head">Orden de venta congelada</div>
+            <p style="margin:0">No se le pueden cambiar productos ni precios mientras sea una orden. Si necesitas editarla, regrésala a cotización primero.</p>
+          </div>
+          <button class="btn ghost block" data-act="unconfirm-quote">Regresar a cotización para editar</button>
         ` : ''}
         ${rejected ? `
           <div class="banner baja">
@@ -1206,10 +1237,10 @@
           ${q.ivaMode !== 'sin' ? `<tr><td class="muted">IVA${q.ivaMode === 'incluido' ? ' incluido' : ''}</td><td class="r">${fmt(t.iva)}</td></tr>` : ''}
           <tr><td><b>Total</b></td><td class="r"><b>${fmt(t.total)}</b></td></tr>
         </table></div>
-        ${addProductSection()}
+        ${!confirmed ? addProductSection() : ''}
         ${!rejected ? paymentsSection(q) : ''}
         <div class="two-col">
-          <button class="btn" data-act="edit">Editar</button>
+          ${!confirmed ? `<button class="btn" data-act="edit">Editar</button>` : ''}
           <button class="btn" data-act="new">Nueva cotización</button>
         </div>
       </div>`;
@@ -1405,7 +1436,7 @@
       <button class="qrow" data-act="open" data-id="${q.id}">
         <span class="client">${esc(q.client || 'Sin cliente')}</span>
         <span class="total num">${fmt(balanceCentsOf(q))}</span>
-        <span class="meta"><span class="mono">${esc(q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
+        <span class="meta"><span class="mono">${esc(q.orderFolio || q.folio || '—')}</span> · ${dateStr(q.updatedAt)}</span>
         <span style="display:flex;gap:6px;justify-self:end">
           ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
           ${dueChip}
@@ -1424,11 +1455,11 @@
       if (progress.length) {
         progress.forEach((p, i) => {
           if (p.timeliness === 'VENCIDA' || p.timeliness === 'PARCIAL_VENCIDA') {
-            items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.folio, label: `Parcialidad ${i + 1}`, amount: p.remaining, dueAt: p.dueAt });
+            items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.orderFolio || q.folio, label: `Parcialidad ${i + 1}`, amount: p.remaining, dueAt: p.dueAt });
           }
         });
       } else if (isQuoteOverdue(q)) {
-        items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.folio, label: 'Saldo total', amount: balanceCentsOf(q), dueAt: earliestOverdueDate(q) });
+        items.push({ quoteId: q.id, client: q.client || 'Sin cliente', folio: q.orderFolio || q.folio, label: 'Saldo total', amount: balanceCentsOf(q), dueAt: earliestOverdueDate(q) });
       }
     });
     return items.sort((a, b) => a.dueAt - b.dueAt);
@@ -1623,7 +1654,7 @@
       <div class="list">
         ${quotes.length ? quotes.map((q) => `
           <button class="qrow" data-act="open" data-id="${q.id}">
-            <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
+            <span class="client"><span class="mono">${esc((isConfirmed(q) && q.orderFolio) || q.folio || '—')}</span></span>
             <span class="total num">${fmt(balanceCentsOf(q))}</span>
             <span class="meta">${dateStr(q.updatedAt)}</span>
             ${isConfirmed(q) ? statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)]) : q.confirmation === 'RECHAZADA' ? statusChip('danger', 'Rechazada') : statusChip('info', 'Por confirmar')}
@@ -1662,7 +1693,7 @@
         <div class="list">
           ${quotes.map((q) => `
             <button class="qrow" data-act="open" data-id="${q.id}">
-              <span class="client"><span class="mono">${esc(q.folio || '—')}</span></span>
+              <span class="client"><span class="mono">${esc(q.orderFolio || q.folio || '—')}</span></span>
               <span class="total num">${fmt(balanceCentsOf(q))}</span>
               <span class="meta">${dateStr(q.generatedAt || q.updatedAt)}</span>
               ${statusChip(PAYMENT_PILL[paymentStatusOf(q)], PAYMENT_LABEL[paymentStatusOf(q)])}
@@ -1951,14 +1982,21 @@
       }
       case 'confirm-quote': {
         q.confirmation = 'CONFIRMADA';
+        if (!q.orderFolio) q.orderFolio = DB.nextOrderFolio();
         savePaymentsChange(q);
-        toast('Cotización confirmada');
+        toast('Convertida en Orden de venta ' + q.orderFolio);
         return render();
       }
       case 'reject-quote': {
         q.confirmation = 'RECHAZADA';
         savePaymentsChange(q);
         toast('Cotización marcada como rechazada');
+        return render();
+      }
+      case 'unconfirm-quote': {
+        q.confirmation = null;
+        savePaymentsChange(q);
+        toast('De vuelta a cotización · ' + q.folio);
         return render();
       }
       case 'edit': S.interp = null; return go('editor');
@@ -2076,10 +2114,10 @@
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
       case 'export-quotes-csv': {
-        const rows = [['Folio', 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
+        const rows = [['Folio cotización', 'Folio orden de venta', 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
         DB.getQuotes().filter((q) => q.status === 'GENERADA').forEach((q) => {
-          const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? 'Confirmada' : q.confirmation === null ? 'Por confirmar' : 'Confirmada';
-          rows.push([q.folio || '', q.client || '', dateStr(q.generatedAt || q.updatedAt), q.status, conf, M.centsToStr(totalsOf(q).total), M.centsToStr(paidCentsOf(q)), M.centsToStr(balanceCentsOf(q))]);
+          const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? 'Orden de venta' : q.confirmation === null ? 'Por confirmar' : 'Orden de venta';
+          rows.push([q.folio || '', q.orderFolio || '', q.client || '', dateStr(q.generatedAt || q.updatedAt), q.status, conf, M.centsToStr(totalsOf(q).total), M.centsToStr(paidCentsOf(q)), M.centsToStr(balanceCentsOf(q))]);
         });
         downloadCsv(rows, 'cotizaciones.csv');
         return;
@@ -2087,7 +2125,7 @@
       case 'export-payments-csv': {
         const rows = [['Folio', 'Cliente', 'Fecha de pago', 'Monto', 'Método', 'Nota']];
         DB.getQuotes().forEach((q) => (q.payments || []).forEach((p) => {
-          rows.push([q.folio || '', q.client || '', dateStr(p.paidAt), M.centsToStr(p.amountCents), PAYMENT_METHOD_LABEL[p.method] || p.method, p.note || '']);
+          rows.push([q.orderFolio || q.folio || '', q.client || '', dateStr(p.paidAt), M.centsToStr(p.amountCents), PAYMENT_METHOD_LABEL[p.method] || p.method, p.note || '']);
         }));
         downloadCsv(rows, 'pagos.csv');
         return;
