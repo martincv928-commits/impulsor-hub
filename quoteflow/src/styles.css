@@ -59,12 +59,13 @@ button { cursor: pointer; }
 .spacer { flex: 1; }
 
 /* barra superior */
-.top { display: flex; align-items: center; gap: 8px; min-height: 48px; margin-bottom: 8px; }
-.brand { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
-.brand small { display: block; font-family: var(--body); font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: 0; }
-.brand-mark { width: 28px; height: 28px; border-radius: 8px; flex: none; box-shadow: 0 4px 10px -4px rgba(47, 63, 158, .55); }
-.icon-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; }
-.icon-btn svg { width: 22px; height: 22px; }
+.top { display: flex; align-items: center; gap: 5px; min-height: 48px; margin-bottom: 8px; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 17px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.brand > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand small { display: block; font-family: var(--body); font-weight: 500; font-size: 11px; color: var(--muted); letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-mark { width: 24px; height: 24px; border-radius: 7px; flex: none; box-shadow: 0 4px 10px -4px rgba(47, 63, 158, .55); }
+.icon-btn { width: 37px; height: 37px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; flex: none; }
+.icon-btn svg { width: 18px; height: 18px; }
 .title { font-family: var(--display); font-weight: 600; font-size: 19px; }
 
 /* inicio */
