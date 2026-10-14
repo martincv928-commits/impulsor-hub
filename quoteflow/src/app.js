@@ -500,8 +500,16 @@
     DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
     S.settings = DB.getSettings();
     const { catalog, quotes, customers } = await CLOUD.data.pull(S.cloudBusiness.id);
-    DB.saveCatalog(catalog);
-    S.catalog = catalog;
+    // Catálogo: se combina por "key" en vez de reemplazar todo (como ya se
+    // hace con clientes). Reemplazarlo de golpe borraba, en cada inicio de
+    // sesión (no solo la primera vez), cualquier producto agregado en este
+    // dispositivo que aún no hubiera alcanzado a subirse a la nube — una
+    // pérdida de datos real e inaceptable que no debe volver a pasar.
+    const localCatalog = DB.getCatalog();
+    const catByKey = new Map(localCatalog.map((p) => [p.key, p]));
+    (catalog || []).forEach((p) => catByKey.set(p.key, p));
+    S.catalog = Array.from(catByKey.values());
+    DB.saveCatalog(S.catalog);
     quotes.forEach((q) => DB.saveQuote(q));
     // Clientes: se mezclan por nombre normalizado en vez de reemplazar todo,
     // para no perder uno guardado localmente que aún no se haya subido.
