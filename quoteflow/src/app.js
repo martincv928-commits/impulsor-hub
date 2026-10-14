@@ -2599,6 +2599,29 @@
     }
   }
 
+  // En el celular, la app se queda "congelada" en segundo plano por horas
+  // (al cambiar de app o apagar la pantalla), y durante ese tiempo el token
+  // de sesión no se puede refrescar solo porque los temporizadores de JS no
+  // corren. Si no se hace nada, la primera acción al reabrir (p. ej. guardar
+  // Configuración) usa un token ya vencido y falla con "sesión expirada" sin
+  // avisar a tiempo. Por eso, al volver a primer plano, se refresca la
+  // sesión de una vez (getSession() renueva sola si hace falta) antes de que
+  // el usuario alcance a tocar algo.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!(cloudOn && S.cloudSession)) return;
+    try {
+      const session = await CLOUD.auth.getSession();
+      S.cloudSession = session;
+      if (!session) return;
+      if (S.businessSyncFailed && S.cloudBusiness) {
+        await CLOUD.business.saveSettings(S.cloudBusiness.id, S.settings);
+        S.businessSyncFailed = false;
+        if (S.view === 'settings') render();
+      }
+    } catch (e) { /* si sigue sin poder, el banner de "no sincronizado" ya lo indica */ }
+  });
+
   // Si se recupera la conexión, se reintenta solo lo que haya quedado
   // pendiente (nunca se importó, o falló al sincronizar una edición) sin que
   // el usuario tenga que acordarse de entrar a Configuración.
