@@ -496,6 +496,28 @@
     });
   }
 
+  // Cuando un guardado falla con pinta de "sesión expirada" (RLS), puede ser
+  // un hipo de red real... o puede ser que el token ya esté muerto del lado
+  // del servidor (p. ej. una renovación concurrente en otra pestaña o
+  // dispositivo invalidó toda la sesión) y la app se quede años reintentando
+  // en silencio con un token que nunca va a volver a servir, sin que el
+  // usuario se entere de que lo que de verdad necesita es volver a entrar.
+  // Aquí sí se le pregunta al servidor (getUser) si el token sigue siendo
+  // válido; si el servidor dice que no, se cierra la sesión local y se manda
+  // a iniciar sesión de nuevo en vez de dejarlo atorado para siempre.
+  async function handlePossibleDeadSession(err) {
+    if (!/sesión puede haber expirado/i.test((err && err.message) || '')) return false;
+    const user = await CLOUD.auth.getUser();
+    if (user === null) { // el servidor confirmó: el token ya no sirve
+      S.cloudSession = null;
+      S.cloudBusiness = null;
+      toast('Tu sesión se cerró. Vuelve a iniciar sesión para seguir guardando en la nube.');
+      go('auth');
+      return true;
+    }
+    return false; // undefined (sin red: no se sabe) o un usuario válido: no se toca nada
+  }
+
   async function pullAndMerge() {
     S.settings = DB.getSettings();
     DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
@@ -535,8 +557,9 @@
   // (solo falló una edición) no se renumera, solo se reintenta tal cual.
   async function importLocalDataToCloud(bizId) {
     let failed = 0;
+    let lastError = null;
     for (const entry of DB.getCatalog()) {
-      try { await CLOUD.data.pushProduct(bizId, entry); } catch (e) { failed++; }
+      try { await CLOUD.data.pushProduct(bizId, entry); } catch (e) { failed++; lastError = e; }
     }
     const pending = pendingSyncQuotes();
     const taken = new Set(await CLOUD.data.folios(bizId).catch(() => []));
@@ -553,9 +576,9 @@
         delete iq._syncFailed;
         if (cloudId !== iq.id) { DB.deleteQuote(iq.id); iq.id = cloudId; DB.saveQuote(iq); }
         else DB.saveQuote(iq);
-      } catch (e) { failed++; }
+      } catch (e) { failed++; lastError = e; }
     }
-    return { failed, total: pending.length };
+    return { failed, total: pending.length, lastError };
   }
 
   /* ---------- soporte (lado cliente) ---------- */
@@ -2272,9 +2295,10 @@
       case 'import-yes': {
         S.authBusy = true;
         render();
-        const { failed } = await importLocalDataToCloud(S.cloudBusiness.id);
+        const { failed, lastError } = await importLocalDataToCloud(S.cloudBusiness.id);
         DB.setImportDecided();
         S.authBusy = false;
+        if (failed && lastError && (await handlePossibleDeadSession(lastError))) return;
         if (failed) toast(`Se importó lo posible; ${failed} elemento(s) no se pudieron subir. Puedes reintentar desde Configuración, tus datos siguen guardados en este dispositivo.`);
         else toast('Datos importados a tu cuenta');
         await pullAndMerge();
@@ -2283,8 +2307,9 @@
       case 'resync-pending': {
         S.authBusy = true;
         render();
-        const { failed, total } = await importLocalDataToCloud(S.cloudBusiness.id);
+        const { failed, total, lastError } = await importLocalDataToCloud(S.cloudBusiness.id);
         S.authBusy = false;
+        if (failed && lastError && (await handlePossibleDeadSession(lastError))) return;
         if (!total) toast('No hay nada pendiente por sincronizar.');
         else if (failed) toast(`${total - failed} de ${total} sincronizados; ${failed} siguen pendientes (revisa tu conexión e inténtalo de nuevo).`);
         else toast('Todo sincronizado con tu cuenta');
@@ -2299,6 +2324,8 @@
           S.businessSyncFailed = false;
           toast('Datos del negocio sincronizados');
         } catch (err) {
+          S.authBusy = false;
+          if (await handlePossibleDeadSession(err)) return;
           toast('Sigue sin sincronizarse: ' + err.message);
         }
         S.authBusy = false;
@@ -2357,11 +2384,12 @@
       if (cloudOn && S.cloudBusiness) {
         CLOUD.business.saveSettings(S.cloudBusiness.id, s)
           .then(() => { S.businessSyncFailed = false; if (S.view === 'settings') render(); })
-          .catch((err) => {
+          .catch(async (err) => {
             // No basta con un toast: si esto falla y nadie se da cuenta, la
             // próxima vez que se abra la app se vuelve a traer de la nube el
             // nombre/datos VIEJOS del negocio, pisando lo que se acaba de
             // escribir, sin que quien lo cambió entienda por qué "se regresó".
+            if (await handlePossibleDeadSession(err)) return;
             S.businessSyncFailed = true;
             toast('No se sincronizó con la nube: ' + err.message);
             if (S.view === 'settings') render();
@@ -2619,7 +2647,13 @@
         S.businessSyncFailed = false;
         if (S.view === 'settings') render();
       }
-    } catch (e) { /* si sigue sin poder, el banner de "no sincronizado" ya lo indica */ }
+    } catch (err) {
+      // Si incluso tras "refrescar" sigue fallando con pinta de sesión
+      // expirada, es que el token ya está muerto de verdad del lado del
+      // servidor (no solo vencido localmente): aquí se detecta y se manda a
+      // iniciar sesión de nuevo en vez de dejarlo fallando para siempre.
+      await handlePossibleDeadSession(err);
+    }
   });
 
   // Si se recupera la conexión, se reintenta solo lo que haya quedado
