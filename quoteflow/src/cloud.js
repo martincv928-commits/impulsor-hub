@@ -52,6 +52,23 @@
       const { data } = await client().auth.getSession();
       return data.session || null;
     },
+    // A diferencia de getSession() (que solo mira la fecha de vencimiento
+    // guardada en este dispositivo), esto sí le pregunta al servidor si el
+    // token todavía es válido. Hace falta porque si el token se invalidó del
+    // lado del servidor (p. ej. por una renovación simultánea en otra pestaña
+    // o dispositivo con la misma cuenta), el reloj local lo sigue viendo
+    // "vigente" y getSession() no se entera.
+    // Devuelve: el usuario si el token es válido; null si el servidor
+    // respondió que el token YA NO es válido (sesión realmente muerta);
+    // undefined si ni siquiera se pudo preguntar (sin red: no se sabe, y no
+    // hay que tratarlo como si la sesión hubiera muerto).
+    async getUser() {
+      try {
+        const { data, error } = await client().auth.getUser();
+        if (error) return null;
+        return data.user || null;
+      } catch (e) { return undefined; }
+    },
     onChange(cb) {
       client().auth.onAuthStateChange((event, session) => cb(session, event));
     },
