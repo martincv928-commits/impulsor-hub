@@ -49,8 +49,17 @@
     return payment.paidAt <= due ? 'a_tiempo' : 'atrasado';
   }
 
+  // Igual que isConfirmed() en app.js: confirmada explícita, o sin el campo
+  // (cotizaciones de antes de que existiera, tratadas como confirmadas).
+  function isOrderQuote(quote) {
+    return quote.confirmation === 'CONFIRMADA' || quote.confirmation === undefined;
+  }
+
   function build(quote, settings, mode) {
     const isReceipt = mode === 'estado';
+    const isOrder = !isReceipt && isOrderQuote(quote);
+    const docLabel = isOrder ? (settings.docLabelOrder || 'Orden de venta') : (settings.docLabelQuote || 'Cotización');
+    const docFolio = isOrder && quote.orderFolio ? quote.orderFolio : quote.folio;
     const ACCENT = hexToRgb(settings.pdfAccent, DEFAULT_ACCENT);
     const SOFT = tint(ACCENT, 0.92);
     const M = QF.money;
@@ -89,14 +98,14 @@
     doc.setTextColor(...ACCENT);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text(isReceipt ? 'ESTADO DE CUENTA' : 'COTIZACIÓN', R, y + 5, { align: 'right' });
+    doc.text(isReceipt ? 'ESTADO DE CUENTA' : docLabel.toUpperCase(), R, y + 5, { align: 'right' });
     doc.setFontSize(9);
     doc.setTextColor(...INK);
     const issued = quote.generatedAt || quote.updatedAt || Date.now();
     const until = issued + (quote.validityDays || 0) * 86400000;
     const meta = isReceipt
-      ? [['Folio', quote.folio || '—'], ['Fecha', fmtDate(issued)]]
-      : [['Folio', quote.folio || '—'], ['Fecha', fmtDate(issued)], ['Válida hasta', fmtDate(until)]];
+      ? [['Folio', docFolio || '—'], ['Fecha', fmtDate(issued)]]
+      : [['Folio', docFolio || '—'], ['Fecha', fmtDate(issued)], ['Válida hasta', fmtDate(until)]];
     meta.forEach(([k, v], i) => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...MUTED);
@@ -365,7 +374,7 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(...MUTED);
-      doc.text(`${quote.folio || ''} · Precios en ${cur}`, L, H - 9);
+      doc.text(`${docFolio || ''} · Precios en ${cur}`, L, H - 9);
       doc.text(`Página ${i} de ${pages}`, R, H - 9, { align: 'right' });
     }
     return doc;
@@ -373,8 +382,10 @@
 
   function filename(quote, mode) {
     const c = (quote.client || 'cliente').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    const prefix = mode === 'estado' ? 'Estado_de_cuenta' : 'Cotizacion';
-    return `${prefix}_${quote.folio || 'borrador'}_${c}.pdf`;
+    const isOrder = mode !== 'estado' && isOrderQuote(quote);
+    const prefix = mode === 'estado' ? 'Estado_de_cuenta' : isOrder ? 'Orden_de_venta' : 'Cotizacion';
+    const folio = isOrder && quote.orderFolio ? quote.orderFolio : quote.folio;
+    return `${prefix}_${folio || 'borrador'}_${c}.pdf`;
   }
 
   // Estado de cuenta de UN cliente que junta varias cotizaciones confirmadas:

@@ -40,6 +40,14 @@
   /* ---------- utilidades ---------- */
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (c) => M.format(c, S.settings.currency);
+  // Cómo le llama este negocio a sus documentos: por defecto "Cotización" y
+  // "Orden de venta", pero cada quien puede cambiarlo en Configuración (p.
+  // ej. "Presupuesto" y "Factura"). Se usa en toda la app y en el PDF; no
+  // implica ningún tipo de factura fiscal/timbrada, solo es el nombre.
+  const labelQuote = () => (S.settings.docLabelQuote || 'Cotización').trim() || 'Cotización';
+  const labelOrder = () => (S.settings.docLabelOrder || 'Orden de venta').trim() || 'Orden de venta';
+  const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+  const plural = (s) => /[aeiouáéíóú]$/i.test(s) ? s + 's' : s + 'es';
   const uid = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const pid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const icon = {
@@ -141,7 +149,7 @@
   function statusPillInfo(q) {
     if (q.status !== 'GENERADA') return { cls: 'draft', label: q.status };
     if (isRejected(q)) return { cls: 'danger', label: 'Rechazada' };
-    if (isConfirmed(q)) return { cls: 'done', label: 'Orden de venta' };
+    if (isConfirmed(q)) return { cls: 'done', label: labelOrder() };
     return { cls: 'info', label: 'Por confirmar' };
   }
   function paymentStatusOf(q) {
@@ -687,22 +695,22 @@
       ${isBusinessBlocked() ? `
         <div class="banner baja">
           <div class="head">! Negocio ${S.cloudBusiness.status === 'CANCELLED' ? 'cancelado' : 'suspendido'}</div>
-          <p style="margin:0">No puedes crear cotizaciones nuevas mientras esto siga así. Contacta a soporte desde Configuración si crees que es un error.</p>
+          <p style="margin:0">No puedes crear ${lower(plural(labelQuote()))} nuevas mientras esto siga así. Contacta a soporte desde Configuración si crees que es un error.</p>
         </div>` : `
       <section class="hero">
-        <button class="mic" data-act="speak" aria-label="Hablar cotización">${icon.mic}</button>
+        <button class="mic" data-act="speak" aria-label="Hablar ${lower(labelQuote())}">${icon.mic}</button>
         <div class="mic-label">Hablar</div>
         <p>Di algo como: “Cotiza a Pedro 20 litros de jabón a 14 pesos, más IVA”.</p>
       </section>
       <section class="write">
         ${S.writeOpen ? `
-          <label class="lbl" for="free-text">Escribe la cotización</label>
+          <label class="lbl" for="free-text">Escribe tu ${lower(labelQuote())}</label>
           <textarea id="free-text" placeholder="${esc(EXAMPLE)}"></textarea>
           <div class="row">
             <button class="btn ghost" data-act="fill-example">Usar ejemplo</button>
             <span class="spacer"></span>
             <button class="btn primary" data-act="interpret">Interpretar</button>
-          </div>` : `<button class="btn block" data-act="write">${icon.pen} Escribir cotización</button>`}
+          </div>` : `<button class="btn block" data-act="write">${icon.pen} Escribir ${lower(labelQuote())}</button>`}
       </section>`}
       ${S.settings.homeList === 'collections' ? collectionsListSection() : quotesListSection(quotes, shown)}`;
   }
@@ -742,11 +750,11 @@
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
     const quotesOnly = quotes.filter((q) => !isOrderRow(q));
     const shown = filtered ? filtered.filter((q) => !isOrderRow(q)) : (S.showAll ? quotesOnly : quotesOnly.slice(0, 12));
-    listEl.innerHTML = shown.length ? shown.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.'}</div>`;
-    if (headEl) headEl.textContent = filtered ? 'Resultados' : 'Cotizaciones recientes';
+    listEl.innerHTML = shown.length ? shown.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : `Aún no hay ${lower(plural(labelQuote()))}. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.`}</div>`;
+    if (headEl) headEl.textContent = filtered ? 'Resultados' : `${plural(labelQuote())} recientes`;
     if (ordersListEl) {
       const orderRows = filtered ? filtered.filter(isOrderRow) : quotes.filter(isOrderRow).slice(0, 12);
-      ordersListEl.innerHTML = orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? '' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`;
+      ordersListEl.innerHTML = orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? '' : `Aún no tienes ${lower(plural(labelOrder()))}. Se crean al confirmar una ${lower(labelQuote())}.`}</div>`;
     }
   }
 
@@ -758,14 +766,14 @@
     const orderRows = filtered ? filtered.filter(isOrderRow) : ordersOnly.slice(0, 12);
     return `
       <div class="field" style="margin-top:10px"><input id="home-search" placeholder="Buscar por cliente o folio…" value="${esc(S.homeSearch)}"></div>
-      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : 'Cotizaciones recientes'}</h2>${!filtered && quotesOnly.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
+      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : `${plural(labelQuote())} recientes`}</h2>${!filtered && quotesOnly.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
       <div class="list" id="home-quotes-list">
-        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay cotizaciones. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
+        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay ${lower(plural(labelQuote()))}. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
       </div>
       ${!filtered || orderRows.length ? `
-      <div class="section-h"><h2>Órdenes de venta</h2><button class="btn ghost" data-act="orders">Ver todas</button></div>
+      <div class="section-h"><h2>${plural(labelOrder())}</h2><button class="btn ghost" data-act="orders">Ver todas</button></div>
       <div class="list" id="home-orders-list">
-        ${orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">Aún no tienes órdenes de venta. Se crean al confirmar una cotización.</div>`}
+        ${orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">Aún no tienes ${lower(plural(labelOrder()))}. Se crean al confirmar una ${lower(labelQuote())}.</div>`}
       </div>` : ''}`;
   }
 
@@ -902,7 +910,7 @@
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
-        <div class="title">${q.folio ? `<span class="mono">${esc(q.folio)}</span>` : 'Nueva cotización'}</div>
+        <div class="title">${q.folio ? `<span class="mono">${esc(q.folio)}</span>` : `Nueva ${lower(labelQuote())}`}</div>
         <span class="spacer"></span>
         <span class="pill ${q.status === 'GENERADA' ? 'done' : 'draft'}">${q.status}</span>
       </header>
@@ -952,8 +960,8 @@
         <div class="field"><label for="notes">Notas</label><textarea id="notes" data-q="notes" style="min-height:64px" placeholder="Opcional">${esc(q.notes)}</textarea></div>
         <div class="field"><label for="conditions">Condiciones</label><textarea id="conditions" data-q="conditions" style="min-height:64px">${esc(q.conditions)}</textarea></div>
         ${q.folio ? (S.confirmDelete
-          ? `<div class="confirm-row">¿Eliminar esta cotización? <button class="btn danger" data-act="delete-yes">Eliminar</button><button class="btn" data-act="delete-no">No</button></div>`
-          : `<button class="btn ghost danger" data-act="delete">Eliminar cotización</button>`) : ''}
+          ? `<div class="confirm-row">¿Eliminar esta ${lower(labelQuote())}? <button class="btn danger" data-act="delete-yes">Eliminar</button><button class="btn" data-act="delete-no">No</button></div>`
+          : `<button class="btn ghost danger" data-act="delete">Eliminar ${lower(labelQuote())}</button>`) : ''}
       </div>
       <datalist id="cat-list">${S.catalog.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
       <datalist id="client-list">${S.customers.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
@@ -1223,7 +1231,7 @@
         <span class="pill ${pill.cls}">${pill.label}</span>
       </header>
       <section class="summary">
-        <div class="muted">${esc(q.client)}${confirmed ? ` · cotización ${esc(q.folio)}` : ''}</div>
+        <div class="muted">${esc(q.client)}${confirmed ? ` · ${lower(labelQuote())} ${esc(q.folio)}` : ''}</div>
         <div class="big num">${fmt(t.total)}</div>
         <div class="muted" style="font-size:14px">${dateStr(q.generatedAt || q.updatedAt)} · vigencia ${esc(q.validityDays)} días</div>
       </section>
@@ -1235,8 +1243,8 @@
         </div>
         ${q.status === 'GENERADA' && !confirmed && !rejected ? `
           <div class="banner media">
-            <div class="head">¿El cliente ya confirmó esta cotización?</div>
-            <p style="margin:0">Al confirmar se convierte en Orden de venta: queda congelada (ya no se le cambian productos ni precios) y empieza a contar en tu cobranza.</p>
+            <div class="head">¿El cliente ya confirmó esta ${lower(labelQuote())}?</div>
+            <p style="margin:0">Al confirmar se convierte en ${labelOrder()}: queda congelada (ya no se le cambian productos ni precios) y empieza a contar en tu cobranza.</p>
           </div>
           <div class="two-col">
             <button class="btn primary block" data-act="confirm-quote">Confirmar</button>
@@ -1245,15 +1253,15 @@
         ` : ''}
         ${confirmed ? `
           <div class="banner media">
-            <div class="head">Orden de venta congelada</div>
-            <p style="margin:0">No se le pueden cambiar productos ni precios mientras sea una orden. Si necesitas editarla, regrésala a cotización primero.</p>
+            <div class="head">${labelOrder()} congelada</div>
+            <p style="margin:0">No se le pueden cambiar productos ni precios mientras sea una orden. Si necesitas editarla, regrésala a ${lower(labelQuote())} primero.</p>
           </div>
-          <button class="btn ghost block" data-act="unconfirm-quote">Regresar a cotización para editar</button>
+          <button class="btn ghost block" data-act="unconfirm-quote">Regresar a ${lower(labelQuote())} para editar</button>
         ` : ''}
         ${rejected ? `
           <div class="banner baja">
-            <div class="head">Cotización rechazada</div>
-            <p style="margin:0">El cliente no aceptó esta cotización. No cuenta en tu pendiente por cobrar.</p>
+            <div class="head">${labelQuote()} rechazada</div>
+            <p style="margin:0">El cliente no aceptó esta ${lower(labelQuote())}. No cuenta en tu pendiente por cobrar.</p>
           </div>
           <button class="btn ghost block" data-act="confirm-quote">Marcarla como confirmada en su lugar</button>
         ` : ''}
@@ -1268,7 +1276,7 @@
         ${!rejected ? paymentsSection(q) : ''}
         <div class="two-col">
           ${!confirmed ? `<button class="btn" data-act="edit">Editar</button>` : ''}
-          <button class="btn" data-act="new">Nueva cotización</button>
+          <button class="btn" data-act="new">Nueva ${lower(labelQuote())}</button>
         </div>
       </div>`;
   }
@@ -1286,7 +1294,7 @@
             <button type="button" class="icon-btn" data-act="add-product-voice" aria-label="Dictar producto">${icon.mic}</button>
           </div>
           <div class="field"><label for="add-product-date">Fecha en que se agregó</label><input id="add-product-date" type="date" value="${todayInputStr()}" max="${todayInputStr()}"></div>
-          <button class="btn primary block" data-act="add-product-submit">Agregar a la cotización</button>
+          <button class="btn primary block" data-act="add-product-submit">Agregar a la ${lower(labelQuote())}</button>
         </div>
       ` : `<button class="btn block ghost" data-act="add-product-open">+ Agregar producto</button>`}`;
   }
@@ -1519,15 +1527,15 @@
     return `
       <header class="top">
         <button class="icon-btn" data-act="home" aria-label="Volver al inicio">${icon.back}</button>
-        <div class="title">Órdenes de venta</div>
+        <div class="title">${esc(plural(labelOrder()))}</div>
       </header>
       <section class="summary">
-        <div class="muted">Total vendido · ${orders.length} orden(es)</div>
+        <div class="muted">Total vendido · ${orders.length} ${lower(labelOrder())}(s)</div>
         <div class="big num">${fmt(totalVendido)}</div>
       </section>
       <div class="field" style="margin-top:10px"><input id="orders-search" placeholder="Buscar por cliente o folio…" value="${esc(search)}"></div>
       <div class="list" id="orders-list">
-        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`}
+        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : `Aún no tienes ${lower(plural(labelOrder()))}. Se crean al confirmar una ${lower(labelQuote())}.`}</div>`}
       </div>`;
   }
 
@@ -1537,7 +1545,7 @@
     const orders = DB.getQuotes().filter(isOrderRow).sort((a, b) => (b.generatedAt || b.updatedAt) - (a.generatedAt || a.updatedAt));
     const filtered = filterQuotesBySearch(orders, S.ordersSearch || '');
     const rows = filtered || orders;
-    listEl.innerHTML = rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : 'Aún no tienes órdenes de venta. Se crean al confirmar una cotización.'}</div>`;
+    listEl.innerHTML = rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : `Aún no tienes ${lower(plural(labelOrder()))}. Se crean al confirmar una ${lower(labelQuote())}.`}</div>`;
   }
 
   function viewCollections() {
@@ -1823,6 +1831,16 @@
             <option value="collections" ${s.homeList === 'collections' ? 'selected' : ''}>Pendientes por cobrar</option>
           </select>
         </div>
+        <div class="section-h"><h2>Nombres y folios</h2></div>
+        <p class="hint" style="margin-top:0">Cómo le llamas a tus documentos (algunos negocios dicen "presupuesto" o "factura" en vez de "cotización"). Esto es solo el nombre que se usa en la app y el PDF — no es una factura fiscal/timbrada.</p>
+        <div class="two-col">
+          <div class="field"><label for="s-doclabel-quote">Antes de confirmar</label><input id="s-doclabel-quote" name="docLabelQuote" value="${esc(s.docLabelQuote || 'Cotización')}" placeholder="Cotización"></div>
+          <div class="field"><label for="s-doclabel-order">Al confirmar</label><input id="s-doclabel-order" name="docLabelOrder" value="${esc(s.docLabelOrder || 'Orden de venta')}" placeholder="Orden de venta"></div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label for="s-folio-quote">Prefijo de folio (antes)</label><input id="s-folio-quote" name="folioPrefixQuote" value="${esc(s.folioPrefixQuote || 'COT')}" placeholder="COT" style="text-transform:uppercase"></div>
+          <div class="field"><label for="s-folio-order">Prefijo de folio (al confirmar)</label><input id="s-folio-order" name="folioPrefixOrder" value="${esc(s.folioPrefixOrder || 'OV')}" placeholder="OV" style="text-transform:uppercase"></div>
+        </div>
         <div class="section-h"><h2>Diseño del PDF</h2></div>
         <div class="two-col">
           <div class="field"><label for="s-pdfaccent">Color de tu marca</label><input id="s-pdfaccent" name="pdfAccent" type="color" value="${esc(s.pdfAccent || '#2743b8')}" style="width:100%;height:46px;padding:4px"></div>
@@ -2047,19 +2065,19 @@
         q.confirmation = 'CONFIRMADA';
         if (!q.orderFolio) q.orderFolio = DB.nextOrderFolio();
         savePaymentsChange(q);
-        toast('Convertida en Orden de venta ' + q.orderFolio);
+        toast('Convertida en ' + labelOrder() + ' ' + q.orderFolio);
         return render();
       }
       case 'reject-quote': {
         q.confirmation = 'RECHAZADA';
         savePaymentsChange(q);
-        toast('Cotización marcada como rechazada');
+        toast(labelQuote() + ' marcada como rechazada');
         return render();
       }
       case 'unconfirm-quote': {
         q.confirmation = null;
         savePaymentsChange(q);
-        toast('De vuelta a cotización · ' + q.folio);
+        toast('De vuelta a ' + lower(labelQuote()) + ' · ' + q.folio);
         return render();
       }
       case 'edit': S.interp = null; return go('editor');
@@ -2109,14 +2127,16 @@
       case 'delete-yes': {
         const idToDelete = q.id;
         DB.deleteQuote(idToDelete);
-        toast('Cotización eliminada');
+        toast(labelQuote() + ' eliminada');
         if (cloudOn && S.cloudBusiness) CLOUD.data.deleteQuote(idToDelete).catch(() => {});
         return go('home');
       }
       case 'share': {
         const blob = makePdf();
         if (!blob) return;
-        const r = await SHARE.sharePdf(blob, PDF.filename(q), 'Cotización ' + q.folio, `Cotización ${q.folio} para ${q.client}: total ${fmt(totalsOf(q).total)}`);
+        const docLabel = isConfirmed(q) ? labelOrder() : labelQuote();
+        const docFolio = isConfirmed(q) && q.orderFolio ? q.orderFolio : q.folio;
+        const r = await SHARE.sharePdf(blob, PDF.filename(q), docLabel + ' ' + docFolio, `${docLabel} ${docFolio} para ${q.client}: total ${fmt(totalsOf(q).total)}`);
         if (r === 'downloaded') toast('Tu navegador no permite compartir archivos; se descargó el PDF.');
         return;
       }
@@ -2177,9 +2197,9 @@
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
       case 'export-quotes-csv': {
-        const rows = [['Folio cotización', 'Folio orden de venta', 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
+        const rows = [[`Folio ${lower(labelQuote())}`, `Folio ${lower(labelOrder())}`, 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
         DB.getQuotes().filter((q) => q.status === 'GENERADA').forEach((q) => {
-          const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? 'Orden de venta' : q.confirmation === null ? 'Por confirmar' : 'Orden de venta';
+          const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? labelOrder() : q.confirmation === null ? 'Por confirmar' : labelOrder();
           rows.push([q.folio || '', q.orderFolio || '', q.client || '', dateStr(q.generatedAt || q.updatedAt), q.status, conf, M.centsToStr(totalsOf(q).total), M.centsToStr(paidCentsOf(q)), M.centsToStr(balanceCentsOf(q))]);
         });
         downloadCsv(rows, 'cotizaciones.csv');
@@ -2298,6 +2318,10 @@
       s.pdfAccent = String(f.get('pdfAccent') || '#2743b8').trim();
       s.showRfcOnPdf = f.get('showRfcOnPdf') === 'on';
       s.homeList = f.get('homeList') === 'collections' ? 'collections' : 'quotes';
+      s.docLabelQuote = String(f.get('docLabelQuote') || '').trim() || 'Cotización';
+      s.docLabelOrder = String(f.get('docLabelOrder') || '').trim() || 'Orden de venta';
+      s.folioPrefixQuote = String(f.get('folioPrefixQuote') || '').trim().toUpperCase() || 'COT';
+      s.folioPrefixOrder = String(f.get('folioPrefixOrder') || '').trim().toUpperCase() || 'OV';
       DB.saveSettings(s);
       toast('Configuración guardada');
       go('home');
