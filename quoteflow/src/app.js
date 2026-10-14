@@ -1923,6 +1923,8 @@
             <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
           ` : ''}
           <button class="btn block" data-act="support-home">Soporte</button>
+          <button class="btn block ghost" data-act="force-refresh" ${S.authBusy ? 'disabled' : ''}>Forzar actualización de la app</button>
+          <p class="hint" style="margin-top:-4px">Si acabas de actualizar QuoteFlow y no ves los cambios, usa esto — no afecta tu sesión ni tus datos guardados.</p>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
         </div>
         ${S.pushStatus === 'on' || S.pushStatus === 'off' ? `
@@ -2308,6 +2310,30 @@
         S.cloudBusiness = null;
         toast('Sesión cerrada');
         return go('auth');
+      }
+      case 'force-refresh': {
+        // La app instalada desde Play Store es una TWA: usa el mismo Chrome y
+        // el mismo caché del celular, así que una actualización puede
+        // tardarse en notarse si Chrome no revisa a tiempo. En vez de pedirle
+        // a quien usa la app que vaya a hurgar en la Configuración de Chrome
+        // (borrando de paso el caché de sus OTROS sitios), esto limpia solo
+        // lo de QuoteFlow desde adentro: borra el Service Worker y su caché
+        // de archivos, y recarga para traer la versión más nueva de una vez.
+        // No toca la sesión ni los datos guardados (catálogo, cotizaciones).
+        S.authBusy = true;
+        render();
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (err) { /* lo que no se pudo borrar, se sobreescribe solo al recargar */ }
+        location.reload();
+        return;
       }
       case 'import-yes': {
         S.authBusy = true;
