@@ -92,10 +92,29 @@
   /* ---------- negocio ---------- */
   const business = {
     // El primer negocio del que el usuario es miembro (V0.3 = un negocio por usuario).
+    //
+    // Antes esto pedía "select * from businesses limit 1" y confiaba en que
+    // la seguridad de la base de datos (RLS) dejara ver solo el negocio
+    // propio. Eso se rompe para cualquier cuenta que además sea
+    // administradora de la plataforma (como la del panel de soporte): esa
+    // política deja ver TODOS los negocios para poder atenderlos, así que
+    // "el primero que pueda ver" dejaba de ser "el mío" y devolvía un
+    // negocio ajeno al azar. Por eso aquí se filtra explícitamente por
+    // business_members.user_id = este usuario, en vez de depender nada más
+    // de lo que la política de seguridad deje visible.
     async getMine() {
-      const { data, error } = await client().from('businesses').select('*').limit(1).maybeSingle();
+      const { data: userData, error: userErr } = await client().auth.getUser();
+      if (userErr) throw new Error(friendlyError(userErr));
+      const uid = userData && userData.user && userData.user.id;
+      if (!uid) return null;
+      const { data, error } = await client()
+        .from('business_members')
+        .select('businesses(*)')
+        .eq('user_id', uid)
+        .limit(1)
+        .maybeSingle();
       if (error) throw new Error(friendlyError(error));
-      return data;
+      return data ? data.businesses : null;
     },
     async create(fields) {
       const { data, error } = await client().rpc('create_business', {
