@@ -473,8 +473,21 @@
   async function afterLogin() {
     S.cloudBusiness = await CLOUD.business.getMine();
     if (!S.cloudBusiness) return go('business-new');
-    const hasLocal = DB.getQuotes().length > 0 || DB.getCatalog().length > 0;
-    if (hasLocal && !DB.isImportDecided()) return go('import-prompt');
+    const synced = DB.getSyncedBusinessId();
+    if (synced && synced !== S.cloudBusiness.id) {
+      // Esta cuenta es de un negocio DISTINTO al que este dispositivo tenía
+      // marcado como suyo (se alternó de cuenta, a propósito o porque el
+      // navegador comparte sesión entre pestañas/la app instalada). Se borra
+      // TODO lo local antes de traer algo del negocio nuevo: el combinado
+      // por clave que usa pullAndMerge (para no perder algo aún no subido)
+      // mezclaría sin darse cuenta datos de un negocio con los de otro si no
+      // se parte de cero. No hay nada "local" que preguntar si importar: no
+      // es un dispositivo nuevo, es una cuenta distinta.
+      DB.wipeCloudScopedData();
+    } else {
+      const hasLocal = DB.getQuotes().length > 0 || DB.getCatalog().length > 0;
+      if (hasLocal && !DB.isImportDecided()) return go('import-prompt');
+    }
     await pullAndMerge();
     backfillOrderFolios();
     checkPushStatus().then(() => { if (S.view === 'settings') render(); });
@@ -541,6 +554,10 @@
     (customers || []).forEach((c) => byKey.set(CAT.key(c.name), c));
     S.customers = Array.from(byKey.values());
     DB.saveCustomers(S.customers);
+    // Marca a qué negocio pertenecen ya los datos de este dispositivo. Es lo
+    // que permite detectar, la próxima vez, si se inició sesión con una
+    // cuenta de un negocio distinto y hay que borrar todo antes de mezclar.
+    DB.setSyncedBusinessId(S.cloudBusiness.id);
   }
 
   // Cotizaciones que no están al día en la nube: o nunca se importaron (su

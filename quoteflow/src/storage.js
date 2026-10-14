@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
-  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', orderFolio: 'qf.orderFolio', importDecided: 'qf.importDecided', customers: 'qf.customers' };
+  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', orderFolio: 'qf.orderFolio', importDecided: 'qf.importDecided', customers: 'qf.customers', syncedBusinessId: 'qf.syncedBusinessId' };
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
@@ -121,6 +121,30 @@
     // al conectar una cuenta en la nube, para no volver a preguntarle cada vez.
     isImportDecided: () => !!read(K.importDecided, false),
     setImportDecided: () => write(K.importDecided, true),
+
+    // Aislamiento entre cuentas: este dispositivo recuerda a qué negocio
+    // pertenecen los datos que tiene guardados localmente. Si en algún
+    // momento inicia sesión una cuenta de un negocio DISTINTO al que ya
+    // estaba marcado aquí (alternar cuentas en el mismo dispositivo, sea a
+    // propósito o porque el navegador comparte sesión entre pestañas), hay
+    // que borrar todo lo local ANTES de traer los datos de la cuenta nueva.
+    // Si no se hace esto, el combinado-por-clave que usa la sincronización
+    // (pensado para no perder algo que aún no se había subido) terminaría
+    // mezclando catálogo/clientes/cotizaciones de un negocio hacia otro —
+    // una falla de aislamiento de datos entre cuentas, no solo un error de
+    // pantalla. Null significa "este dispositivo nunca se ha sincronizado
+    // con ningún negocio todavía" (nada que borrar: es la primera vez).
+    getSyncedBusinessId: () => read(K.syncedBusinessId, null),
+    setSyncedBusinessId: (id) => write(K.syncedBusinessId, id),
+    wipeCloudScopedData() {
+      write(K.settings, DEFAULT_SETTINGS);
+      write(K.catalog, []);
+      write(K.quotes, []);
+      write(K.customers, []);
+      write(K.folio, 0);
+      write(K.orderFolio, 0);
+      write(K.importDecided, false);
+    },
   };
 
   QF.storage = storage;
