@@ -35,6 +35,7 @@
     activeTicket: null,
     ticketMessages: [],
     pushStatus: 'unknown', // 'unknown' | 'off' | 'on' | 'unsupported' | 'denied'
+    businessSyncFailed: false,
   };
 
   /* ---------- utilidades ---------- */
@@ -1867,6 +1868,13 @@
         <div class="section-h"><h2>Cuenta</h2></div>
         <div class="stack">
           <p class="hint">Sesión iniciada como ${esc(S.cloudSession.user.email)}</p>
+          ${S.businessSyncFailed ? `
+            <div class="banner baja">
+              <div class="head">Los datos del negocio no se guardaron en la nube</div>
+              <p style="margin:0">Se quedaron en este dispositivo, pero no se subieron (probablemente por la conexión). Si no los sincronizas, la próxima vez que abras la app van a volver a verse como estaban antes.</p>
+            </div>
+            <button class="btn primary block" data-act="retry-business-settings" ${S.authBusy ? 'disabled' : ''}>Reintentar ahora</button>
+          ` : ''}
           ${pendingSyncQuotes().length ? `
             <div class="banner media">
               <div class="head">${pendingSyncQuotes().length} cotización(es) sin sincronizar</div>
@@ -2283,6 +2291,19 @@
         await pullAndMerge();
         return render();
       }
+      case 'retry-business-settings': {
+        S.authBusy = true;
+        render();
+        try {
+          await CLOUD.business.saveSettings(S.cloudBusiness.id, S.settings);
+          S.businessSyncFailed = false;
+          toast('Datos del negocio sincronizados');
+        } catch (err) {
+          toast('Sigue sin sincronizarse: ' + err.message);
+        }
+        S.authBusy = false;
+        return render();
+      }
       case 'enable-push': return enablePush();
       case 'disable-push': return disablePush();
       case 'import-no': {
@@ -2333,7 +2354,19 @@
       DB.saveSettings(s);
       toast('Configuración guardada');
       go('home');
-      if (cloudOn && S.cloudBusiness) CLOUD.business.saveSettings(S.cloudBusiness.id, s).catch((err) => toast('No se sincronizó con la nube: ' + err.message));
+      if (cloudOn && S.cloudBusiness) {
+        CLOUD.business.saveSettings(S.cloudBusiness.id, s)
+          .then(() => { S.businessSyncFailed = false; if (S.view === 'settings') render(); })
+          .catch((err) => {
+            // No basta con un toast: si esto falla y nadie se da cuenta, la
+            // próxima vez que se abra la app se vuelve a traer de la nube el
+            // nombre/datos VIEJOS del negocio, pisando lo que se acaba de
+            // escribir, sin que quien lo cambió entienda por qué "se regresó".
+            S.businessSyncFailed = true;
+            toast('No se sincronizó con la nube: ' + err.message);
+            if (S.view === 'settings') render();
+          });
+      }
       return;
     }
 
