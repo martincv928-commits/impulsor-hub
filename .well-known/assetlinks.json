@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "mx.impulsorhub.quoteflow",
+        "sha256_cert_fingerprints": ["6A:1A:98:22:E4:AD:31:B2:AA:2F:3D:DC:E6:71:18:CB:11:BA:A1:38:B2:ED:CC:C0:BE:28:D7:54:F8:57:BB:B9"]
+      }
+    }]
