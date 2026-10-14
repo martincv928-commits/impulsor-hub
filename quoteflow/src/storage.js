@@ -10,6 +10,14 @@
     pdfAccent: '#2743b8', showRfcOnPdf: true,
     conditions: 'Precios sujetos a cambio sin previo aviso después de la vigencia.\nTiempo de entrega a convenir.',
     homeList: 'quotes', // 'quotes' (cotizaciones recientes) o 'collections' (pendientes por cobrar)
+    // Cómo le llama ESTE negocio a sus documentos — no todos dicen "cotización"
+    // o "orden de venta"; algunos dicen "presupuesto", "factura", "nota de
+    // venta", etc. Es solo el nombre que se usa en la app y el PDF, no cambia
+    // nada del cálculo ni implica timbrado fiscal.
+    docLabelQuote: 'Cotización',
+    docLabelOrder: 'Orden de venta',
+    folioPrefixQuote: 'COT',
+    folioPrefixOrder: 'OV',
   };
 
   function read(key, fallback) {
@@ -53,7 +61,8 @@
     nextFolio() {
       const n = (read(K.folio, 0) || 0) + 1;
       write(K.folio, n);
-      return 'COT-' + String(n).padStart(4, '0');
+      const prefix = (read(K.settings, {}) || {}).folioPrefixQuote || 'COT';
+      return prefix + '-' + String(n).padStart(4, '0');
     },
     // Folio de Orden de venta: se asigna aparte (secuencia propia OV-0001...)
     // la primera vez que se confirma una cotización, para no mezclarlo con
@@ -61,7 +70,8 @@
     nextOrderFolio() {
       const n = (read(K.orderFolio, 0) || 0) + 1;
       write(K.orderFolio, n);
-      return 'OV-' + String(n).padStart(4, '0');
+      const prefix = (read(K.settings, {}) || {}).folioPrefixOrder || 'OV';
+      return prefix + '-' + String(n).padStart(4, '0');
     },
 
     // Respaldo: un solo archivo con todo lo que vive en este dispositivo.
