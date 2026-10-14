@@ -2614,7 +2614,21 @@
         if (!session && S.cloudSession) { // se cerró la sesión en otra pestaña, o expiró
           S.cloudSession = null;
           S.cloudBusiness = null;
-          go('auth');
+          return go('auth');
+        }
+        // Si Chrome comparte el mismo almacenamiento entre la app instalada y
+        // una pestaña normal (pasa en el mismo celular aunque parezcan "dos
+        // apps" distintas), iniciar sesión con OTRA cuenta en un lado cambia
+        // la sesión de golpe en todos los lados que compartan ese
+        // almacenamiento, sin que la pantalla se entere. Si eso no se
+        // detecta, la app se queda mostrando una cuenta en pantalla mientras
+        // en realidad ya guarda/lee con la sesión de otra — mezclando datos
+        // de dos negocios distintos. En vez de intentar arreglar el estado a
+        // medias, se recarga todo desde cero con la cuenta que ahora es la
+        // real: es la única forma de garantizar que nunca se siga guardando
+        // o mostrando algo de la cuenta equivocada.
+        if (session && S.cloudSession && session.user.id !== S.cloudSession.user.id) {
+          location.reload();
         }
       });
       const session = await CLOUD.auth.getSession();
