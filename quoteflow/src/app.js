@@ -1600,7 +1600,8 @@
   }
   function monthLabel(key) {
     const [y, m] = key.split('-').map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+    const s = new Date(y, m - 1, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1); // solo la primera letra ("Mayo de 2026", no "Mayo De 2026")
   }
   function viewReports() {
     const quotes = DB.getQuotes().filter((q) => q.status === 'GENERADA' && !isRejected(q));
@@ -1635,7 +1636,7 @@
       <div class="sheet">
         ${months.map((k) => `
           <div style="margin-bottom:10px">
-            <div class="row" style="justify-content:space-between;font-size:13px"><b style="text-transform:capitalize">${monthLabel(k)}</b><span class="muted">${fmt(byMonth[k].cotizado)} cotizado · ${fmt(byMonth[k].cobrado)} cobrado</span></div>
+            <div class="row" style="justify-content:space-between;font-size:13px"><b>${monthLabel(k)}</b><span class="muted">${fmt(byMonth[k].cotizado)} cotizado · ${fmt(byMonth[k].cobrado)} cobrado</span></div>
             <div style="display:flex;gap:3px;height:8px;margin-top:4px">
               <div style="flex:${byMonth[k].cotizado / maxVal};background:var(--accent);border-radius:3px;min-width:2px"></div>
               <div style="flex:${byMonth[k].cobrado / maxVal};background:var(--ok);border-radius:3px;min-width:2px"></div>
