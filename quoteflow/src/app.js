@@ -552,6 +552,12 @@
     DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
     S.settings = DB.getSettings();
     const { catalog, quotes, customers } = await CLOUD.data.pull(S.cloudBusiness.id);
+    // Si se borró algo en este dispositivo pero el borrado no se alcanzó a
+    // subir (sin señal, sesión en mal estado), la nube todavía lo tiene. Sin
+    // esto, cada vez que se trae la nube ese cliente/cotización "borrado"
+    // resucitaría solo en la pantalla, como si nunca se hubiera borrado.
+    const pendingDeletes = DB.getPendingDeletes();
+    const isPendingDelete = (type, key) => pendingDeletes.some((d) => d.type === type && d.key === key);
     // Catálogo: se combina por "key" en vez de reemplazar todo (como ya se
     // hace con clientes). Reemplazarlo de golpe borraba, en cada inicio de
     // sesión (no solo la primera vez), cualquier producto agregado en este
@@ -562,12 +568,12 @@
     (catalog || []).forEach((p) => catByKey.set(p.key, p));
     S.catalog = Array.from(catByKey.values());
     DB.saveCatalog(S.catalog);
-    quotes.forEach((q) => DB.saveQuote(q));
+    quotes.filter((q) => !isPendingDelete('quote', q.id)).forEach((q) => DB.saveQuote(q));
     // Clientes: se mezclan por nombre normalizado en vez de reemplazar todo,
     // para no perder uno guardado localmente que aún no se haya subido.
     const localCustomers = DB.getCustomers();
     const byKey = new Map(localCustomers.map((c) => [CAT.key(c.name), c]));
-    (customers || []).forEach((c) => byKey.set(CAT.key(c.name), c));
+    (customers || []).forEach((c) => { if (!isPendingDelete('customer', CAT.key(c.name))) byKey.set(CAT.key(c.name), c); });
     S.customers = Array.from(byKey.values());
     DB.saveCustomers(S.customers);
     // Marca a qué negocio pertenecen ya los datos de este dispositivo. Es lo
@@ -620,7 +626,17 @@
         DB.saveCustomers(allCustomers);
       } catch (e) { failed++; lastError = e; }
     }
-    return { failed, total: pending.length + pendingCustomers.length, lastError };
+    // Borrados que no se habían alcanzado a subir: sin esto, lo que ya se
+    // borró en este dispositivo seguiría viviendo en la nube para siempre.
+    const pendingDeletes = DB.getPendingDeletes();
+    for (const d of pendingDeletes) {
+      try {
+        if (d.type === 'quote') await CLOUD.data.deleteQuote(d.key);
+        else if (d.type === 'customer') await CLOUD.data.deleteCustomer(bizId, d.key);
+        DB.removePendingDelete(d.type, d.key);
+      } catch (e) { failed++; lastError = e; }
+    }
+    return { failed, total: pending.length + pendingCustomers.length + pendingDeletes.length, lastError };
   }
 
   /* ---------- soporte (lado cliente) ---------- */
@@ -1279,9 +1295,18 @@
       });
     q.items.forEach((it) => {
       const entry = cat.find((c) => c.key === CAT.key(it.desc));
-      if (entry) CLOUD.data.pushProduct(bizId, entry).catch(() => {});
+      if (!entry) return;
+      // Igual que con clientes: esto se subía en silencio y, si fallaba (sin
+      // señal, sesión en mal estado), no quedaba ningún rastro de que ese
+      // producto nunca llegó al servidor — se perdía sin aviso si luego se
+      // limpiaba el dispositivo. Ahora sí se marca para que el aviso de
+      // "sin sincronizar" en Configuración lo detecte.
+      CLOUD.data.pushProduct(bizId, entry)
+        .then(() => { delete entry._syncFailed; DB.saveCatalog(cat); })
+        .catch(() => { entry._syncFailed = true; DB.saveCatalog(cat); });
     });
   }
+  const pendingSyncProducts = () => DB.getCatalog().filter((p) => p._syncFailed);
 
   /* ---------- resumen / compartir ---------- */
   // Al confirmar, la cotización se convierte en Orden de venta: queda
@@ -1940,12 +1965,14 @@
             </div>
             <button class="btn primary block" data-act="retry-business-settings" ${S.authBusy ? 'disabled' : ''}>Reintentar ahora</button>
           ` : ''}
-          ${pendingSyncQuotes().length || pendingSyncCustomers().length ? `
+          ${pendingSyncQuotes().length || pendingSyncCustomers().length || pendingSyncProducts().length || DB.getPendingDeletes().length ? `
             <div class="banner media">
               <div class="head">${[
                 pendingSyncQuotes().length ? `${pendingSyncQuotes().length} cotización(es)` : '',
+                pendingSyncProducts().length ? `${pendingSyncProducts().length} producto(s)` : '',
                 pendingSyncCustomers().length ? `${pendingSyncCustomers().length} cliente(s)` : '',
-              ].filter(Boolean).join(' y ')} sin sincronizar</div>
+                DB.getPendingDeletes().length ? `${DB.getPendingDeletes().length} borrado(s)` : '',
+              ].filter(Boolean).join(', ')} sin sincronizar</div>
               <p style="margin:0">Están guardados en este dispositivo, pero aún no en tu cuenta. No se pierden, pero conviene sincronizarlos antes de borrar datos del navegador o cambiar de teléfono.</p>
             </div>
             <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
@@ -2082,7 +2109,14 @@
         const key = CAT.key(S.activeCustomer.name);
         S.customers = S.customers.filter((c) => c.id !== S.activeCustomer.id);
         DB.saveCustomers(S.customers);
-        if (cloudOn && S.cloudBusiness) CLOUD.data.deleteCustomer(S.cloudBusiness.id, key).catch(() => {});
+        if (cloudOn && S.cloudBusiness) {
+          CLOUD.data.deleteCustomer(S.cloudBusiness.id, key)
+            .then(() => DB.removePendingDelete('customer', key))
+            // Si el borrado no llega a la nube, se marca como pendiente: si
+            // no, la próxima vez que se traiga la nube este cliente
+            // "resucitaría" solo, como si nunca se hubiera borrado.
+            .catch(() => DB.addPendingDelete('customer', key));
+        }
         toast('Cliente eliminado de guardados');
         return go('clients');
       }
@@ -2214,7 +2248,13 @@
         const idToDelete = q.id;
         DB.deleteQuote(idToDelete);
         toast(labelQuote() + ' eliminada');
-        if (cloudOn && S.cloudBusiness) CLOUD.data.deleteQuote(idToDelete).catch(() => {});
+        if (cloudOn && S.cloudBusiness && CLOUD.looksLikeUuid(idToDelete)) {
+          CLOUD.data.deleteQuote(idToDelete)
+            .then(() => DB.removePendingDelete('quote', idToDelete))
+            // Si no se logra borrar en la nube, se marca pendiente: si no,
+            // volvería a aparecer sola en la próxima sincronización.
+            .catch(() => DB.addPendingDelete('quote', idToDelete));
+        }
         return go('home');
       }
       case 'share': {
