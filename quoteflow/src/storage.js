@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
-  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', orderFolio: 'qf.orderFolio', importDecided: 'qf.importDecided', customers: 'qf.customers', syncedBusinessId: 'qf.syncedBusinessId' };
+  const K = { settings: 'qf.settings', quotes: 'qf.quotes', catalog: 'qf.catalog', folio: 'qf.folio', orderFolio: 'qf.orderFolio', importDecided: 'qf.importDecided', customers: 'qf.customers', syncedBusinessId: 'qf.syncedBusinessId', pendingDeletes: 'qf.pendingDeletes' };
 
   const DEFAULT_SETTINGS = {
     businessName: '', logo: '', phone: '', email: '', rfc: '', address: '',
@@ -144,6 +144,22 @@
       write(K.folio, 0);
       write(K.orderFolio, 0);
       write(K.importDecided, false);
+      write(K.pendingDeletes, []);
+    },
+
+    // Borrados que se pidieron en este dispositivo pero no se lograron subir
+    // a la nube (sin señal, sesión en mal estado, etc.). Mientras sigan
+    // aquí, pullAndMerge() no debe volver a traer ese elemento de la nube —
+    // si no, algo que la persona ya borró "resucitaría" solo en la pantalla
+    // la próxima vez que se sincronice, como si nunca se hubiera borrado.
+    getPendingDeletes: () => read(K.pendingDeletes, []),
+    addPendingDelete(type, key) {
+      const list = read(K.pendingDeletes, []);
+      if (!list.some((d) => d.type === type && d.key === key)) list.push({ type, key });
+      write(K.pendingDeletes, list);
+    },
+    removePendingDelete(type, key) {
+      write(K.pendingDeletes, read(K.pendingDeletes, []).filter((d) => !(d.type === type && d.key === key)));
     },
   };
 
