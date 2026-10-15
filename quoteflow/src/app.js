@@ -386,10 +386,26 @@
     syncCustomerToCloud(c);
   }
 
+  // A diferencia de cotizaciones/catálogo, un cliente que fallaba al subir
+  // (sin señal en ese momento, sesión vencida, etc.) no quedaba marcado en
+  // ningún lado: solo se veía un aviso que desaparecía solo, sin forma de
+  // reintentar ni de darse cuenta de que seguía solo en este dispositivo. Si
+  // después se limpiaba el caché/datos del celular (algo que sí puede pasar,
+  // a propósito o no), ese cliente se perdía para siempre sin haber llegado
+  // nunca al servidor. Ahora sí queda marcado (_syncFailed) para que aparezca
+  // en el mismo aviso de "sin sincronizar" que ya tienen las cotizaciones.
   function syncCustomerToCloud(c) {
     if (!(cloudOn && S.cloudBusiness)) return;
-    CLOUD.data.pushCustomer(S.cloudBusiness.id, CAT.key(c.name), c).catch((e) => toast('No se sincronizó el cliente con la nube: ' + e.message));
+    CLOUD.data.pushCustomer(S.cloudBusiness.id, CAT.key(c.name), c)
+      .then(() => { delete c._syncFailed; DB.saveCustomers(S.customers); })
+      .catch((e) => {
+        c._syncFailed = true;
+        DB.saveCustomers(S.customers);
+        toast('No se sincronizó el cliente con la nube: ' + e.message);
+        if (S.view === 'settings') render();
+      });
   }
+  const pendingSyncCustomers = () => DB.getCustomers().filter((c) => c._syncFailed);
 
   /* ---------- cuenta / negocio (V0.3, solo si hay Supabase configurado) ---------- */
 
@@ -595,7 +611,16 @@
         else DB.saveQuote(iq);
       } catch (e) { failed++; lastError = e; }
     }
-    return { failed, total: pending.length, lastError };
+    const allCustomers = DB.getCustomers();
+    const pendingCustomers = allCustomers.filter((x) => x._syncFailed);
+    for (const c of pendingCustomers) {
+      try {
+        await CLOUD.data.pushCustomer(bizId, CAT.key(c.name), c);
+        delete c._syncFailed;
+        DB.saveCustomers(allCustomers);
+      } catch (e) { failed++; lastError = e; }
+    }
+    return { failed, total: pending.length + pendingCustomers.length, lastError };
   }
 
   /* ---------- soporte (lado cliente) ---------- */
@@ -1915,10 +1940,13 @@
             </div>
             <button class="btn primary block" data-act="retry-business-settings" ${S.authBusy ? 'disabled' : ''}>Reintentar ahora</button>
           ` : ''}
-          ${pendingSyncQuotes().length ? `
+          ${pendingSyncQuotes().length || pendingSyncCustomers().length ? `
             <div class="banner media">
-              <div class="head">${pendingSyncQuotes().length} cotización(es) sin sincronizar</div>
-              <p style="margin:0">Están guardadas en este dispositivo, pero aún no en tu cuenta. No se pierden, pero conviene sincronizarlas antes de borrar datos del navegador o cambiar de teléfono.</p>
+              <div class="head">${[
+                pendingSyncQuotes().length ? `${pendingSyncQuotes().length} cotización(es)` : '',
+                pendingSyncCustomers().length ? `${pendingSyncCustomers().length} cliente(s)` : '',
+              ].filter(Boolean).join(' y ')} sin sincronizar</div>
+              <p style="margin:0">Están guardados en este dispositivo, pero aún no en tu cuenta. No se pierden, pero conviene sincronizarlos antes de borrar datos del navegador o cambiar de teléfono.</p>
             </div>
             <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
           ` : ''}
