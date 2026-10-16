@@ -338,6 +338,11 @@
       if (error) throw new Error(friendlyError(error));
       return (data || []).map((r) => r.folio).filter(Boolean);
     },
+    async orderFolios(businessId) {
+      const { data, error } = await client().from('quotes').select('order_folio').eq('business_id', businessId);
+      if (error) throw new Error(friendlyError(error));
+      return (data || []).map((r) => r.order_folio).filter(Boolean);
+    },
 
     // Sube o actualiza un producto del catálogo. Es "upsert": repetirlo no duplica.
     async pushProduct(businessId, entry) {

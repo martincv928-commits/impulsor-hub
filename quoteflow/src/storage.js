@@ -74,6 +74,25 @@
       return prefix + '-' + String(n).padStart(4, '0');
     },
 
+    // El contador de folio (qf.folio / qf.orderFolio) vive SOLO en este
+    // dispositivo. Si se reinicia (reinstalar la app, borrar datos, un
+    // dispositivo nuevo) mientras la nube ya tiene folios más altos de otra
+    // sesión, el siguiente folio que se asigne aquí puede CHOCAR con uno que
+    // ya existe (dos ventas distintas con el mismo "OV-0001", por ejemplo).
+    // Esto adelanta el contador local al más alto que ya exista en la nube,
+    // para que el próximo folio asignado siempre sea nuevo de verdad.
+    bumpFolioCounters(cloudFolios, cloudOrderFolios) {
+      const highest = (folios, prefix) => (folios || []).reduce((max, f) => {
+        const m = typeof f === 'string' && f.startsWith(prefix + '-') ? parseInt(f.slice(prefix.length + 1), 10) : NaN;
+        return Number.isFinite(m) && m > max ? m : max;
+      }, 0);
+      const s = storage.getSettings();
+      const h1 = highest(cloudFolios, s.folioPrefixQuote || 'COT');
+      const h2 = highest(cloudOrderFolios, s.folioPrefixOrder || 'OV');
+      if (h1 > (read(K.folio, 0) || 0)) write(K.folio, h1);
+      if (h2 > (read(K.orderFolio, 0) || 0)) write(K.orderFolio, h2);
+    },
+
     // Respaldo: un solo archivo con todo lo que vive en este dispositivo.
     exportBackup() {
       return {

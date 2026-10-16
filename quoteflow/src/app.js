@@ -552,6 +552,13 @@
     DB.saveSettings(CLOUD.settingsFromBusinessRow(S.cloudBusiness, S.settings));
     S.settings = DB.getSettings();
     const { catalog, quotes, customers } = await CLOUD.data.pull(S.cloudBusiness.id);
+    // Si el contador local de folios se reinició (reinstalar la app, borrar
+    // datos, dispositivo nuevo) mientras la nube ya tenía folios más altos
+    // de otra sesión, el siguiente folio asignado aquí podía CHOCAR con uno
+    // que ya existe (dos ventas distintas con el mismo "OV-0001"). Esto
+    // adelanta el contador local al más alto visto en la nube, cada vez que
+    // se sincroniza, para que eso deje de poder pasar.
+    DB.bumpFolioCounters(quotes.map((q) => q.folio), quotes.map((q) => q.orderFolio));
     // Si se borró algo en este dispositivo pero el borrado no se alcanzó a
     // subir (sin señal, sesión en mal estado), la nube todavía lo tiene. Sin
     // esto, cada vez que se trae la nube ese cliente/cotización "borrado"
