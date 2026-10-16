@@ -289,10 +289,13 @@
     // (nunca borra local-only que aún no se haya subido).
     async pull(businessId) {
       const c = client();
+      // Un "borrado" nunca se borra de verdad de la base (ver pushQuote /
+      // deleteCustomer más abajo) — solo se marca con deleted_at, así que
+      // aquí se excluye explícitamente para que no vuelva a aparecer.
       const [{ data: products, error: e1 }, { data: quotes, error: e2 }, { data: customers, error: e3 }] = await Promise.all([
         c.from('products').select('*').eq('business_id', businessId),
-        c.from('quotes').select('*, quote_items(*), quote_payments(*), quote_installments(*)').eq('business_id', businessId),
-        c.from('customers').select('*').eq('business_id', businessId),
+        c.from('quotes').select('*, quote_items(*), quote_payments(*), quote_installments(*)').eq('business_id', businessId).is('deleted_at', null),
+        c.from('customers').select('*').eq('business_id', businessId).is('deleted_at', null),
       ]);
       if (e1) throw new Error(friendlyError(e1));
       if (e2) throw new Error(friendlyError(e2));
@@ -307,8 +310,11 @@
       if (error) throw new Error(friendlyError(error));
     },
 
+    // "Borrar" un cliente nunca borra la fila de verdad: solo la marca
+    // oculta (deleted_at). Así, aunque haya un error en otro lado, el
+    // historial del negocio nunca desaparece de raíz de la base de datos.
     async deleteCustomer(businessId, key) {
-      const { error } = await client().from('customers').delete().eq('business_id', businessId).eq('key', key);
+      const { error } = await client().from('customers').update({ deleted_at: new Date().toISOString() }).eq('business_id', businessId).eq('key', key);
       if (error) throw new Error(friendlyError(error));
     },
 
@@ -383,9 +389,11 @@
       return cloudId;
     },
 
+    // Igual que con clientes: nunca se borra la fila de verdad, solo se
+    // marca oculta. Nada del historial del negocio desaparece de raíz.
     async deleteQuote(id) {
-      if (!looksLikeUuid(id)) return; // nunca se subió, no hay nada que borrar en la nube
-      const { error } = await client().from('quotes').delete().eq('id', id);
+      if (!looksLikeUuid(id)) return; // nunca se subió, no hay nada que marcar en la nube
+      const { error } = await client().from('quotes').update({ deleted_at: new Date().toISOString() }).eq('id', id);
       if (error) throw new Error(friendlyError(error));
     },
   };
