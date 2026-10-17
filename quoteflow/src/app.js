@@ -1,4 +1,4 @@
-/* UI de QuoteFlow. Solo presentación y flujo: el parser, cálculos, PDF,
+/* UI de Al Grano. Solo presentación y flujo: el parser, cálculos, PDF,
  * persistencia, voz y compartir viven en sus propios módulos. */
 (function () {
   'use strict';
@@ -417,7 +417,7 @@
     if (S.authMode === 'recover') {
       return `
         <div class="hero" style="padding-top:14px">
-          <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
+          <div class="brand">${icon.brand}<span>Al Grano</span></div>
         </div>
         <form class="stack" id="recover-form">
           <h2 class="title">Recuperar contraseña</h2>
@@ -430,7 +430,7 @@
     const login = S.authMode === 'login';
     return `
       <div class="hero" style="padding-top:14px">
-        <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
+        <div class="brand">${icon.brand}<span>Al Grano</span></div>
       </div>
       <form class="stack" id="auth-form">
         <h2 class="title">${login ? 'Inicia sesión' : 'Crea tu cuenta'}</h2>
@@ -446,7 +446,7 @@
   function viewSetPassword() {
     return `
       <div class="hero" style="padding-top:14px">
-        <div class="brand">${icon.brand}<span>QuoteFlow</span></div>
+        <div class="brand">${icon.brand}<span>Al Grano</span></div>
       </div>
       <form class="stack" id="set-password-form">
         <h2 class="title">Crea tu nueva contraseña</h2>
@@ -458,7 +458,7 @@
   function viewBusinessNew() {
     const s = S.settings; // se usan como sugerencia inicial si ya había datos locales de V0.2
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>QuoteFlow</span></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>Al Grano</span></div></div>
       <form class="stack" id="business-form">
         <h2 class="title">Crea tu negocio</h2>
         <p class="hint">Todo lo que cotices va a quedar guardado en este negocio.</p>
@@ -478,9 +478,9 @@
     const n = DB.getQuotes().length;
     const p = DB.getCatalog().length;
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>QuoteFlow</span></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">${icon.brand}<span>Al Grano</span></div></div>
       <div class="stack">
-        <p>Encontramos datos de QuoteFlow en este dispositivo: ${n} cotización(es) y ${p} producto(s) de catálogo.</p>
+        <p>Encontramos datos de Al Grano en este dispositivo: ${n} cotización(es) y ${p} producto(s) de catálogo.</p>
         <button class="btn primary block" data-act="import-yes" ${S.authBusy ? 'disabled' : ''}>Importarlos a mi cuenta</button>
         <button class="btn block" data-act="import-no" ${S.authBusy ? 'disabled' : ''}>Conservar solo localmente</button>
       </div>`;
@@ -729,7 +729,7 @@
       <div class="stack">
         ${S.ticketMessages.map((m) => `
           <div class="card">
-            <span class="tag ${m.author_role === 'admin' ? '' : 'warn'}">${m.author_role === 'admin' ? 'Soporte QuoteFlow' : 'Tú'}</span>
+            <span class="tag ${m.author_role === 'admin' ? '' : 'warn'}">${m.author_role === 'admin' ? 'Soporte Al Grano' : 'Tú'}</span>
             <div>${esc(m.body).replace(/\n/g, '<br>')}</div>
             <span class="hint" style="font-size:11px">${dateStr(new Date(m.created_at).getTime())}</span>
           </div>`).join('')}
@@ -772,7 +772,7 @@
     const totalPendiente = generated.filter(isConfirmed).reduce((s, q) => s + balanceCentsOf(q), 0);
     return `
       <header class="top">
-        <div class="brand">${icon.brand}<span>QuoteFlow${name ? `<small>${esc(name)}</small>` : ''}</span></div>
+        <div class="brand">${icon.brand}<span>Al Grano${name ? `<small>${esc(name)}</small>` : ''}</span></div>
         <span class="spacer"></span>
         <button class="icon-btn" data-act="orders" aria-label="Órdenes de venta">${icon.order}</button>
         <button class="icon-btn" data-act="reports" aria-label="Reportes">${icon.chart}</button>
@@ -1986,7 +1986,7 @@
           ` : ''}
           <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost" data-act="force-refresh" ${S.authBusy ? 'disabled' : ''}>Forzar actualización de la app</button>
-          <p class="hint" style="margin-top:-4px">Si acabas de actualizar QuoteFlow y no ves los cambios, usa esto — no afecta tu sesión ni tus datos guardados.</p>
+          <p class="hint" style="margin-top:-4px">Si acabas de actualizar Al Grano y no ves los cambios, usa esto — no afecta tu sesión ni tus datos guardados.</p>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
         </div>
         ${S.pushStatus === 'on' || S.pushStatus === 'off' ? `
@@ -2087,7 +2087,7 @@
       try {
         data = JSON.parse(reader.result);
       } catch (e) {
-        return toast('Ese archivo no es un respaldo válido de QuoteFlow.');
+        return toast('Ese archivo no es un respaldo válido de Al Grano.');
       }
       const err = DB.validateBackup(data);
       if (err) return toast(err);
@@ -2362,7 +2362,7 @@
         const data = DB.exportBackup();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const stamp = new Date().toISOString().slice(0, 10);
-        SHARE.download(blob, `QuoteFlow_respaldo_${stamp}.json`);
+        SHARE.download(blob, `AlGrano_respaldo_${stamp}.json`);
         toast('Respaldo descargado');
         return;
       }
@@ -2392,7 +2392,7 @@
         // tardarse en notarse si Chrome no revisa a tiempo. En vez de pedirle
         // a quien usa la app que vaya a hurgar en la Configuración de Chrome
         // (borrando de paso el caché de sus OTROS sitios), esto limpia solo
-        // lo de QuoteFlow desde adentro: borra el Service Worker y su caché
+        // lo de Al Grano desde adentro: borra el Service Worker y su caché
         // de archivos, y recarga para traer la versión más nueva de una vez.
         // No toca la sesión ni los datos guardados (catálogo, cotizaciones).
         S.authBusy = true;
