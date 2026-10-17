@@ -1,9 +1,9 @@
-/* Service worker de QuoteFlow: hace posible instalar la app y que funcione
+/* Service worker de Al Grano: hace posible instalar la app y que funcione
  * sin conexión (excepto el dictado por voz, que usa el servicio del sistema).
  * Estrategia: se sirve del caché al instante y, si hay red, se actualiza el
  * caché en segundo plano para la próxima vez ("stale-while-revalidate").
  * Sube CACHE_NAME cuando cambie esta lista para forzar limpieza del caché viejo. */
-const CACHE_NAME = 'quoteflow-v0.10.2';
+const CACHE_NAME = 'quoteflow-v0.11.0';
 const STATIC_ASSETS = [
   './',
   'index.html',
@@ -35,7 +35,7 @@ self.addEventListener('activate', (event) => {
 // atrasado). El payload lo arma el servidor; si no viene nada legible se
 // muestra un mensaje genérico en vez de fallar.
 self.addEventListener('push', (event) => {
-  let payload = { title: 'QuoteFlow', body: 'Tienes novedades de cobranza.' };
+  let payload = { title: 'Al Grano', body: 'Tienes novedades de cobranza.' };
   try { if (event.data) payload = Object.assign(payload, event.data.json()); } catch (e) { /* payload no era JSON */ }
   event.waitUntil(
     self.registration.showNotification(payload.title, {

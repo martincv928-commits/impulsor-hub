@@ -237,7 +237,7 @@ test('respaldo: exporta y restaura sin perder la estructura', () => {
   const folio = DB1.nextFolio();
   DB1.saveQuote({ id: 'q1', folio, client: 'Pedro', items: [{ id: 'i1', desc: 'Jabón Ariel', qtyMilli: 20000, unit: 'litro', priceCents: 1400 }], discount: { type: 'pct', value: 0 }, ivaMode: 'mas', ivaRateBp: 1600, validityDays: 15, notes: '', status: 'GENERADA', updatedAt: 1 });
   const backup = DB1.exportBackup();
-  assert.equal(backup.app, 'QuoteFlow');
+  assert.equal(backup.app, 'Al Grano');
   assert.equal(backup.quotes.length, 1);
 
   // "otro dispositivo": storage vacío, se restaura ahí

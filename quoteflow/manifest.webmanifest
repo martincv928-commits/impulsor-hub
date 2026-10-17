@@ -1,6 +1,6 @@
 {
-  "name": "QuoteFlow",
-  "short_name": "QuoteFlow",
+  "name": "Al Grano: Cotiza y Cobra",
+  "short_name": "Al Grano",
   "description": "Cotizaciones por voz o texto, sin internet ni IA.",
   "start_url": "./index.html",
   "scope": "./",
