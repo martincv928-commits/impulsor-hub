@@ -1,4 +1,4 @@
-/* Config de Supabase para Al Grano V0.3.
+/* Config de Supabase para Cotízame V0.3.
  * Mientras estos dos valores estén vacíos, la app funciona exactamente como
  * V0.2: sin cuentas, todo local. En cuanto se llenen, se activan cuentas y
  * negocios en la nube. El "anon key" es público (lo protege RLS en la base

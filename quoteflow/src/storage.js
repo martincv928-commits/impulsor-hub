@@ -96,7 +96,7 @@
     // Respaldo: un solo archivo con todo lo que vive en este dispositivo.
     exportBackup() {
       return {
-        app: 'Al Grano',
+        app: 'Cotízame',
         backupVersion: 1,
         exportedAt: Date.now(),
         settings: read(K.settings, {}),
@@ -112,11 +112,11 @@
     // datos: si algo no tiene la forma esperada, se rechaza el respaldo completo.
     validateBackup(data) {
       if (!data || typeof data !== 'object') return 'El archivo no es un respaldo válido.';
-      // Acepta el nombre viejo (QuoteFlow) para que los respaldos hechos antes
-      // de renombrar la app se puedan seguir restaurando.
-      if (data.app !== 'Al Grano' && data.app !== 'QuoteFlow') return 'Este archivo no es un respaldo de Al Grano.';
+      // Acepta los nombres viejos (QuoteFlow, Al Grano) para que los respaldos
+      // hechos antes de renombrar la app se puedan seguir restaurando.
+      if (!['Cotízame', 'Al Grano', 'QuoteFlow'].includes(data.app)) return 'Este archivo no es un respaldo de Cotízame.';
       if (typeof data.backupVersion !== 'number') return 'El respaldo no indica su versión.';
-      if (data.backupVersion > 1) return 'Este respaldo es de una versión más nueva de Al Grano.';
+      if (data.backupVersion > 1) return 'Este respaldo es de una versión más nueva de Cotízame.';
       if (typeof data.settings !== 'object' || data.settings === null) return 'Faltan los datos de configuración.';
       if (!Array.isArray(data.catalog)) return 'Faltan los datos del catálogo.';
       if (!Array.isArray(data.quotes)) return 'Faltan las cotizaciones.';

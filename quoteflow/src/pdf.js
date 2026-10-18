@@ -18,7 +18,7 @@
   }
 
   // El color de marca del PDF es el del negocio (settings.pdfAccent), no el
-  // morado/índigo de la propia app Al Grano: son cosas distintas a propósito.
+  // morado/índigo de la propia app Cotízame: son cosas distintas a propósito.
   function hexToRgb(hex, fallback) {
     const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
     if (!m) return fallback;
