@@ -75,12 +75,13 @@
 
     // Encabezado
     let textX = L;
-    if (settings.logo) {
+    const logo = settings.logo || QF.defaultLogo;
+    if (logo) {
       try {
-        const p = doc.getImageProperties(settings.logo);
+        const p = doc.getImageProperties(logo);
         const maxW = 32, maxH = 22;
         const k = Math.min(maxW / p.width, maxH / p.height);
-        doc.addImage(settings.logo, imgFormat(settings.logo), L, y, p.width * k, p.height * k);
+        doc.addImage(logo, imgFormat(logo), L, y, p.width * k, p.height * k);
         textX = L + p.width * k + 5;
       } catch (e) { /* logo inválido: se omite */ }
     }
