@@ -1,4 +1,4 @@
-/* Capa de nube (Supabase) para Al Grano V0.3.
+/* Capa de nube (Supabase) para Cotízame V0.3.
  * Todo lo que toca red vive aquí. storage.js (local) sigue siendo lo que la UI
  * lee y escribe siempre; este módulo mantiene ese caché local al día con la
  * nube cuando hay sesión y conexión, y nunca borra nada local por su cuenta.
