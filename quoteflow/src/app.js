@@ -1911,7 +1911,8 @@
         <div class="field">
           <label for="s-logo">Logo</label>
           <div class="row">
-            ${s.logo ? `<img class="logo-prev" src="${s.logo}" alt="Logo actual">` : '<span class="hint">Sin logo</span>'}
+            <img class="logo-prev" src="${s.logo || window.QF.defaultLogo}" alt="${s.logo ? 'Logo actual' : 'Logo de Cotízame (por defecto)'}">
+            ${!s.logo ? '<span class="hint">Sin logo propio: se usa el de Cotízame</span>' : ''}
             <span class="spacer"></span>
             ${s.logo ? '<button type="button" class="btn ghost danger" data-act="logo-remove">Quitar</button>' : ''}
           </div>

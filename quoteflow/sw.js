@@ -3,12 +3,13 @@
  * Estrategia: se sirve del caché al instante y, si hay red, se actualiza el
  * caché en segundo plano para la próxima vez ("stale-while-revalidate").
  * Sube CACHE_NAME cuando cambie esta lista para forzar limpieza del caché viejo. */
-const CACHE_NAME = 'quoteflow-v0.12.0';
+const CACHE_NAME = 'quoteflow-v0.13.0';
 const STATIC_ASSETS = [
   './',
   'index.html',
   'manifest.webmanifest',
   'src/styles.css',
+  'src/default-logo.js',
   'vendor/jspdf.umd.min.js',
   'vendor/supabase.umd.js',
   'icons/icon-192.png',
