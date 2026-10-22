@@ -1,11 +1,17 @@
-/* Voz: reconocimiento del propio dispositivo/navegador (Web Speech API).
- * Solo produce texto; el texto pasa por el mismo intérprete que la entrada escrita. */
+/* Voz: reconocimiento del propio dispositivo/navegador.
+ * En el sitio web (navegador) usa la Web Speech API de Chrome, como siempre.
+ * Dentro de la app nativa de Play Store no existe esa API (solo la tiene
+ * Chrome completo, no un WebView), así que ahí se usa en su lugar el
+ * reconocimiento nativo de Android vía un plugin de Capacitor. Ambos caminos
+ * terminan entregando el mismo texto al mismo intérprete de siempre. */
 (function (root) {
   'use strict';
   const QF = (root.QF = root.QF || {});
   const SR = root.SpeechRecognition || root.webkitSpeechRecognition;
+  const isNative = !!(root.Capacitor && root.Capacitor.isNativePlatform && root.Capacitor.isNativePlatform());
+  const NativeSR = isNative && root.Capacitor.Plugins && root.Capacitor.Plugins.SpeechRecognition;
 
-  const words = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9$ñ.]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const words = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9$ñ.]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
   /* Chrome en Android entrega resultados acumulados y a veces revisados:
    * "hazme" · "hazme una" · "hazme una cotización para …" (a veces la última versión pierde palabras).
@@ -38,7 +44,7 @@
   }
 
   function supported() {
-    return !!SR;
+    return isNative ? !!NativeSR : !!SR;
   }
 
   // Devuelve { stop() }. Callbacks: onText(texto, esFinal), onEnd(textoFinal), onError(codigo)
@@ -49,7 +55,7 @@
   // Mientras el usuario no cancele ni toque "Listo", ese silencio no cierra
   // el dictado: se reinicia solo el reconocimiento por dentro y se sigue
   // escuchando, sin que se note nada en la pantalla.
-  function start(cb) {
+  function startWeb(cb) {
     let rec;
     let finalText = '';
     let failed = false;
@@ -99,6 +105,62 @@
       stop: () => { stopped = true; rec.stop(); },
       abort: () => { stopped = true; failed = true; rec.abort(); },
     };
+  }
+
+  // Misma idea que startWeb, pero sobre el reconocimiento nativo de Android
+  // (vía @capacitor-community/speech-recognition), que solo escucha una
+  // frase a la vez y se detiene con el silencio: se reinicia solo mientras
+  // no se pida detener, para que se sienta igual de continuo que en la web.
+  function startNative(cb) {
+    let finalText = '';
+    let stopped = false;
+    let failed = false;
+    let listenerHandle = null;
+
+    async function ensurePermission() {
+      const status = await NativeSR.checkPermissions();
+      if (status.speechRecognition === 'granted') return;
+      const req = await NativeSR.requestPermissions();
+      if (req.speechRecognition !== 'granted') throw new Error('not-allowed');
+    }
+
+    async function listenOnce() {
+      const result = await NativeSR.start({ language: 'es-MX', partialResults: true, popup: false, maxResults: 1 });
+      return (result && result.matches && result.matches[0]) || '';
+    }
+
+    (async () => {
+      try {
+        await ensurePermission();
+        listenerHandle = await NativeSR.addListener('partialResults', (data) => {
+          const t = (data && data.matches && data.matches[0]) || '';
+          if (t) { finalText = t; cb.onText && cb.onText(t); }
+        });
+        while (!stopped) {
+          try {
+            const text = await listenOnce();
+            if (text) finalText = text;
+          } catch (e) {
+            if (stopped) break;
+            // silencio o sin coincidencia en esta pasada: se reintenta solo,
+            // igual que el manejo de "no-speech" en la versión web.
+          }
+        }
+      } catch (e) {
+        if (!stopped) { failed = true; cb.onError && cb.onError(e && e.message === 'not-allowed' ? 'not-allowed' : 'native-error'); }
+      }
+      if (listenerHandle) listenerHandle.remove();
+      if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
+    })();
+
+    return {
+      stop: () => { stopped = true; NativeSR.stop().catch(() => {}); },
+      abort: () => { stopped = true; failed = true; NativeSR.stop().catch(() => {}); },
+    };
+  }
+
+  function start(cb) {
+    return isNative ? startNative(cb) : startWeb(cb);
   }
 
   QF.voice = { supported, start, clean };
