@@ -3,8 +3,10 @@ ext {
     // quedó en 22 (el default de la plantilla de Capacitor) y Play Console
     // rechazó la subida por eso.
     minSdkVersion = 24
-    compileSdkVersion = 34
-    targetSdkVersion = 34
+    // Play Console exige apuntar al menos a API 36 (Android 16) para subir
+    // versiones nuevas; antes quedó en 34 (el default de la plantilla).
+    compileSdkVersion = 36
+    targetSdkVersion = 36
     androidxActivityVersion = '1.8.0'
     androidxAppCompatVersion = '1.6.1'
     androidxCoordinatorLayoutVersion = '1.2.0'
