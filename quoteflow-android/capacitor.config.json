@@ -1,0 +1,8 @@
+{
+  "appId": "mx.impulsorhub.quoteflow",
+  "appName": "Cotízame",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

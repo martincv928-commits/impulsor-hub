@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Igual que data_extraction_rules.xml pero para Android 11 y anteriores
+     (API menor a 31), que usan este formato en vez de dataExtractionRules. -->
+<full-backup-content>
+    <include domain="file" path="app_webview/" />
+</full-backup-content>

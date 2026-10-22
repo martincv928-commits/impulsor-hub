@@ -1,0 +1,11 @@
+{
+  "name": "cotizame-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Empaque nativo (Capacitor) de Cotízame para Google Play, a partir del mismo código web en ../quoteflow",
+  "dependencies": {
+    "@capacitor/android": "^6.2.2",
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^6.2.2"
+  }
+}

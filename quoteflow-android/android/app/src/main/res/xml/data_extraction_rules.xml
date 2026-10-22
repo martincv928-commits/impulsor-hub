@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31+): qué respalda Auto Backup a la cuenta de Google y
+     qué se transfiere al cambiar de celular. Se incluye explícitamente la
+     carpeta del WebView (ahí vive localStorage: cotizaciones, catálogo,
+     clientes) porque sin esto algunos fabricantes no la respaldan por
+     default, y es justo lo que antes se perdía al desinstalar la app. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="app_webview/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="app_webview/" />
+    </device-transfer>
+</data-extraction-rules>

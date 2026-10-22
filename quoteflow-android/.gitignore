@@ -1,0 +1,4 @@
+node_modules/
+# Copia generada por build-www.sh a partir de ../quoteflow; no es la fuente,
+# se regenera en cada build.
+/www/
