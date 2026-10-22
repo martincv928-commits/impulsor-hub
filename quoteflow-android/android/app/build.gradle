@@ -7,9 +7,11 @@ android {
         applicationId "mx.impulsorhub.quoteflow"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // El 1, 2, 3 y 4 ya se consumieron en Play Store con la versión TWA
-        // (basada en navegador); este empaque nativo sigue la numeración.
-        versionCode 5
+        // El 1-4 se consumieron con la versión TWA (basada en navegador); el
+        // 5 se consumió con un intento de subida de este empaque nativo que
+        // falló validación (Play Console marca el código como usado aunque
+        // la subida no se complete).
+        versionCode 6
         versionName "2.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
