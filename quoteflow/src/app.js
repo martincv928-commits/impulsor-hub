@@ -2295,8 +2295,7 @@
       case 'view-pdf': {
         const blob = makePdf();
         if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        if (!window.open(url, '_blank')) location.href = url;
+        SHARE.viewPdf(blob, PDF.filename(q));
         return;
       }
       case 'share-receipt': {
@@ -2309,8 +2308,7 @@
       case 'view-receipt': {
         const blob = makePdf('estado');
         if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        if (!window.open(url, '_blank')) location.href = url;
+        SHARE.viewPdf(blob, PDF.filename(q, 'estado'));
         return;
       }
       case 'download-receipt': {
@@ -2331,8 +2329,7 @@
         const cu = S.activeCustomer;
         const quotes = customerInfo(cu.name).quotes.filter(isConfirmed);
         const blob = PDF.clientStatementBlob(cu.name, quotes, S.settings);
-        const url = URL.createObjectURL(blob);
-        if (!window.open(url, '_blank')) location.href = url;
+        SHARE.viewPdf(blob, PDF.clientStatementFilename(cu.name));
         return;
       }
       case 'download-client-statement': {
