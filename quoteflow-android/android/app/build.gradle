@@ -11,8 +11,8 @@ android {
         // 5 se consumió con un intento de subida de este empaque nativo que
         // falló validación (Play Console marca el código como usado aunque
         // la subida no se complete).
-        versionCode 7
-        versionName "2.1.0"
+        versionCode 8
+        versionName "2.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

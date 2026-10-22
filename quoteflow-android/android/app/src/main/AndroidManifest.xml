@@ -40,4 +40,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Pedir permiso de micrófono (para el dictado por voz) hace que Play
+         Store asuma por default que el dispositivo DEBE tener micrófono para
+         poder instalar la app — y deja fuera TVs, algunos tablets y autos sin
+         uno. El dictado es opcional (la app funciona completa escribiendo),
+         así que se marca explícitamente como no obligatorio. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>
