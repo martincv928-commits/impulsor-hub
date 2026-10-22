@@ -135,18 +135,30 @@
   }
 
   // Misma idea que startWeb, pero sobre el reconocimiento nativo de Android
-  // (vía @capacitor-community/speech-recognition). Ese reconocedor también
-  // solo escucha una frase a la vez y se detiene con el silencio; el evento
-  // "listeningState" avisa exactamente cuándo terminó cada pasada, y ahí se
-  // reinicia solo (mientras no se pida detener) para que se sienta igual de
-  // continuo que el dictado de la web.
+  // (vía @capacitor-community/speech-recognition). Dos cosas de ese plugin
+  // que no son obvias por su documentación, vistas directo en su código:
+  //
+  // 1. Cuando se usa start({ partialResults: true, ... }), la promesa de
+  //    start() se resuelve de inmediato (sin texto) — TODO el texto, incluido
+  //    el de cada frase ya terminada, llega por el evento "partialResults".
+  //    El evento "listeningState" avisa "stopped" justo cuando deja de oír
+  //    voz, pero ANTES de entregar el texto final de esa frase; si se
+  //    reinicia ahí mismo, se cancela la sesión justo antes de que alcance a
+  //    mandar ese texto. Por eso aquí no se usa ese evento para reiniciar:
+  //    se vigila con isListening() cada cierto tiempo y se deja un respiro
+  //    antes de reiniciar, para darle tiempo a entregar lo último que oyó.
+  // 2. stop() del lado nativo nunca avisa que terminó (no resuelve ni
+  //    rechaza su promesa) — si algo se queda esperando esa respuesta, se
+  //    queda esperando para siempre. Por eso "Listo"/"Cancelar" no esperan
+  //    esa respuesta: piden detener y de una vez siguen con lo que ya se
+  //    tiene, sin bloquearse.
   function startNative(cb) {
     let finalText = '';
     let stopped = false;
     let failed = false;
     let starting = false;
     let partialHandle = null;
-    let stateHandle = null;
+    let pollTimer = null;
 
     async function ensurePermission() {
       const status = await NativeSR.checkPermissions();
@@ -159,12 +171,25 @@
       if (stopped || starting) return;
       starting = true;
       NativeSR.start({ language: 'es-MX', maxResults: 5, partialResults: true, popup: false })
-        .then((result) => {
-          const t = pickBestMatch(result && result.matches);
-          if (t) finalText = t;
-        })
         .catch(() => { /* errores de permiso ya se resolvieron antes de llegar aquí */ })
         .finally(() => { starting = false; });
+    }
+
+    function schedulePoll() {
+      pollTimer = setTimeout(async () => {
+        if (stopped) return;
+        try {
+          const { listening } = await NativeSR.isListening();
+          if (!listening && !starting) {
+            // Respiro antes de reiniciar: le da tiempo al texto final de la
+            // frase que se acaba de terminar a llegar por "partialResults"
+            // antes de cancelar esa sesión para empezar la siguiente.
+            await new Promise((r) => setTimeout(r, 400));
+            if (!stopped) beginListening();
+          }
+        } catch (e) { /* se reintenta en el siguiente ciclo */ }
+        schedulePoll();
+      }, 700);
     }
 
     (async () => {
@@ -174,25 +199,26 @@
           const t = pickBestMatch(data && data.matches);
           if (t) { finalText = t; cb.onText && cb.onText(t); }
         });
-        stateHandle = await NativeSR.addListener('listeningState', (data) => {
-          if (data && data.status === 'stopped' && !stopped) beginListening();
-        });
         beginListening();
+        schedulePoll();
       } catch (e) {
         failed = true;
         cb.onError && cb.onError(e && e.message === 'not-allowed' ? 'not-allowed' : 'native-error');
       }
     })();
 
-    async function finish() {
-      if (partialHandle) await partialHandle.remove().catch(() => {});
-      if (stateHandle) await stateHandle.remove().catch(() => {});
+    function finish() {
+      if (pollTimer) clearTimeout(pollTimer);
+      if (partialHandle) partialHandle.remove().catch(() => {});
       if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
     }
 
     return {
-      stop: () => { stopped = true; NativeSR.stop().catch(() => {}).finally(finish); },
-      abort: () => { stopped = true; failed = true; NativeSR.stop().catch(() => {}).finally(finish); },
+      // No se espera la respuesta de NativeSR.stop(): ese método nunca la
+      // manda (ver nota arriba), esperarla dejaría "Listo"/"Cancelar" sin
+      // reaccionar nunca.
+      stop: () => { stopped = true; try { NativeSR.stop(); } catch (e) { /* no crítico: ya se va a dejar de escuchar de todos modos */ } finish(); },
+      abort: () => { stopped = true; failed = true; try { NativeSR.stop(); } catch (e) { /* idem */ } finish(); },
     };
   }
 
