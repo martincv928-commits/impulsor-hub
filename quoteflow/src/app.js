@@ -593,6 +593,12 @@
   // id sigue siendo el local, no un UUID real), o ya tenían un id de la nube
   // pero una edición posterior falló al sincronizar (_syncFailed).
   const pendingSyncQuotes = () => DB.getQuotes().filter((q) => !CLOUD.looksLikeUuid(q.id) || q._syncFailed);
+  // Total de todo lo que sigue solo en este dispositivo sin haber llegado a
+  // la nube (cotizaciones, productos, clientes, borrados). Se usa para la
+  // advertencia de la pantalla principal: si esto no llega a 0 antes de
+  // reinstalar la app o borrar datos del navegador, lo que esté aquí se
+  // pierde para siempre (nunca tuvo copia en la nube).
+  const pendingSyncTotal = () => pendingSyncQuotes().length + pendingSyncProducts().length + pendingSyncCustomers().length + DB.getPendingDeletes().length;
 
   // Sube catálogo y cotizaciones locales a la cuenta. Si el negocio ya tenía
   // sus propias cotizaciones (otro dispositivo, u otra persona probando la
@@ -781,6 +787,13 @@
         <button class="icon-btn" data-act="settings" aria-label="Configuración del negocio">${icon.gear}</button>
       </header>
       ${!name ? `<button class="example" data-act="settings">Configura el nombre y datos de tu negocio para que aparezcan en el PDF. <b>Configurar</b></button>` : ''}
+      ${cloudOn && S.cloudSession && pendingSyncTotal() ? `
+        <div class="banner baja">
+          <div class="head">⚠ ${pendingSyncTotal()} elemento(s) sin guardar en la nube</div>
+          <p style="margin:0">Mientras no se sincronicen, solo existen en este celular: si lo reinstalas, le borras datos o cambias de equipo antes de sincronizar, se pierden para siempre. No lo hagas hasta que esto llegue a 0.</p>
+        </div>
+        <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
+      ` : ''}
       ${generated.length ? `
       <div class="stat-pair">
         <div class="stat"><div class="lbl">Total cotizado</div><div class="val">${fmt(totalCotizado)}</div></div>
@@ -2768,6 +2781,28 @@
   // avisar a tiempo. Por eso, al volver a primer plano, se refresca la
   // sesión de una vez (getSession() renueva sola si hace falta) antes de que
   // el usuario alcance a tocar algo.
+  // Reintento automático de todo lo pendiente (cotizaciones, productos,
+  // clientes, borrados). Antes esto solo pasaba si la persona entraba a
+  // Configuración y apretaba "Sincronizar ahora", o al recuperar la
+  // conexión con la app ya abierta — si cerraban la app, la reinstalaban o
+  // le borraban datos antes de que eso pasara, lo que seguía solo local se
+  // perdía para siempre (nunca llegó a tener copia en la nube). Por eso
+  // ahora también se intenta solo, sin que nadie lo pida, cada vez que la
+  // app vuelve a primer plano y cada cierto tiempo mientras siga abierta.
+  let autoSyncBusy = false;
+  async function autoSyncPending(silent) {
+    if (autoSyncBusy) return;
+    if (!(cloudOn && S.cloudBusiness)) return;
+    if (!pendingSyncTotal()) return;
+    autoSyncBusy = true;
+    try {
+      const { failed, total } = await importLocalDataToCloud(S.cloudBusiness.id);
+      if (!failed && total && !silent) toast(`${total} elemento(s) sincronizado(s) automáticamente`);
+      if (S.view === 'home' || S.view === 'settings') render();
+    } catch (e) { /* sin red todavía de verdad: se reintentará la próxima vez */ }
+    autoSyncBusy = false;
+  }
+
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState !== 'visible') return;
     if (!(cloudOn && S.cloudSession)) return;
@@ -2780,6 +2815,7 @@
         S.businessSyncFailed = false;
         if (S.view === 'settings') render();
       }
+      await autoSyncPending();
     } catch (err) {
       // Si incluso tras "refrescar" sigue fallando con pinta de sesión
       // expirada, es que el token ya está muerto de verdad del lado del
@@ -2790,17 +2826,14 @@
   });
 
   // Si se recupera la conexión, se reintenta solo lo que haya quedado
-  // pendiente (nunca se importó, o falló al sincronizar una edición) sin que
-  // el usuario tenga que acordarse de entrar a Configuración.
-  window.addEventListener('online', async () => {
-    if (!(cloudOn && S.cloudBusiness)) return;
-    if (!pendingSyncQuotes().length) return;
-    try {
-      const { failed, total } = await importLocalDataToCloud(S.cloudBusiness.id);
-      if (!failed) toast(`${total} cotización(es) sincronizada(s) automáticamente`);
-      if (S.view === 'settings') render();
-    } catch (e) { /* sin red todavía de verdad: se reintentará la próxima vez */ }
-  });
+  // pendiente sin que el usuario tenga que acordarse de entrar a Configuración.
+  window.addEventListener('online', () => autoSyncPending());
+
+  // Red de seguridad adicional: mientras la app siga abierta y algo siga sin
+  // subir, se reintenta solo cada 20s (en silencio, sin saturar de avisos).
+  // No sustituye avisar bien antes de reinstalar, pero reduce al mínimo la
+  // ventana de tiempo en la que algo existe solo en este dispositivo.
+  setInterval(() => autoSyncPending(true), 20000);
 
   boot();
 })();
