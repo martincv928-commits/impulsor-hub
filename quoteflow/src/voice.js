@@ -107,15 +107,46 @@
     };
   }
 
+  // El reconocedor nativo de Android, a diferencia del de Chrome, entrega
+  // VARIAS alternativas de lo que entendió (maxResults), no solo una. Antes
+  // se usaba siempre la primera a secas; ahora se prefiere la alternativa
+  // que más se parece a productos que este negocio ya tiene guardados en su
+  // catálogo (misma lógica de catalog.js), o la que trae números si ninguna
+  // coincide con el catálogo — un precio o cantidad mal oído es el error más
+  // caro, así que se le da prioridad sobre el resto del texto.
+  function pickBestMatch(matches) {
+    if (!matches || !matches.length) return '';
+    if (matches.length === 1) return matches[0];
+    const CAT = root.QF && root.QF.catalog;
+    const tok = CAT ? CAT.tokens : (s) => String(s || '').toLowerCase().split(/\s+/).filter(Boolean);
+    let vocab = new Set();
+    try {
+      const DB = root.QF && root.QF.storage;
+      const catalog = (DB && DB.getCatalog && DB.getCatalog()) || [];
+      catalog.forEach((p) => tok(p.name).forEach((t) => vocab.add(t)));
+    } catch (e) { /* sin catálogo disponible todavía: se sigue sin ese extra */ }
+    const score = (m) => {
+      const toks = tok(m);
+      let s = toks.filter((t) => vocab.has(t)).length * 2;
+      if (/\d/.test(m)) s += 1;
+      return s;
+    };
+    return matches.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+
   // Misma idea que startWeb, pero sobre el reconocimiento nativo de Android
-  // (vía @capacitor-community/speech-recognition), que solo escucha una
-  // frase a la vez y se detiene con el silencio: se reinicia solo mientras
-  // no se pida detener, para que se sienta igual de continuo que en la web.
+  // (vía @capacitor-community/speech-recognition). Ese reconocedor también
+  // solo escucha una frase a la vez y se detiene con el silencio; el evento
+  // "listeningState" avisa exactamente cuándo terminó cada pasada, y ahí se
+  // reinicia solo (mientras no se pida detener) para que se sienta igual de
+  // continuo que el dictado de la web.
   function startNative(cb) {
     let finalText = '';
     let stopped = false;
     let failed = false;
-    let listenerHandle = null;
+    let starting = false;
+    let partialHandle = null;
+    let stateHandle = null;
 
     async function ensurePermission() {
       const status = await NativeSR.checkPermissions();
@@ -124,38 +155,44 @@
       if (req.speechRecognition !== 'granted') throw new Error('not-allowed');
     }
 
-    async function listenOnce() {
-      const result = await NativeSR.start({ language: 'es-MX', partialResults: true, popup: false, maxResults: 1 });
-      return (result && result.matches && result.matches[0]) || '';
+    function beginListening() {
+      if (stopped || starting) return;
+      starting = true;
+      NativeSR.start({ language: 'es-MX', maxResults: 5, partialResults: true, popup: false })
+        .then((result) => {
+          const t = pickBestMatch(result && result.matches);
+          if (t) finalText = t;
+        })
+        .catch(() => { /* errores de permiso ya se resolvieron antes de llegar aquí */ })
+        .finally(() => { starting = false; });
     }
 
     (async () => {
       try {
         await ensurePermission();
-        listenerHandle = await NativeSR.addListener('partialResults', (data) => {
-          const t = (data && data.matches && data.matches[0]) || '';
+        partialHandle = await NativeSR.addListener('partialResults', (data) => {
+          const t = pickBestMatch(data && data.matches);
           if (t) { finalText = t; cb.onText && cb.onText(t); }
         });
-        while (!stopped) {
-          try {
-            const text = await listenOnce();
-            if (text) finalText = text;
-          } catch (e) {
-            if (stopped) break;
-            // silencio o sin coincidencia en esta pasada: se reintenta solo,
-            // igual que el manejo de "no-speech" en la versión web.
-          }
-        }
+        stateHandle = await NativeSR.addListener('listeningState', (data) => {
+          if (data && data.status === 'stopped' && !stopped) beginListening();
+        });
+        beginListening();
       } catch (e) {
-        if (!stopped) { failed = true; cb.onError && cb.onError(e && e.message === 'not-allowed' ? 'not-allowed' : 'native-error'); }
+        failed = true;
+        cb.onError && cb.onError(e && e.message === 'not-allowed' ? 'not-allowed' : 'native-error');
       }
-      if (listenerHandle) listenerHandle.remove();
-      if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
     })();
 
+    async function finish() {
+      if (partialHandle) await partialHandle.remove().catch(() => {});
+      if (stateHandle) await stateHandle.remove().catch(() => {});
+      if (!failed) cb.onEnd && cb.onEnd(finalText.trim());
+    }
+
     return {
-      stop: () => { stopped = true; NativeSR.stop().catch(() => {}); },
-      abort: () => { stopped = true; failed = true; NativeSR.stop().catch(() => {}); },
+      stop: () => { stopped = true; NativeSR.stop().catch(() => {}).finally(finish); },
+      abort: () => { stopped = true; failed = true; NativeSR.stop().catch(() => {}).finally(finish); },
     };
   }
 
