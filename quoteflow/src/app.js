@@ -106,6 +106,20 @@
     if (btn) btn.click();
   });
 
+  // Dentro de la app nativa (a diferencia de una pestaña de Chrome/TWA), el
+  // botón/gesto físico de "atrás" del celular NO dispara "popstate" solo:
+  // hay que conectarlo a mano con el historial de arriba, o si no, cierra
+  // la app de un jalón en vez de navegar un nivel hacia atrás.
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    const CapApp = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (CapApp) {
+      CapApp.addListener('backButton', ({ canGoBack }) => {
+        if (canGoBack) window.history.back();
+        else CapApp.exitApp();
+      });
+    }
+  }
+
   const BLOCKED_STATUS = ['SUSPENDED', 'CANCELLED'];
   function isBusinessBlocked() {
     return cloudOn && S.cloudBusiness && BLOCKED_STATUS.includes(S.cloudBusiness.status);
