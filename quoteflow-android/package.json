@@ -7,6 +7,7 @@
     "@capacitor-community/file-opener": "^6.0.1",
     "@capacitor-community/speech-recognition": "^6.0.1",
     "@capacitor/android": "^6.2.2",
+    "@capacitor/app": "^6.0.3",
     "@capacitor/cli": "^6.2.2",
     "@capacitor/core": "^6.2.2",
     "@capacitor/filesystem": "^6.0.4",
