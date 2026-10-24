@@ -157,6 +157,16 @@
     return true;
   }
   const isRejected = (q) => q.confirmation === 'RECHAZADA';
+  // Eliminar solo lo pueden hacer: cualquiera, si la app se usa local sin
+  // cuenta (no hay concepto de "dueño" todavía); o el dueño del negocio, si
+  // ya hay cuenta en la nube (para cuando haya más de una persona con
+  // acceso al mismo negocio). Ya era imposible borrar una orden de venta
+  // confirmada (el botón de eliminar solo vive en el editor, que se oculta
+  // en cuanto se confirma) — esto solo le agrega el filtro de quién puede.
+  function canDeleteQuotes() {
+    if (!(cloudOn && S.cloudBusiness)) return true;
+    return S.cloudBusiness._myRole === 'owner';
+  }
   // Pill de estado para mostrar: se basa en isConfirmed/isRejected (no en si
   // el campo "confirmation" vino explícito o no), para que las órdenes de
   // venta de antes de este cambio (confirmadas sin ese campo) también
@@ -886,7 +896,10 @@
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
     const quotesOnly = quotes.filter((q) => !isOrderRow(q));
     const ordersOnly = quotes.filter(isOrderRow);
-    const rows = filtered ? filtered.filter((q) => !isOrderRow(q)) : shown.filter((q) => !isOrderRow(q));
+    // Las rechazadas ya no se muestran en la lista de recientes (para no
+    // ensuciar la pantalla principal con algo que no se va a cobrar), pero
+    // siguen existiendo: si se buscan por cliente o folio, sí aparecen.
+    const rows = filtered ? filtered.filter((q) => !isOrderRow(q)) : shown.filter((q) => !isOrderRow(q) && !isRejected(q));
     const orderRows = filtered ? filtered.filter(isOrderRow) : ordersOnly.slice(0, 12);
     return `
       <div class="field" style="margin-top:10px"><input id="home-search" placeholder="Buscar por cliente o folio…" value="${esc(S.homeSearch)}"></div>
@@ -1083,9 +1096,11 @@
         </div>
         <div class="field"><label for="notes">Notas</label><textarea id="notes" data-q="notes" style="min-height:64px" placeholder="Opcional">${esc(q.notes)}</textarea></div>
         <div class="field"><label for="conditions">Condiciones</label><textarea id="conditions" data-q="conditions" style="min-height:64px">${esc(q.conditions)}</textarea></div>
-        ${q.folio ? (S.confirmDelete
-          ? `<div class="confirm-row">¿Eliminar esta ${lower(labelQuote())}? <button class="btn danger" data-act="delete-yes">Eliminar</button><button class="btn" data-act="delete-no">No</button></div>`
-          : `<button class="btn ghost danger" data-act="delete">Eliminar ${lower(labelQuote())}</button>`) : ''}
+        ${q.folio ? (canDeleteQuotes()
+          ? (S.confirmDelete
+            ? `<div class="confirm-row">¿Eliminar esta ${lower(labelQuote())}? <button class="btn danger" data-act="delete-yes">Eliminar</button><button class="btn" data-act="delete-no">No</button></div>`
+            : `<button class="btn ghost danger" data-act="delete">Eliminar ${lower(labelQuote())}</button>`)
+          : `<p class="hint">Solo el dueño del negocio puede eliminar ${lower(plural(labelQuote()))}.</p>`) : ''}
       </div>
       <datalist id="cat-list">${S.catalog.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
       <datalist id="client-list">${S.customers.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
@@ -2277,9 +2292,10 @@
         b.disabled = true;
         return addProductsToQuote(text);
       }
-      case 'delete': S.confirmDelete = true; return render();
+      case 'delete': if (!canDeleteQuotes()) return; S.confirmDelete = true; return render();
       case 'delete-no': S.confirmDelete = false; return render();
       case 'delete-yes': {
+        if (!canDeleteQuotes()) return;
         const idToDelete = q.id;
         DB.deleteQuote(idToDelete);
         toast(labelQuote() + ' eliminada');
