@@ -109,12 +109,15 @@
       if (!uid) return null;
       const { data, error } = await client()
         .from('business_members')
-        .select('businesses(*)')
+        .select('role, businesses(*)')
         .eq('user_id', uid)
         .limit(1)
         .maybeSingle();
       if (error) throw new Error(friendlyError(error));
-      return data ? data.businesses : null;
+      // _myRole viaja pegado al negocio (no es una columna de businesses) para
+      // que la app sepa, sin otra consulta, si esta cuenta es la dueña —
+      // usado para restringir acciones delicadas (como eliminar) a solo ella.
+      return data ? Object.assign({}, data.businesses, { _myRole: data.role }) : null;
     },
     async create(fields) {
       const { data, error } = await client().rpc('create_business', {
