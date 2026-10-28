@@ -4,8 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>Impulsor Hub</title>
+<title>Impulsor · Software, Odoo y videojuegos en México</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Software para tu negocio: Cotízame, FiscalBox y Ventor con facturación CFDI. Consultoría y módulos Odoo, apps a la medida y videojuegos. Soluciones que impulsan tu empresa.">
+<meta name="theme-color" content="#09090A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23E3132C'/%3E%3Cpath d='M11 24V8h7a5 5 0 0 1 0 10h-4' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_MX">
+<meta property="og:site_name" content="Impulsor">
+<meta property="og:title" content="Impulsor · Software, Odoo y videojuegos en México">
+<meta property="og:description" content="Software para tu negocio: Cotízame, FiscalBox y Ventor con facturación CFDI. Consultoría y módulos Odoo, apps a la medida y videojuegos. Soluciones que impulsan tu empresa.">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Impulsor","slogan":"Soluciones que impulsan tu empresa","email":"impulsorhub@gmail.com","areaServed":"MX","description":"Software para tu negocio: Cotízame, FiscalBox y Ventor con facturación CFDI. Consultoría y módulos Odoo, apps a la medida y videojuegos. Soluciones que impulsan tu empresa."}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@600;700;800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
 <style>
@@ -397,8 +407,8 @@ function route(){
   document.getElementById('view-home').hidden=!!p;
   document.getElementById('view-product').hidden=!p;
   document.getElementById('inicio').hidden=!!p;
-  if(p){renderDetail(p);document.getElementById('f-interest').value=p.name;window.scrollTo(0,0);document.title=p.name+' · Impulsor'}
-  else{document.title='Impulsor Hub';const t=id&&document.getElementById(id);if(t)setTimeout(()=>t.scrollIntoView(),0)}
+  if(p){renderDetail(p);document.getElementById('f-interest').value=p.name;window.scrollTo(0,0);document.title=p.name+' · Impulsor · '+(p.group==='servicios'?'Servicios Odoo y desarrollo':'Software y videojuegos')}
+  else{document.title='Impulsor · Software, Odoo y videojuegos en México';const t=id&&document.getElementById(id);if(t)setTimeout(()=>t.scrollIntoView(),0)}
   draw();
 }
 document.addEventListener('click',e=>{const sc=e.target.closest('[data-scroll]');if(sc){e.preventDefault();const t=document.getElementById(sc.dataset.scroll);if(t)t.scrollIntoView({behavior:'smooth'});return}const a=e.target.closest('[data-pick]');if(a){document.getElementById('f-interest').value=byId[a.dataset.pick].name}});
