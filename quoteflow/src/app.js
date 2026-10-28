@@ -24,6 +24,7 @@
     addProductOpen: false,
     restructureOpen: false,
     showAll: false,
+    showRejected: false,
     confirmDelete: false,
     listening: null,
     pendingBackup: null,
@@ -882,7 +883,7 @@
     if (!listEl) return;
     const quotes = DB.getQuotes();
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
-    const quotesOnly = quotes.filter((q) => !isOrderRow(q));
+    const quotesOnly = quotes.filter((q) => !isOrderRow(q) && !isRejected(q));
     const shown = filtered ? filtered.filter((q) => !isOrderRow(q)) : (S.showAll ? quotesOnly : quotesOnly.slice(0, 12));
     listEl.innerHTML = shown.length ? shown.map(quoteRowHtml).join('') : `<div class="empty">${filtered ? 'Sin resultados.' : `Aún no hay ${lower(plural(labelQuote()))}. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.`}</div>`;
     if (headEl) headEl.textContent = filtered ? 'Resultados' : `${plural(labelQuote())} recientes`;
@@ -896,18 +897,30 @@
     const filtered = filterQuotesBySearch(quotes, S.homeSearch);
     const quotesOnly = quotes.filter((q) => !isOrderRow(q));
     const ordersOnly = quotes.filter(isOrderRow);
-    // Las rechazadas ya no se muestran en la lista de recientes (para no
-    // ensuciar la pantalla principal con algo que no se va a cobrar), pero
-    // siguen existiendo: si se buscan por cliente o folio, sí aparecen.
-    const rows = filtered ? filtered.filter((q) => !isOrderRow(q)) : shown.filter((q) => !isOrderRow(q) && !isRejected(q));
+    const rejectedOnly = quotesOnly.filter(isRejected);
+    // Las rechazadas ya no se muestran junto con las demás recientes (para
+    // no ensuciar la pantalla principal con algo que no se va a cobrar),
+    // pero siguen existiendo: se buscan por cliente/folio, o se ven aparte
+    // con el botón "Rechazadas" — así nadie termina haciendo una cotización
+    // nueva de cero solo porque no encontró cómo recuperar la rechazada.
+    const rows = filtered
+      ? filtered.filter((q) => !isOrderRow(q))
+      : S.showRejected
+        ? rejectedOnly
+        : shown.filter((q) => !isOrderRow(q) && !isRejected(q));
     const orderRows = filtered ? filtered.filter(isOrderRow) : ordersOnly.slice(0, 12);
     return `
       <div class="field" style="margin-top:10px"><input id="home-search" placeholder="Buscar por cliente o folio…" value="${esc(S.homeSearch)}"></div>
-      <div class="section-h"><h2 id="home-quotes-head">${filtered ? 'Resultados' : `${plural(labelQuote())} recientes`}</h2>${!filtered && quotesOnly.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}</div>
-      <div class="list" id="home-quotes-list">
-        ${rows.length ? rows.map(quoteRowHtml).join('') : `<div class="empty">Aún no hay ${lower(plural(labelQuote()))}. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
+      <div class="section-h">
+        <h2 id="home-quotes-head">${filtered ? 'Resultados' : S.showRejected ? 'Rechazadas' : `${plural(labelQuote())} recientes`}</h2>
+        ${!filtered && !S.showRejected && quotesOnly.length > 12 ? `<button class="btn ghost" data-act="toggle-all">${S.showAll ? 'Ver menos' : 'Ver todas'}</button>` : ''}
+        ${!filtered && !S.showRejected && rejectedOnly.length ? `<button class="btn ghost" data-act="toggle-rejected">Rechazadas (${rejectedOnly.length})</button>` : ''}
+        ${!filtered && S.showRejected ? `<button class="btn ghost" data-act="toggle-rejected">Volver a recientes</button>` : ''}
       </div>
-      ${!filtered || orderRows.length ? `
+      <div class="list" id="home-quotes-list">
+        ${rows.length ? rows.map(quoteRowHtml).join('') : S.showRejected ? `<div class="empty">No tienes ${lower(plural(labelQuote()))} rechazadas.</div>` : `<div class="empty">Aún no hay ${lower(plural(labelQuote()))}. Toca <b>Hablar</b> o <b>Escribir</b> para crear la primera.</div>`}
+      </div>
+      ${!S.showRejected && (!filtered || orderRows.length) ? `
       <div class="section-h"><h2>${plural(labelOrder())}</h2><button class="btn ghost" data-act="orders">Ver todas</button></div>
       <div class="list" id="home-orders-list">
         ${orderRows.length ? orderRows.map(quoteRowHtml).join('') : `<div class="empty">Aún no tienes ${lower(plural(labelOrder()))}. Se crean al confirmar una ${lower(labelQuote())}.</div>`}
@@ -2177,6 +2190,7 @@
         return render();
       }
       case 'toggle-all': S.showAll = !S.showAll; return render();
+      case 'toggle-rejected': S.showRejected = !S.showRejected; return render();
       case 'speak':
         if (isBusinessBlocked()) return toast('Tu negocio está suspendido; no puedes crear cotizaciones nuevas.');
         return startVoice();
