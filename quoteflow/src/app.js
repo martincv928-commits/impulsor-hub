@@ -1422,9 +1422,9 @@
         ${rejected ? `
           <div class="banner baja">
             <div class="head">${labelQuote()} rechazada</div>
-            <p style="margin:0">El cliente no aceptó esta ${lower(labelQuote())}. No cuenta en tu pendiente por cobrar.</p>
+            <p style="margin:0">El cliente no aceptó esta ${lower(labelQuote())}. No cuenta en tu pendiente por cobrar. Si fue un error o la quieres corregir, quítale el rechazo: vuelve a quedar como una ${lower(labelQuote())} normal (puedes editarla y confirmarla cuando el cliente la acepte).</p>
           </div>
-          <button class="btn ghost block" data-act="confirm-quote">Marcarla como confirmada en su lugar</button>
+          <button class="btn primary block" data-act="unreject-quote">Quitar rechazo</button>
         ` : ''}
         <div class="sheet"><table class="num">
           ${q.items.map((it) => `<tr><td>${esc(M.milliToStr(it.qtyMilli))} ${esc(it.unit)} · ${esc(it.desc)}<div class="muted">${fmt(it.priceCents)} c/u</div>${it.addedAt ? `<div class="muted" style="font-size:11px;font-style:italic">Agregado el ${dateStr(it.addedAt)}</div>` : ''}</td><td class="r">${fmt(M.lineAmount(it))}</td></tr>`).join('')}
@@ -2256,6 +2256,12 @@
         q.confirmation = 'RECHAZADA';
         savePaymentsChange(q);
         toast(labelQuote() + ' marcada como rechazada');
+        return render();
+      }
+      case 'unreject-quote': {
+        q.confirmation = null;
+        savePaymentsChange(q);
+        toast('Rechazo quitado · de vuelta a ' + lower(labelQuote()) + ' pendiente');
         return render();
       }
       case 'unconfirm-quote': {
