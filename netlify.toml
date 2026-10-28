@@ -1,0 +1,4 @@
+# Sitio web de Impulsor: Netlify publica solo la carpeta "site".
+[build]
+  command = "echo 'sitio estatico'"
+  publish = "site"
