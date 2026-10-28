@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Impulsor Hub</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@600;700;800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: identidad IMPULSOR (negro, rojo, blanco), una sola apariencia oscura. Hero con logo + franja de 4 líneas de negocio, luego catálogo y contacto */
+:root{
+  --bg:#09090A; --surface:#141416; --ink:#F4F4F6; --muted:#A4A4AE; --line:#2A2A30;
+  --accent:#E3132C; --accent-ink:#FFFFFF; --spark:#FF3B4E;
+  --ok:#3FCB86; --warn:#F2A23C; --soon:#A4A4AE;
+  --display:"Exo 2",ui-sans-serif,system-ui,sans-serif;
+  --body:"Figtree",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.05}
+.label{font-family:var(--body);font-weight:600;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+
+/* nav */
+nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:20px}
+.logo{display:flex;align-items:center;font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.04em;text-decoration:none}
+.logo b{color:var(--accent);font-weight:800}
+.navlinks{display:flex;gap:20px;font-weight:500;font-size:15px}
+.navlinks a{text-decoration:none;color:var(--muted)}
+.navlinks a:hover{color:var(--ink)}
+@media (max-width:640px){.navlinks{display:none}}
+
+/* hero */
+.hero{position:relative;padding-block:8px 0;overflow:hidden;
+  background:radial-gradient(ellipse 90% 60% at 50% 115%,rgba(227,19,44,.45),transparent 60%),radial-gradient(ellipse 60% 50% at 50% 30%,rgba(227,19,44,.12),transparent 70%),var(--bg)}
+.hero::after{content:"";position:absolute;left:-10%;right:-10%;bottom:18px;height:2px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--spark) 20%,transparent 50%,var(--spark) 80%,transparent);opacity:.7;transform:rotate(-1.2deg)}
+#inicio{position:relative;display:grid;gap:22px;justify-items:center;text-align:center;padding-block:24px 64px}
+.hero-logo{width:min(560px,100%);height:auto;mix-blend-mode:lighten}
+.hero h1{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.tagline{font-family:var(--body);font-weight:500;font-size:clamp(11px,2.4vw,15px);letter-spacing:.42em;text-transform:uppercase;color:var(--ink);margin:-8px 0 0;padding-left:.42em}
+.hero p.lead{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:52ch;margin:0}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 22px;border-radius:6px;font-weight:600;text-decoration:none;font-size:16px;border:1.5px solid transparent;cursor:pointer;font-family:var(--body);letter-spacing:.02em}
+.btn.primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 0 24px rgba(227,19,44,.35)}
+.btn.ghost{border-color:var(--line);background:transparent;color:var(--ink)}
+.btn:hover{transform:translateY(-1px)}
+.lines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;max-width:820px;margin:12px 0 0;padding:0;list-style:none}
+.lines li{display:grid;justify-items:center;gap:10px;padding:8px 6px;border-left:1px solid rgba(227,19,44,.55)}
+.lines li:first-child{border-left:0}
+.lines a{display:grid;justify-items:center;gap:10px;text-decoration:none}
+.lines svg{width:40px;height:40px}
+.lines span{font-size:clamp(10px,2.2vw,13px);letter-spacing:.2em;text-transform:uppercase;font-weight:600}
+@media (max-width:520px){.lines{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:16px}.lines li:nth-child(3){border-left:0}}
+
+/* secciones */
+section.block{padding-block:56px;border-top:1px solid var(--line)}
+.block-head{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:28px}
+.block-head h2{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.025em}
+.block-head p{margin:0;color:var(--muted);max-width:60ch}
+
+.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:22px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.card h3{font-size:24px;font-weight:700;letter-spacing:-.015em}
+.card .was{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px}
+.card p{margin:0;color:var(--muted)}
+.card ul{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:15px}
+.card ul li{display:flex;gap:8px}
+.card ul li::before{content:"";flex:none;width:6px;height:6px;margin-top:.6em;border-radius:1px;background:var(--accent);transform:rotate(45deg)}
+.card .spec{margin-top:auto;padding-top:12px;border-top:1px dashed var(--line);font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+.pill{flex:none;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.soon{color:var(--soon)}
+
+/* tarjeta destacada para juegos */
+.card.game{position:relative;overflow:hidden}
+.card.game .art{height:120px;border-radius:10px;margin:-6px -6px 4px;background:var(--bg);border:1px solid var(--line);position:relative;overflow:hidden}
+.card.game canvas{width:100%;height:100%;display:block}
+
+/* proceso */
+.steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));counter-reset:s;margin:0;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;gap:6px;padding-top:14px;border-top:2px solid var(--accent)}
+.steps li::before{content:"Paso " counter(s);font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.steps strong{font-family:var(--display);font-size:20px}
+.steps span{color:var(--muted);font-size:15px}
+
+/* contacto */
+.contact{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));align-items:start}
+form{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:22px;display:grid;gap:14px}
+label{display:grid;gap:6px;font-weight:600;font-size:14px}
+input,select,textarea{font:inherit;font-weight:400;padding:11px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+textarea{min-height:96px;resize:vertical}
+.thanks{margin:0;padding:12px;border-radius:8px;background:var(--bg);color:var(--ok);font-weight:600}
+footer{padding-block:32px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
+
+
+/* tarjetas como enlace */
+a.card.link{text-decoration:none;color:inherit;transition:border-color .15s}
+a.card.link:hover{border-color:var(--accent)}
+.card .spec{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card .more{color:var(--accent);font-weight:500}
+.mailbox{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:6px}
+.mail{font-family:var(--mono);font-size:15px;color:var(--ink);user-select:all;word-break:break-all}
+.btn.small{padding:8px 14px;font-size:14px}
+/* detalle de producto */
+.detail{display:grid;gap:8px;padding-block:24px 8px}
+.back{color:var(--muted);text-decoration:none;font-weight:500;width:max-content}
+.back:hover{color:var(--ink)}
+.d-head{display:grid;gap:18px;padding-block:24px 32px;border-bottom:1px solid var(--line)}
+.d-title{display:grid;gap:8px;justify-items:start}
+.d-title h2{font-size:clamp(40px,8vw,72px);font-weight:800;letter-spacing:-.02em}
+.d-pitch{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:60ch;margin:0}
+.ctas.left{justify-content:flex-start}
+.art.big{height:180px;border-radius:8px;border:1px solid var(--line);overflow:hidden;background:var(--surface)}
+.art.big canvas{width:100%;height:100%;display:block}
+.d-sec{padding-block:32px;border-bottom:1px solid var(--line);display:grid;gap:18px}
+.d-sec:last-child{border-bottom:0}
+.d-h{font-size:clamp(24px,4vw,32px);font-weight:700}
+.who{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.who li{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface)}
+.feats{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr))}
+.feat{display:grid;gap:4px;padding:16px 0 0;border-top:2px solid var(--accent);min-width:0}
+.feat strong{font-family:var(--display);font-size:18px}
+.feat span{color:var(--muted);font-size:15px}
+.spec-line{margin:0;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.plans{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));align-items:stretch}
+.plan{position:relative;display:flex;flex-direction:column;gap:12px;padding:22px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0}
+.plan.hl{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 0 32px rgba(227,19,44,.18)}
+.badge{position:absolute;top:-11px;left:20px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:4px}
+.plan-n{font-weight:600;letter-spacing:.2em;text-transform:uppercase;font-size:13px;color:var(--muted)}
+.price{font-family:var(--display);font-size:clamp(30px,5vw,40px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.price small{font-family:var(--body);font-size:15px;font-weight:500;color:var(--muted);margin-left:4px}
+.plan ul{margin:0;padding:0;list-style:none;display:grid;gap:8px;font-size:15px;flex:1}
+.plan ul li{display:flex;gap:8px}
+.plan ul li::before{content:"✓";color:var(--accent);font-weight:700}
+.plan .btn{justify-content:center}
+.note{margin:0;color:var(--muted);font-size:14px}
+details{border-bottom:1px solid var(--line);padding-block:14px}
+summary{cursor:pointer;font-weight:600;font-size:17px}
+details p{margin:10px 0 0;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){
+  .hero-logo,.hero .lead,.hero .ctas,.hero .lines{animation:rise .6s cubic-bezier(.2,.7,.2,1) both}
+  .hero .lead{animation-delay:.08s}.hero .ctas{animation-delay:.16s}.hero .lines{animation-delay:.24s}
+  .btn{transition:transform .15s}
+}
+@keyframes rise{from{transform:translateY(12px)}to{transform:none}}
+</style>
+
+<header class="hero">
+  <nav class="wrap" aria-label="Principal">
+    <a class="logo" href="#inicio"><span>IMPULS<b>O</b>R</span></a>
+    <div class="navlinks">
+      <a href="#negocio">Software</a>
+      <a href="#juegos">Videojuegos</a>
+      <a href="#servicios">Odoo y a la medida</a>
+      <a href="#contacto">Contacto</a>
+    </div>
+  </nav>
+  <div class="wrap" id="inicio">
+    <h1>Impulsor</h1>
+    <img class="hero-logo" src="data:image/webp;base64,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" alt="Logo de Impulsor" width="900" height="412">
+    <p class="tagline">Soluciones que impulsan tu empresa</p>
+    <p class="lead">Apps, sistemas fiscales, módulos para Odoo y videojuegos. Un solo equipo en México, desde la idea hasta la tienda de apps.</p>
+    <div class="ctas">
+      <a class="btn primary" href="#contacto">Cotizar un proyecto</a>
+      <a class="btn ghost" href="#negocio">Ver productos</a>
+    </div>
+    <ul class="lines">
+      <li><a href="#ventor"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="24" width="5" height="9" rx="1.5" fill="var(--ink)" stroke="none"/><rect x="17" y="17" width="5" height="16" rx="1.5" fill="var(--accent)" stroke="none"/><rect x="26" y="8" width="5" height="25" rx="1.5" fill="var(--accent)" stroke="none"/></svg><span>Mini ERP</span></a></li>
+      <li><a href="#apps-a-medida"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="11" y="4" width="18" height="32" rx="3"/><path d="M17 8h6" stroke="var(--accent)"/><circle cx="20" cy="31" r="1" fill="var(--accent)" stroke="var(--accent)"/></svg><span>Apps a medida</span></a></li>
+      <li><a href="#juegos"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 13h18a7 7 0 0 1 6.8 8.6l-1.6 6.6a3.5 3.5 0 0 1-6 1.5L25 26H15l-3.2 3.7a3.5 3.5 0 0 1-6-1.5l-1.6-6.6A7 7 0 0 1 11 13z"/><path d="M12 18v6M9 21h6"/><circle cx="27" cy="19" r="1.2" fill="var(--accent)" stroke="var(--accent)"/><circle cx="30" cy="23" r="1.2" fill="var(--accent)" stroke="var(--accent)"/></svg><span>Videojuegos</span></a></li>
+      <li><a href="#fiscalbox"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h14l7 7v25H10z"/><path d="M24 4v7h7"/><path d="M15 19h11M15 24h11" stroke="var(--accent)"/><path d="M15 29h7"/></svg><span>App fiscal</span></a></li>
+    </ul>
+  </div>
+</header>
+
+<main id="view-home">
+  <section class="block" id="negocio">
+    <div class="wrap">
+      <div class="block-head">
+        <span class="label">Productos propios</span>
+        <h2>Software para tu negocio</h2>
+        <p>Herramientas listas para usar en el celular o el navegador, hechas para las reglas fiscales de México.</p>
+      </div>
+      <div class="cards" data-group="negocio"></div>
+    </div>
+  </section>
+  <section class="block" id="juegos">
+    <div class="wrap">
+      <div class="block-head">
+        <span class="label">Estudio de juegos</span>
+        <h2>Videojuegos</h2>
+        <p>Diseñamos y programamos juegos para celular y navegador.</p>
+      </div>
+      <div class="cards" data-group="juegos"></div>
+    </div>
+  </section>
+  <section class="block" id="servicios">
+    <div class="wrap">
+      <div class="block-head">
+        <span class="label">Servicios</span>
+        <h2>Odoo y desarrollo a la medida</h2>
+        <p>Experiencia real implementando Odoo en empresas mexicanas, más desarrollo de apps desde cero.</p>
+      </div>
+      <div class="cards" data-group="servicios"></div>
+    </div>
+  </section>
+  <section class="block">
+    <div class="wrap">
+      <div class="block-head">
+        <span class="label">Cómo trabajamos</span>
+        <h2>De la idea a producción</h2>
+      </div>
+      <ol class="steps">
+        <li><strong>Platicamos</strong><span>Entendemos qué necesitas y te damos una propuesta clara.</span></li>
+        <li><strong>Prototipo</strong><span>Ves una primera versión funcionando en tu celular.</span></li>
+        <li><strong>Construimos</strong><span>Entregas frecuentes que pruebas tú mismo.</span></li>
+        <li><strong>Lanzamos</strong><span>Publicamos y te damos soporte después.</span></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<main id="view-product" hidden>
+  <div class="wrap detail" id="detail"></div>
+</main>
+
+<section class="block" id="contacto">
+  <div class="wrap contact">
+    <div class="block-head">
+      <span class="label">Contacto</span>
+      <h2>Cuéntanos tu proyecto</h2>
+      <p>Déjanos tus datos y te respondemos en menos de 24 horas hábiles.</p>
+      <div class="mailbox">
+        <span class="mail" id="mail-text">impulsorhub@gmail.com</span>
+        <button class="btn ghost small" type="button" id="copy-mail">Copiar correo</button>
+      </div>
+    </div>
+    <form id="lead">
+      <label for="f-name">Nombre<input id="f-name" name="nombre" required autocomplete="name"></label>
+      <label for="f-contact">WhatsApp o correo<input id="f-contact" name="contacto" required></label>
+      <label for="f-interest">Me interesa
+        <select id="f-interest" name="interes"></select>
+      </label>
+      <label for="f-msg">Mensaje<textarea id="f-msg" name="mensaje" placeholder="Platícanos qué necesitas"></textarea></label>
+      <button class="btn primary" type="submit">Enviar</button>
+      <p class="thanks" id="thanks" hidden>¡Gracias! Te contactamos pronto.</p>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Impulsor · Soluciones que impulsan tu empresa</span>
+    <span>impulsorhub@gmail.com</span>
+  </div>
+</footer>
+
+<script>
+const MAIL='impulsorhub@gmail.com';
+/* Para activar pagos: pega en "pay" el link de pago de Mercado Pago de cada plan. */
+const P=[
+ {id:'cotizame',group:'negocio',name:'Cotízame',was:'antes QuoteFlow',status:['ok','Disponible'],
+  short:'Arma cotizaciones profesionales desde tu celular y envíalas a tu cliente en minutos.',
+  pitch:'Deja las cotizaciones en Word y WhatsApp sueltos. Con Cotízame armas una cotización con tu logo en dos minutos, la mandas por WhatsApp o correo y sabes cuáles siguen pendientes.',
+  who:['Negocios de servicios y oficios','Vendedores y distribuidores','Freelancers y agencias'],
+  feats:[['Catálogo de productos','Guarda tus productos y precios una vez y úsalos en todas tus cotizaciones.'],['PDF con tu marca','Logo, colores, condiciones y vigencia en un PDF listo para enviar.'],['IVA y descuentos','Calcula IVA, descuentos por partida y totales sin errores.'],['Envío directo','Comparte por WhatsApp o correo desde la app.'],['Seguimiento','Ve qué cotizaciones están pendientes, aceptadas o perdidas.'],['Clientes','Historial de cotizaciones por cliente.']],
+  spec:'Android · Web',
+  plans:[{n:'Gratis',p:'$0',u:'',items:['5 cotizaciones al mes','PDF con marca Cotízame','1 usuario'],cta:'Descargar gratis'},
+         {n:'Pro',p:'$99',u:'/mes',hl:true,items:['Cotizaciones ilimitadas','PDF con tu logo y colores','Seguimiento de estados','Catálogo ilimitado'],cta:'Comprar Pro',pay:''},
+         {n:'Negocio',p:'$249',u:'/mes',items:['Todo lo de Pro','Hasta 3 usuarios','Reporte de ventas cotizadas','Soporte por WhatsApp'],cta:'Comprar Negocio',pay:''}],
+  note:'Precios en pesos mexicanos, IVA incluido. Cancela cuando quieras.',
+  faq:[['¿Necesito computadora?','No. Todo funciona desde el celular, y también puedes usarlo en el navegador.'],['¿Mis cotizaciones se pierden si cambio de celular?','No. Con los planes de pago tu información se respalda en la nube.'],['¿Puedo facturar desde Cotízame?','Cotízame es para cotizar. Para facturar con timbrado usa Ventor.']]},
+ {id:'fiscalbox',group:'negocio',name:'FiscalBox',was:'App fiscal',status:['warn','Preventa'],
+  short:'Tu portal fiscal: descarga tus CFDI del SAT, calcula impuestos y prepara tu declaración.',
+  pitch:'FiscalBox se conecta al SAT con tu e.firma, descarga todas tus facturas emitidas y recibidas, calcula tu IVA e ISR del mes y te deja todo listo para presentar tu declaración.',
+  who:['Personas físicas con actividad empresarial','RESICO','Pymes y despachos contables'],
+  feats:[['Descarga masiva de CFDI','Todas tus facturas emitidas y recibidas, sin entrar al portal del SAT.'],['Cálculo de IVA e ISR','Pagos provisionales calculados con tus CFDI reales.'],['Conciliación bancaria','Cruza tus facturas contra tus movimientos del banco.'],['Alertas','Facturas canceladas, proveedores en lista negra y fechas límite.'],['Pre-declaración','Un resumen con los montos listos para capturar en el SAT.'],['Varios RFC','Maneja tus empresas o las de tus clientes desde una cuenta.']],
+  spec:'SAT · CFDI 4.0 · Android · Web',
+  plans:[{n:'Personal',p:'$149',u:'/mes',items:['1 RFC','Descarga de CFDI ilimitada','Cálculo de IVA e ISR'],cta:'Apartar lugar',pay:''},
+         {n:'Negocio',p:'$349',u:'/mes',hl:true,items:['Hasta 3 RFC','Conciliación bancaria','Alertas fiscales','Pre-declaración mensual'],cta:'Apartar lugar',pay:''},
+         {n:'Despacho',p:'$899',u:'/mes',items:['Hasta 15 RFC','Panel por cliente','Exportación a Excel','Soporte prioritario'],cta:'Apartar lugar',pay:''}],
+  note:'En preventa: aparta tu lugar y obtén 3 meses al 50% en el lanzamiento. Precios en MXN, IVA incluido.',
+  faq:[['¿Es seguro conectar mi e.firma?','Tu e.firma se guarda cifrada y solo se usa para descargar tus CFDI del SAT.'],['¿Presenta la declaración por mí?','Te deja los montos listos. La presentación final la haces tú o tu contador en el portal del SAT.'],['¿Cuándo sale?','Estamos en desarrollo. Al apartar tu lugar te avisamos primero.']]},
+ {id:'ventor',group:'negocio',name:'Ventor',was:'Mini ERP',status:['ok','Disponible'],
+  short:'Ventas, inventario y facturación con timbrado en un sistema sencillo para negocios pequeños.',
+  pitch:'Ventor es el ERP para el negocio que ya creció pero no necesita un sistema gigante. Vende, controla tu inventario y factura con timbrado CFDI desde el mismo lugar.',
+  who:['Tiendas y comercios','Distribuidores','Talleres y negocios de servicios'],
+  feats:[['Punto de venta','Vende rápido desde el celular, tablet o computadora.'],['Inventario','Existencias en tiempo real, entradas, salidas y alertas de mínimo.'],['Facturación CFDI 4.0','Timbra facturas, notas de crédito y complementos de pago.'],['Clientes y cobranza','Saldos, cuentas por cobrar y estados de cuenta.'],['Compras','Órdenes a proveedores y recepción de mercancía.'],['Reportes','Ventas por día, producto y vendedor.']],
+  spec:'Web · Multiusuario · CFDI 4.0',
+  plans:[{n:'Emprendedor',p:'$299',u:'/mes',items:['1 usuario','50 timbres al mes','Ventas, inventario y facturación'],cta:'Comprar Emprendedor',pay:''},
+         {n:'Pyme',p:'$599',u:'/mes',hl:true,items:['Hasta 3 usuarios','200 timbres al mes','Compras y cobranza','Reportes completos'],cta:'Comprar Pyme',pay:''},
+         {n:'Empresa',p:'$1,199',u:'/mes',items:['Hasta 10 usuarios','500 timbres al mes','Varias sucursales','Soporte prioritario'],cta:'Comprar Empresa',pay:''}],
+  note:'Precios en MXN, IVA incluido. Timbres adicionales disponibles.',
+  faq:[['¿Incluye los timbres?','Sí, cada plan incluye timbres al mes. Si necesitas más, compras un paquete extra.'],['¿Puedo migrar desde Excel?','Sí. Te ayudamos a importar tus productos y clientes.'],['¿Funciona sin internet?','Necesitas conexión para timbrar y sincronizar.']]},
+ {id:'fusion-legacy',group:'juegos',name:'Fusión Legacy',status:['warn','Acceso anticipado'],art:'fusion',
+  short:'Fusiona personajes, construye tu legado y avanza por un mundo que crece contigo.',
+  pitch:'Nuestro juego principal. Combina personajes para crear versiones más poderosas, arma tu equipo y conquista un mundo que se expande con cada actualización.',
+  who:['Fans de juegos de colección y estrategia','Jugadores de celular y navegador'],
+  feats:[['Sistema de fusión','Combina personajes y descubre nuevas formas.'],['Progresión','Tu legado crece con cada partida.'],['Juega donde quieras','Navegador y Android.'],['Actualizaciones','Nuevo contenido de forma constante.']],
+  spec:'Web · Android',
+  plans:[{n:'Jugar',p:'Gratis',u:'',hl:true,items:['Acceso anticipado','Progreso guardado','Actualizaciones incluidas'],cta:'Quiero jugar'}],
+  note:'Escríbenos para entrar al acceso anticipado.',
+  faq:[['¿Cuánto cuesta?','Es gratis.'],['¿Cuándo sale en Google Play?','Pronto. Los jugadores del acceso anticipado lo reciben primero.']]},
+ {id:'block-forge',group:'juegos',name:'Block Forge',status:['ok','Beta v0.9'],art:'block',
+  short:'Construye con bloques, forja tus creaciones y pon a prueba tu ingenio.',
+  pitch:'Un juego de construcción por bloques para Android. Crea estructuras, forja objetos y comparte lo que construyes.',
+  who:['Jugadores creativos','Todas las edades'],
+  feats:[['Construcción libre','Crea lo que imagines bloque por bloque.'],['Forja','Combina materiales para crear objetos nuevos.'],['Ligero','Corre en la mayoría de los celulares Android.']],
+  spec:'Android · APK',
+  plans:[{n:'Beta',p:'Gratis',u:'',hl:true,items:['Versión 0.9 para Android','Únete a las pruebas cerradas'],cta:'Unirme a la beta'}],
+  note:'Próximamente en Google Play.',
+  faq:[['¿Cómo lo instalo?','Escríbenos y te agregamos a las pruebas de Google Play.']]},
+ {id:'consultoria-odoo',group:'servicios',name:'Consultoría Odoo',
+  short:'Implementación, migración, capacitación y soporte para que Odoo trabaje como tu empresa.',
+  pitch:'Te ayudamos a que Odoo se adapte a tu operación y no al revés. Desde el diagnóstico hasta la capacitación de tu equipo.',
+  who:['Empresas que van a implementar Odoo','Empresas con Odoo que no les funciona bien'],
+  feats:[['Diagnóstico','Revisamos tus procesos y te decimos qué necesitas.'],['Implementación','Contabilidad, inventario, ventas, compras y manufactura.'],['Migraciones','Cambio de versión sin perder información.'],['Capacitación','Presencial o en línea para tu equipo.']],
+  spec:'Odoo 16 · 17 · 18 · Localización México',
+  plans:[{n:'Diagnóstico',p:'$2,500',u:'',items:['Revisión de procesos','Plan de implementación','Estimación de tiempos y costo'],cta:'Solicitar'},
+         {n:'Bolsa de horas',p:'$450',u:'/hora',hl:true,items:['Consultoría y soporte','Mínimo 5 horas','Vigencia de 3 meses'],cta:'Solicitar'},
+         {n:'Implementación',p:'Desde $18,000',u:'',items:['Proyecto completo','Configuración y migración de datos','Capacitación incluida'],cta:'Solicitar cotización'}],
+  note:'Precios en MXN más IVA.',
+  faq:[['¿Trabajan con Odoo Community y Enterprise?','Sí, con ambas ediciones.']]},
+ {id:'modulos-odoo',group:'servicios',name:'Módulos para Odoo',
+  short:'Desarrollamos los módulos que te faltan: reportes, flujos de trabajo e integraciones.',
+  pitch:'Si Odoo no hace algo que tu empresa necesita, lo programamos. Módulos limpios, documentados y listos para actualizar de versión.',
+  who:['Empresas con Odoo','Partners de Odoo que necesitan apoyo de desarrollo'],
+  feats:[['Reportes personalizados','Reportes y PDFs con el formato que necesitas.'],['Flujos de trabajo','Aprobaciones, automatizaciones y validaciones.'],['Integraciones','Conexión con tiendas en línea, bancos y otros sistemas.']],
+  spec:'Python · OWL · Odoo 16–18',
+  plans:[{n:'Módulo',p:'Desde $3,500',u:'',hl:true,items:['Análisis y desarrollo','Pruebas en tu base','30 días de garantía'],cta:'Solicitar cotización'}],
+  note:'Precios en MXN más IVA. El precio final depende del alcance.',
+  faq:[['¿El código es mío?','Sí, te entregamos el código fuente del módulo.']]},
+ {id:'apps-a-medida',group:'servicios',name:'Apps a la medida',
+  short:'Apps para celular y sistemas web hechos para tu operación, desde el diseño hasta la publicación.',
+  pitch:'Diseñamos, programamos y publicamos tu app o sistema. Ves avances funcionando en tu celular desde la primera semana.',
+  who:['Negocios con una idea de app','Empresas que necesitan un sistema propio'],
+  feats:[['Apps Android','Publicadas en Google Play con tu cuenta o la nuestra.'],['Sistemas web','Portales, paneles y sistemas internos.'],['Landing pages','Páginas como esta para tu marca.'],['Mantenimiento','Mejoras y soporte después del lanzamiento.']],
+  spec:'Android · Web · APIs',
+  plans:[{n:'Landing page',p:'Desde $4,500',u:'',items:['Diseño a tu marca','Formulario de contacto','Publicación incluida'],cta:'Solicitar cotización'},
+         {n:'App Android',p:'Desde $15,000',u:'',hl:true,items:['Diseño y desarrollo','Publicación en Google Play','30 días de soporte'],cta:'Solicitar cotización'},
+         {n:'Sistema web',p:'Desde $25,000',u:'',items:['Usuarios y permisos','Base de datos','Panel de administración'],cta:'Solicitar cotización'}],
+  note:'Precios en MXN más IVA.',
+  faq:[['¿Cuánto tarda una app?','Una app sencilla, de 4 a 8 semanas.']]}
+];
+const byId=Object.fromEntries(P.map(p=>[p.id,p]));
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pill=p=>p.status?`<span class="pill ${p.status[0]}">${p.status[1]}</span>`:'';
+const from=p=>{const pl=p.plans.find(x=>/\$/.test(x.p));return pl?(/Desde/.test(pl.p)?pl.p:'Desde '+pl.p+(pl.u||'')):pl===undefined?'Gratis':''};
+
+document.querySelectorAll('[data-group]').forEach(el=>{
+  el.innerHTML=P.filter(p=>p.group===el.dataset.group).map(p=>`
+  <a class="card link${p.art?' game':''}" href="#${p.id}">
+    ${p.art?`<div class="art"><canvas data-art="${p.art}" aria-hidden="true"></canvas></div>`:''}
+    <div class="card-top"><div><h3>${esc(p.name)}</h3>${p.was?`<div class="was">${esc(p.was)}</div>`:''}</div>${pill(p)}</div>
+    <p>${esc(p.short)}</p>
+    <div class="spec"><span>${esc(from(p))}</span><span class="more">Ver más →</span></div>
+  </a>`).join('');
+});
+document.getElementById('f-interest').innerHTML=P.map(p=>`<option>${esc(p.name)}</option>`).join('');
+
+function buyHref(p,pl){if(pl.pay)return pl.pay;return 'mailto:'+MAIL+'?subject='+encodeURIComponent(`${p.name} · ${pl.n}`)+'&body='+encodeURIComponent(`Hola, me interesa ${p.name} (${pl.n}).`)}
+function renderDetail(p){
+  const d=document.getElementById('detail');
+  d.innerHTML=`
+  <a class="back" href="#inicio">← Todos los productos</a>
+  <header class="d-head">
+    <div class="d-title"><span class="label">${p.group==='negocio'?'Software':p.group==='juegos'?'Videojuego':'Servicio'}</span>
+      <h2>${esc(p.name)}</h2>${p.was?`<div class="was">${esc(p.was)}</div>`:''}${pill(p)}</div>
+    <p class="d-pitch">${esc(p.pitch)}</p>
+    <div class="ctas left"><a class="btn primary" href="#contacto" data-scroll="planes">Ver ${p.plans.length>1?'planes':'opciones'}</a><a class="btn ghost" href="#contacto" data-pick="${p.id}">Preguntar</a></div>
+    ${p.art?`<div class="art big"><canvas data-art="${p.art}" aria-hidden="true"></canvas></div>`:''}
+  </header>
+  <section class="d-sec"><h3 class="d-h">Para quién es</h3><ul class="who">${p.who.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></section>
+  <section class="d-sec"><h3 class="d-h">Qué incluye</h3><div class="feats">${p.feats.map(f=>`<div class="feat"><strong>${esc(f[0])}</strong><span>${esc(f[1])}</span></div>`).join('')}</div>
+    <p class="spec-line">${esc(p.spec)}</p></section>
+  <section class="d-sec" id="planes"><h3 class="d-h">${p.plans.length>1?'Planes y precios':'Precio'}</h3>
+    <div class="plans">${p.plans.map(pl=>`<div class="plan${pl.hl?' hl':''}">${pl.hl&&p.plans.length>1?'<span class="badge">Recomendado</span>':''}
+      <span class="plan-n">${esc(pl.n)}</span><div class="price">${esc(pl.p)}<small>${esc(pl.u||'')}</small></div>
+      <ul>${pl.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>
+      <a class="btn ${pl.hl?'primary':'ghost'}" href="${esc(buyHref(p,pl))}" target="_blank" rel="noopener">${esc(pl.cta)}</a></div>`).join('')}</div>
+    <p class="note">${esc(p.note)} ¿Dudas? Escríbenos a <b>${MAIL}</b>.</p></section>
+  <section class="d-sec"><h3 class="d-h">Preguntas frecuentes</h3>${p.faq.map(f=>`<details><summary>${esc(f[0])}</summary><p>${esc(f[1])}</p></details>`).join('')}</section>`;
+}
+
+function route(){
+  const id=location.hash.slice(1),p=byId[id];
+  document.getElementById('view-home').hidden=!!p;
+  document.getElementById('view-product').hidden=!p;
+  document.getElementById('inicio').hidden=!!p;
+  if(p){renderDetail(p);document.getElementById('f-interest').value=p.name;window.scrollTo(0,0);document.title=p.name+' · Impulsor'}
+  else{document.title='Impulsor Hub';const t=id&&document.getElementById(id);if(t)setTimeout(()=>t.scrollIntoView(),0)}
+  draw();
+}
+document.addEventListener('click',e=>{const sc=e.target.closest('[data-scroll]');if(sc){e.preventDefault();const t=document.getElementById(sc.dataset.scroll);if(t)t.scrollIntoView({behavior:'smooth'});return}const a=e.target.closest('[data-pick]');if(a){document.getElementById('f-interest').value=byId[a.dataset.pick].name}});
+
+document.getElementById('lead').addEventListener('submit',function(e){
+  e.preventDefault();const f=this,data=Object.fromEntries(new FormData(f));
+  const done=()=>{document.getElementById('thanks').hidden=false;f.reset()};
+  if(/github\.io$|impulsor/i.test(location.hostname)&&!/claude/.test(location.hostname)){
+    fetch('https://formsubmit.co/ajax/'+MAIL,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({...data,_subject:'Nuevo contacto web: '+data.interes})}).then(done,done);
+  }else done();
+});
+document.getElementById('copy-mail').addEventListener('click',function(){
+  const b=this;navigator.clipboard.writeText(MAIL).then(()=>{b.textContent='Copiado'},()=>{const r=document.createRange();r.selectNodeContents(document.getElementById('mail-text'));const s=getSelection();s.removeAllRanges();s.addRange(r)});
+});
+
+const css=getComputedStyle(document.documentElement);const c=n=>css.getPropertyValue(n).trim();
+function fit(cv){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;const x=cv.getContext('2d');x.scale(d,d);return [x,r.width,r.height]}
+const ART={
+ fusion(cv){const [x,w,h]=fit(cv);const cols=[c('--accent'),c('--ink')];
+  for(let i=0;i<2;i++){const cx=w/2+(i?36:-36),cy=h/2;const g=x.createRadialGradient(cx,cy,4,cx,cy,70);g.addColorStop(0,cols[i]);g.addColorStop(1,'transparent');x.globalAlpha=.85;x.fillStyle=g;x.beginPath();x.arc(cx,cy,70,0,7);x.fill()}
+  x.globalAlpha=1;x.strokeStyle=c('--bg');x.lineWidth=1.5;x.beginPath();x.arc(w/2,h/2,26,0,7);x.stroke()},
+ block(cv){const [x,w,h]=fit(cv);const s=18,cols=[c('--accent'),c('--ink'),c('--spark'),c('--muted')];let seed=7;const rnd=()=>(seed=(seed*9301+49297)%233280)/233280;
+  const n=Math.floor(w/s);for(let i=0;i<n;i++){const hh=1+Math.floor(rnd()*Math.max(5,h/s-1));for(let j=0;j<hh;j++){x.fillStyle=cols[(i+j)%4];x.globalAlpha=.25+.75*(j/hh);x.fillRect(i*s+1,h-(j+1)*s+1,s-2,s-2)}}}
+};
+function draw(){document.querySelectorAll('canvas[data-art]').forEach(cv=>{if(cv.offsetParent)ART[cv.dataset.art](cv)})}
+addEventListener('hashchange',route);addEventListener('resize',draw);route();
+</script>
