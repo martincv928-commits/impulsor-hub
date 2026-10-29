@@ -187,7 +187,7 @@ details p{margin:10px 0 0;color:var(--muted)}
       <a class="btn ghost" href="#negocio">Ver productos</a>
     </div>
     <ul class="lines">
-      <li><a href="#ventor"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="24" width="5" height="9" rx="1.5" fill="var(--ink)" stroke="none"/><rect x="17" y="17" width="5" height="16" rx="1.5" fill="var(--accent)" stroke="none"/><rect x="26" y="8" width="5" height="25" rx="1.5" fill="var(--accent)" stroke="none"/></svg><span>Mini ERP</span></a></li>
+      <li><a href="/ventor/"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="24" width="5" height="9" rx="1.5" fill="var(--ink)" stroke="none"/><rect x="17" y="17" width="5" height="16" rx="1.5" fill="var(--accent)" stroke="none"/><rect x="26" y="8" width="5" height="25" rx="1.5" fill="var(--accent)" stroke="none"/></svg><span>Mini ERP</span></a></li>
       <li><a href="#apps-a-medida"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="11" y="4" width="18" height="32" rx="3"/><path d="M17 8h6" stroke="var(--accent)"/><circle cx="20" cy="31" r="1" fill="var(--accent)" stroke="var(--accent)"/></svg><span>Apps a medida</span></a></li>
       <li><a href="#juegos"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 13h18a7 7 0 0 1 6.8 8.6l-1.6 6.6a3.5 3.5 0 0 1-6 1.5L25 26H15l-3.2 3.7a3.5 3.5 0 0 1-6-1.5l-1.6-6.6A7 7 0 0 1 11 13z"/><path d="M12 18v6M9 21h6"/><circle cx="27" cy="19" r="1.2" fill="var(--accent)" stroke="var(--accent)"/><circle cx="30" cy="23" r="1.2" fill="var(--accent)" stroke="var(--accent)"/></svg><span>Videojuegos</span></a></li>
       <li><a href="#fiscalbox"><svg viewBox="0 0 40 40" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h14l7 7v25H10z"/><path d="M24 4v7h7"/><path d="M15 19h11M15 24h11" stroke="var(--accent)"/><path d="M15 29h7"/></svg><span>App fiscal</span></a></li>
@@ -303,17 +303,12 @@ const P=[
          {n:'Despacho',p:'$899',u:'/mes',items:['Hasta 15 RFC','Panel por cliente','Exportación a Excel','Soporte prioritario'],cta:'Apartar lugar',pay:''}],
   note:'En preventa: aparta tu lugar y obtén 3 meses al 50% en el lanzamiento. Precios en MXN, IVA incluido.',
   faq:[['¿Es seguro conectar mi e.firma?','Tu e.firma se guarda cifrada y solo se usa para descargar tus CFDI del SAT.'],['¿Presenta la declaración por mí?','Te deja los montos listos. La presentación final la haces tú o tu contador en el portal del SAT.'],['¿Cuándo sale?','Estamos en desarrollo. Al apartar tu lugar te avisamos primero.']]},
- {id:'ventor',group:'negocio',name:'Ventor',was:'Mini ERP',status:['ok','Disponible'],
-  short:'Ventas, inventario y facturación con timbrado en un sistema sencillo para negocios pequeños.',
-  pitch:'Ventor es el ERP para el negocio que ya creció pero no necesita un sistema gigante. Vende, controla tu inventario y factura con timbrado CFDI desde el mismo lugar.',
-  who:['Tiendas y comercios','Distribuidores','Talleres y negocios de servicios'],
-  feats:[['Punto de venta','Vende rápido desde el celular, tablet o computadora.'],['Inventario','Existencias en tiempo real, entradas, salidas y alertas de mínimo.'],['Facturación CFDI 4.0','Timbra facturas, notas de crédito y complementos de pago.'],['Clientes y cobranza','Saldos, cuentas por cobrar y estados de cuenta.'],['Compras','Órdenes a proveedores y recepción de mercancía.'],['Reportes','Ventas por día, producto y vendedor.']],
-  spec:'Web · Multiusuario · CFDI 4.0',
-  plans:[{n:'Emprendedor',p:'$299',u:'/mes',items:['1 usuario','50 timbres al mes','Ventas, inventario y facturación'],cta:'Comprar Emprendedor',pay:''},
-         {n:'Pyme',p:'$599',u:'/mes',hl:true,items:['Hasta 3 usuarios','200 timbres al mes','Compras y cobranza','Reportes completos'],cta:'Comprar Pyme',pay:''},
-         {n:'Empresa',p:'$1,199',u:'/mes',items:['Hasta 10 usuarios','500 timbres al mes','Varias sucursales','Soporte prioritario'],cta:'Comprar Empresa',pay:''}],
-  note:'Precios en MXN, IVA incluido. Timbres adicionales disponibles.',
-  faq:[['¿Incluye los timbres?','Sí, cada plan incluye timbres al mes. Si necesitas más, compras un paquete extra.'],['¿Puedo migrar desde Excel?','Sí. Te ayudamos a importar tus productos y clientes.'],['¿Funciona sin internet?','Necesitas conexión para timbrar y sincronizar.']]},
+ {id:'ventor',group:'negocio',name:'Ventor',was:'Mini ERP',status:['ok','Disponible'],href:'/ventor/',fromText:'Gratis · planes desde $199/mes',
+  short:'Punto de venta, inventario, cobranza y facturación CFDI desde el celular. Funciona sin internet.',
+  pitch:'Ventor es el sistema para el negocio que ya creció pero no necesita un ERP gigante.',
+  who:['Tiendas y comercios','Distribuidores','Talleres y servicios'],
+  feats:[['Punto de venta','Vende desde el celular o la computadora.']],spec:'Android · Web',
+  plans:[{n:'Gratis',p:'$0',u:'',items:['1 usuario','Punto de venta e inventario'],cta:'Empezar gratis'}],note:'',faq:[['¿Dónde veo todo?','En la página de Ventor.']]},
  {id:'fusion-legacy',group:'juegos',name:'Fusión Legacy',status:['warn','Acceso anticipado'],art:'fusion',
   short:'Fusiona personajes, construye tu legado y avanza por un mundo que crece contigo.',
   pitch:'Nuestro juego principal. Combina personajes para crear versiones más poderosas, arma tu equipo y conquista un mundo que se expande con cada actualización.',
@@ -371,11 +366,11 @@ const from=p=>{const pl=p.plans.find(x=>/\$/.test(x.p));return pl?(/Desde/.test(
 
 document.querySelectorAll('[data-group]').forEach(el=>{
   el.innerHTML=P.filter(p=>p.group===el.dataset.group).map(p=>`
-  <a class="card link${p.art?' game':''}" href="#${p.id}">
+  <a class="card link${p.art?' game':''}" href="${p.href||'#'+p.id}">
     ${p.art?`<div class="art"><canvas data-art="${p.art}" aria-hidden="true"></canvas></div>`:''}
     <div class="card-top"><div><h3>${esc(p.name)}</h3>${p.was?`<div class="was">${esc(p.was)}</div>`:''}</div>${pill(p)}</div>
     <p>${esc(p.short)}</p>
-    <div class="spec"><span>${esc(from(p))}</span><span class="more">Ver más →</span></div>
+    <div class="spec"><span>${esc(p.fromText||from(p))}</span><span class="more">Ver más →</span></div>
   </a>`).join('');
 });
 document.getElementById('f-interest').innerHTML=P.map(p=>`<option>${esc(p.name)}</option>`).join('');
@@ -405,7 +400,7 @@ function renderDetail(p){
 }
 
 function route(){
-  const id=location.hash.slice(1),p=byId[id];
+  const id=location.hash.slice(1),p=byId[id];if(p&&p.href){location.replace(p.href);return}
   document.getElementById('view-home').hidden=!!p;
   document.getElementById('view-product').hidden=!p;
   document.getElementById('inicio').hidden=!!p;
