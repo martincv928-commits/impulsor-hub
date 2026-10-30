@@ -1,8 +1,8 @@
-/* Service worker de QuoteFlow Admin: solo lo necesario para poder instalarlo
+/* Service worker de Cotízame Admin: solo lo necesario para poder instalarlo
  * con su propio ícono. No es una herramienta que se use sin conexión, así
  * que aquí no hay estrategia de caché elaborada: cachea lo básico para que
  * Chrome permita "Instalar app" y listo. */
-const CACHE_NAME = 'quoteflow-admin-v5';
+const CACHE_NAME = 'quoteflow-admin-v6';
 const STATIC_ASSETS = [
   './',
   'index.html',
