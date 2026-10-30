@@ -91,6 +91,7 @@
         .getMine()
         .then((biz) => {
           if (biz) S.cloudBusiness = biz;
+          ensurePlans();
           if (S.view === 'home') render();
         })
         .catch(() => {});
@@ -114,9 +115,15 @@
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
     const CapApp = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
     if (CapApp) {
-      CapApp.addListener('backButton', ({ canGoBack }) => {
-        if (canGoBack) window.history.back();
-        else CapApp.exitApp();
+      // No depende del historial (algunas pantallas se abren sin pasar por
+      // go() y no dejan marca): usa la pantalla actual. Primero la flecha
+      // "Volver" visible; si no hay, cualquier pantalla que no sea el inicio
+      // regresa al inicio; solo desde el inicio se sale de la app.
+      CapApp.addListener('backButton', () => {
+        const btn = app.querySelector('header.top .icon-btn[aria-label^="Volver"]');
+        if (btn) { btn.click(); return; }
+        if (S.view && S.view !== 'home') { go('home'); return; }
+        CapApp.exitApp();
       });
     }
   }
@@ -167,6 +174,27 @@
   function canDeleteQuotes() {
     if (!(cloudOn && S.cloudBusiness)) return true;
     return S.cloudBusiness._myRole === 'owner';
+  }
+  // Funciones por plan (plan_limits.features). Sin sesión en la nube, o mientras
+  // no se hayan cargado los planes, TODO queda disponible: así nadie pierde
+  // una función por no tener conexión.
+  const PLAN_NAMES = { FREE: 'Gratis', BASIC: 'Básico', PRO: 'Pro' };
+  const FEATURE_LABELS = {
+    push: 'Avisos de cobranza en tu celular',
+    export_csv: 'Exportar a Excel/CSV',
+    reports: 'Reportes de ventas y cobros',
+  };
+  function hasFeature(f) {
+    if (!(cloudOn && S.cloudBusiness && S.plans)) return true;
+    const row = S.plans[S.cloudBusiness.plan];
+    return !row || !!(row.features && row.features[f]);
+  }
+  function ensurePlans() {
+    if (S.plans || !(cloudOn && S.cloudBusiness)) return;
+    CLOUD.business.getPlans().then((p) => { S.plans = p; render(); }).catch(() => {});
+  }
+  function lockedToast(f) {
+    toast(`${FEATURE_LABELS[f]} es parte de un plan superior. Mira los planes en Configuración.`);
   }
   // Pill de estado para mostrar: se basa en isConfirmed/isRejected (no en si
   // el campo "confirmation" vino explícito o no), para que las órdenes de
@@ -514,6 +542,7 @@
   async function afterLogin() {
     S.cloudBusiness = await CLOUD.business.getMine();
     if (!S.cloudBusiness) return go('business-new');
+    ensurePlans();
     const synced = DB.getSyncedBusinessId();
     if (synced && synced !== S.cloudBusiness.id) {
       // Esta cuenta es de un negocio DISTINTO al que este dispositivo tenía
@@ -1954,6 +1983,36 @@
   }
 
   /* ---------- configuración ---------- */
+  function viewPlans() {
+    const cur = S.cloudBusiness && S.cloudBusiness.plan;
+    const order = ['FREE', 'BASIC', 'PRO'];
+    const plans = S.plans || {};
+    const col = (pl) => {
+      const r = plans[pl];
+      if (!r) return '';
+      const feats = Object.keys(FEATURE_LABELS)
+        .map((f) => `<li>${r.features && r.features[f] ? '✓' : '—'} ${esc(FEATURE_LABELS[f])}</li>`).join('');
+      return `<div class="sheet" style="padding:12px;${pl === cur ? 'border:2px solid var(--primary,#2b3a9e)' : ''}">
+        <div class="section-h"><h2>${PLAN_NAMES[pl]}${pl === cur ? ' · tu plan' : ''}</h2></div>
+        <ul style="list-style:none;padding:0;margin:0;line-height:1.7">
+          <li>${r.max_users} usuario${r.max_users === 1 ? '' : 's'}</li>
+          <li>${r.max_quotes_per_month} cotizaciones al mes</li>
+          <li>${r.max_storage_mb >= 1000 ? r.max_storage_mb / 1000 + ' GB' : r.max_storage_mb + ' MB'} de almacenamiento</li>
+          ${feats}
+        </ul></div>`;
+    };
+    return `
+      <header class="top">
+        <button class="icon-btn" data-act="settings" aria-label="Volver a configuración">${icon.back}</button>
+        <div class="title">Planes</div>
+      </header>
+      <div class="stack">
+        <p class="hint">${plans[cur] ? 'Estás en el plan ' + esc(PLAN_NAMES[cur]) + '.' : 'Cargando planes…'} Para cambiar de plan, escríbenos desde Soporte.</p>
+        ${order.map(col).join('')}
+        <button class="btn block" data-act="support-home">Escribir a Soporte</button>
+      </div>`;
+  }
+
   function viewSettings() {
     const s = S.settings;
     return `
@@ -2040,6 +2099,7 @@
             </div>
             <button class="btn primary block" data-act="resync-pending" ${S.authBusy ? 'disabled' : ''}>${S.authBusy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
           ` : ''}
+          <button class="btn block" data-act="plans">Ver planes${S.cloudBusiness && S.cloudBusiness.plan ? ' · tu plan: ' + esc(PLAN_NAMES[S.cloudBusiness.plan] || S.cloudBusiness.plan) : ''}</button>
           <button class="btn block" data-act="support-home">Soporte</button>
           <button class="btn block ghost" data-act="force-refresh" ${S.authBusy ? 'disabled' : ''}>Forzar actualización de la app</button>
           <p class="hint" style="margin-top:-4px">Si acabas de actualizar Cotízame y no ves los cambios, usa esto — no afecta tu sesión ni tus datos guardados.</p>
@@ -2162,10 +2222,11 @@
     const q = S.quote;
     switch (act) {
       case 'settings': return go('settings');
+      case 'plans': ensurePlans(); return go('plans');
       case 'home': S.writeOpen = false; return go('home');
       case 'collections': return go('collections');
       case 'orders': return go('orders');
-      case 'reports': return go('reports');
+      case 'reports': if (!hasFeature('reports')) { lockedToast('reports'); return go('plans'); } return go('reports');
       case 'clients': S.customers = DB.getCustomers(); return go('clients');
       case 'open-client': S.activeCustomer = S.customers.find((c) => c.id === b.dataset.id); return go('client-detail');
       case 'delete-client': {
@@ -2391,6 +2452,7 @@
       }
       case 'logo-remove': S.settings.logo = ''; DB.saveSettings(S.settings); return render();
       case 'export-quotes-csv': {
+        if (!hasFeature('export_csv')) { lockedToast('export_csv'); return go('plans'); }
         const rows = [[`Folio ${lower(labelQuote())}`, `Folio ${lower(labelOrder())}`, 'Cliente', 'Fecha', 'Estado', 'Confirmación', 'Total', 'Pagado', 'Saldo']];
         DB.getQuotes().filter((q) => q.status === 'GENERADA').forEach((q) => {
           const conf = q.confirmation === 'RECHAZADA' ? 'Rechazada' : q.confirmation === 'CONFIRMADA' ? labelOrder() : q.confirmation === null ? 'Por confirmar' : labelOrder();
@@ -2400,6 +2462,7 @@
         return;
       }
       case 'export-payments-csv': {
+        if (!hasFeature('export_csv')) { lockedToast('export_csv'); return go('plans'); }
         const rows = [['Folio', 'Cliente', 'Fecha de pago', 'Monto', 'Método', 'Nota']];
         DB.getQuotes().forEach((q) => (q.payments || []).forEach((p) => {
           rows.push([q.orderFolio || q.folio || '', q.client || '', dateStr(p.paidAt), M.centsToStr(p.amountCents), PAYMENT_METHOD_LABEL[p.method] || p.method, p.note || '']);
@@ -2408,12 +2471,14 @@
         return;
       }
       case 'export-clients-csv': {
+        if (!hasFeature('export_csv')) { lockedToast('export_csv'); return go('plans'); }
         const rows = [['Nombre', 'Teléfono', 'Notas', 'Deuda actual']];
         S.customers.forEach((c) => rows.push([c.name, c.phone || '', c.notes || '', M.centsToStr(customerInfo(c.name).debt)]));
         downloadCsv(rows, 'clientes.csv');
         return;
       }
       case 'export-overdue-csv': {
+        if (!hasFeature('export_csv')) { lockedToast('export_csv'); return go('plans'); }
         const rows = [['Cliente', 'Folio', 'Concepto', 'Monto vencido', 'Venció el']];
         overdueItemsReport().forEach((it) => rows.push([it.client, it.folio || '', it.label, M.centsToStr(it.amount), dateStr(it.dueAt)]));
         downloadCsv(rows, 'vencidos.csv');
@@ -2510,7 +2575,7 @@
         S.authBusy = false;
         return render();
       }
-      case 'enable-push': return enablePush();
+      case 'enable-push': if (!hasFeature('push')) { lockedToast('push'); return go('plans'); } return enablePush();
       case 'disable-push': return disablePush();
       case 'import-no': {
         DB.setImportDecided();
@@ -2775,7 +2840,7 @@
       home: viewHome, editor: viewEditor, summary: viewSummary, settings: viewSettings,
       loading: viewLoading, auth: viewAuth, 'set-password': viewSetPassword, 'business-new': viewBusinessNew, 'import-prompt': viewImportPrompt,
       'support-list': viewSupportList, 'support-new': viewSupportNew, 'support-ticket': viewSupportTicket, feedback: viewFeedback,
-      collections: viewCollections, orders: viewOrders, reports: viewReports, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
+      collections: viewCollections, orders: viewOrders, reports: viewReports, plans: viewPlans, clients: viewClients, 'client-detail': viewClientDetail, 'client-statement': viewClientStatement,
     };
     app.innerHTML = views[S.view]();
   }

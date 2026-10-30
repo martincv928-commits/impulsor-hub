@@ -119,6 +119,13 @@
       // usado para restringir acciones delicadas (como eliminar) a solo ella.
       return data ? Object.assign({}, data.businesses, { _myRole: data.role }) : null;
     },
+    // Límites y funciones de cada plan (tabla plan_limits, legible por
+    // cualquier cuenta con sesión). Devuelve { FREE: {...}, BASIC: {...}, PRO: {...} }.
+    async getPlans() {
+      const { data, error } = await client().from('plan_limits').select('*');
+      if (error) throw new Error(friendlyError(error));
+      return Object.fromEntries((data || []).map((r) => [r.plan, r]));
+    },
     async create(fields) {
       const { data, error } = await client().rpc('create_business', {
         p_name: fields.name || '',

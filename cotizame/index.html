@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cotízame · Cotizaciones y cobranza desde tu celular</title>
+<meta name="description" content="Cotízame: arma cotizaciones con tu logo hablando o escribiendo, envíalas por WhatsApp y da seguimiento a tus cobros. Para negocios pequeños en México.">
+<meta name="theme-color" content="#121a4d">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@600;700;800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#0c1238; --surface:#141c4f; --surface2:#1a2360; --ink:#f5f6ff; --muted:#aab0d6; --line:#2b3680;
+  --accent:#ffd166; --accent2:#f4a623; --accent-ink:#121a4d; --ok:#3fcb86;
+  --display:"Exo 2",ui-sans-serif,system-ui,sans-serif;
+  --body:"Figtree",ui-sans-serif,system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left,0px))}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.08;text-wrap:balance}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.label{font-weight:600;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent)}
+
+nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:21px;text-decoration:none}
+.logo img{width:34px;height:34px;border-radius:9px}
+.navlinks{display:flex;gap:22px;font-weight:500;font-size:15px}
+.navlinks a{text-decoration:none;color:var(--muted)}
+.navlinks a:hover{color:var(--ink)}
+@media (max-width:700px){.navlinks{display:none}}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 24px;border-radius:12px;font-weight:600;text-decoration:none;border:1.5px solid var(--line);color:var(--ink);background:transparent;cursor:pointer;font-size:16px;font-family:var(--body)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{background:var(--accent2);border-color:var(--accent2)}
+.btn.ghost:hover{border-color:var(--accent)}
+
+.hero{padding-block:36px 64px;background:radial-gradient(ellipse 80% 60% at 70% 0%,rgba(255,209,102,.16),transparent 65%),var(--bg)}
+.hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}}
+.hero h1{font-size:clamp(34px,6vw,58px);font-weight:800;margin-block:14px 18px}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero p.lead{font-size:19px;color:var(--muted);max-width:34em;margin:0 0 26px}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+.fine{margin-top:14px;font-size:14px;color:var(--muted)}
+
+/* mockup de cotización */
+.phone{max-width:330px;margin-inline:auto;background:#fff;color:#16183a;border-radius:22px;padding:18px;box-shadow:0 30px 70px rgba(0,0,0,.5),0 0 0 6px #1a2360;transform:rotate(2deg)}
+.phone .top{display:flex;justify-content:space-between;align-items:center;font-family:var(--display);font-weight:800}
+.phone .top small{font-weight:600;color:#7a7fa8}
+.phone hr{border:0;border-top:1px dashed #cfd2ea;margin:12px 0}
+.phone .row{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
+.phone .tot{font-family:var(--display);font-weight:800;font-size:20px}
+.phone .mic{margin:14px 0 0;background:#f1f2fb;border-radius:12px;padding:10px 12px;font-size:13px;color:#4a4f7a}
+.phone .mic b{color:#121a4d}
+.phone .pill{display:inline-block;background:#e4f8ee;color:#1c7a4d;font-weight:600;font-size:12px;border-radius:99px;padding:3px 10px}
+
+section{padding-block:64px}
+section.alt{background:var(--surface)}
+.h2{font-size:clamp(26px,4vw,38px);font-weight:800;margin-block:10px 14px}
+.sub{color:var(--muted);max-width:40em;margin:0 0 34px}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){.steps,.feats{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.steps,.feats{grid-template-columns:1fr}}
+.card{background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:20px}
+section.alt .card{background:var(--bg)}
+.card h3{font-size:18px;margin-bottom:6px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.num{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-family:var(--display);font-weight:800;margin-bottom:12px}
+
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
+@media (max-width:860px){.plans{grid-template-columns:1fr}}
+.plan{position:relative;background:var(--surface2);border:1px solid var(--line);border-radius:18px;padding:24px;display:flex;flex-direction:column}
+.plan.hl{border:2px solid var(--accent)}
+.badge{position:absolute;top:-12px;left:20px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:12px;border-radius:99px;padding:3px 12px}
+.plan-n{font-family:var(--display);font-weight:800;font-size:22px}
+.price{font-family:var(--display);font-weight:800;font-size:40px;margin-block:8px 4px}
+.price small{font-size:15px;font-weight:600;color:var(--muted)}
+.plan ul{list-style:none;padding:0;margin:14px 0 22px;display:grid;gap:9px;flex:1}
+.plan li{display:flex;gap:10px;font-size:15px}
+.plan li::before{content:"✓";color:var(--ok);font-weight:800}
+.plan li.no{color:var(--muted)}
+.plan li.no::before{content:"—";color:var(--muted)}
+.note{color:var(--muted);font-size:14px;margin-top:18px}
+
+details{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:10px}
+details summary{cursor:pointer;font-weight:600}
+details p{margin:10px 0 0;color:var(--muted)}
+
+.cta-band{text-align:center;background:radial-gradient(ellipse 70% 100% at 50% 100%,rgba(255,209,102,.18),transparent 70%),var(--bg)}
+.cta-band .ctas{justify-content:center}
+
+footer{padding-block:28px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav>
+    <a class="logo" href="#"><img src="icon-192.png" alt="" width="34" height="34">Cotízame</a>
+    <div class="navlinks">
+      <a href="#como">Cómo funciona</a>
+      <a href="#funciones">Funciones</a>
+      <a href="#planes">Planes</a>
+      <a href="#faq">Preguntas</a>
+    </div>
+    <a class="btn primary" href="https://martincv928-commits.github.io/impulsor-hub/quoteflow/" style="min-height:40px;padding:0 18px">Abrir la app</a>
+  </nav>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="label">Para negocios pequeños en México</span>
+      <h1>Cotiza hablando. <em>Cobra sin olvidarte de nadie.</em></h1>
+      <p class="lead">Dile a Cotízame lo que quieres cotizar y arma el PDF con tu logo en minutos. Envíalo por WhatsApp y lleva el control de quién ya pagó y quién te debe.</p>
+      <div class="ctas">
+        <a class="btn primary" href="https://martincv928-commits.github.io/impulsor-hub/quoteflow/">Empezar gratis</a>
+        <a class="btn ghost" href="https://play.google.com/store/apps/details?id=mx.impulsorhub.quoteflow">Google Play</a>
+      </div>
+      <p class="fine">Sin tarjeta · Funciona en tu celular y en el navegador</p>
+    </div>
+    <div class="phone" aria-hidden="true">
+      <div class="top"><span>Cotización #0042</span><small>Vigencia 15 días</small></div>
+      <hr>
+      <div class="row"><span>2 × Pintura vinílica 19 L</span><span>$3,800</span></div>
+      <div class="row"><span>1 × Mano de obra</span><span>$2,500</span></div>
+      <div class="row"><span>IVA 16%</span><span>$1,008</span></div>
+      <hr>
+      <div class="row tot"><span>Total</span><span>$7,308</span></div>
+      <div class="mic">🎤 <b>“Dos cubetas de pintura de 19 litros y una mano de obra de 2,500…”</b></div>
+      <p style="margin:12px 0 0"><span class="pill">Anticipo recibido · $3,000</span></p>
+    </div>
+  </div>
+</header>
+
+<section id="como">
+  <div class="wrap">
+    <span class="label">Cómo funciona</span>
+    <h2 class="h2">De la idea al cobro en tres pasos</h2>
+    <p class="sub">Sin hojas de cálculo ni copiar y pegar. Todo desde el celular.</p>
+    <div class="steps">
+      <div class="card"><span class="num">1</span><h3>Dicta o escribe</h3><p>Habla como se lo dirías a un cliente. Cotízame entiende productos, cantidades y precios, y usa tu catálogo.</p></div>
+      <div class="card"><span class="num">2</span><h3>Revisa y envía</h3><p>Ajusta lo que quieras y manda un PDF con tu logo por WhatsApp o correo.</p></div>
+      <div class="card"><span class="num">3</span><h3>Da seguimiento al cobro</h3><p>Registra anticipos y pagos, arma parcialidades y ve quién está atrasado.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="funciones" class="alt">
+  <div class="wrap">
+    <span class="label">Funciones</span>
+    <h2 class="h2">Hecho para cotizar y cobrar, nada más</h2>
+    <p class="sub">Lo que un negocio pequeño usa todos los días, sin menús que no necesitas.</p>
+    <div class="feats">
+      <div class="card"><h3>Cotizaciones con tu marca</h3><p>PDF con tu logo, datos del negocio, condiciones y vigencia.</p></div>
+      <div class="card"><h3>Dictado por voz</h3><p>Cotiza manos libres desde la obra, el taller o el mostrador.</p></div>
+      <div class="card"><h3>Catálogo de productos</h3><p>Guarda precios una sola vez y reutilízalos en cada cotización.</p></div>
+      <div class="card"><h3>Pagos y parcialidades</h3><p>Anticipos, abonos y planes de pago con fechas, siempre cuadrados.</p></div>
+      <div class="card"><h3>Cobranza al día</h3><p>Reporte de vencidos y avisos en tu celular de quién debe o está por vencer.</p></div>
+      <div class="card"><h3>Clientes y estados de cuenta</h3><p>Historial por cliente y estado de cuenta listo para compartir.</p></div>
+      <div class="card"><h3>Reportes</h3><p>Cuánto cotizaste y cuánto cobraste cada mes, y quiénes son tus mejores clientes.</p></div>
+      <div class="card"><h3>Exporta a Excel</h3><p>Cotizaciones, pagos y clientes en CSV para tu contador.</p></div>
+      <div class="card"><h3>Tus datos respaldados</h3><p>Tu información vive en la nube: cambias de celular y todo sigue ahí.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="planes">
+  <div class="wrap">
+    <span class="label">Planes</span>
+    <h2 class="h2">Empieza gratis, crece cuando lo necesites</h2>
+    <p class="sub">Cada plan suma funciones, no solo más cupo.</p>
+    <div class="plans">
+      <div class="plan">
+        <span class="plan-n">Gratis</span>
+        <div class="price">$0</div>
+        <ul>
+          <li>1 usuario</li>
+          <li>30 cotizaciones al mes</li>
+          <li>50 MB de almacenamiento</li>
+          <li>Dictado por voz, catálogo y PDF</li>
+          <li>Pagos y parcialidades</li>
+          <li class="no">Avisos de cobranza en el celular</li>
+          <li class="no">Exportar a Excel/CSV</li>
+          <li class="no">Reportes de ventas y cobros</li>
+        </ul>
+        <a class="btn ghost" href="https://martincv928-commits.github.io/impulsor-hub/quoteflow/">Empezar gratis</a>
+      </div>
+      <div class="plan hl">
+        <span class="badge">Recomendado</span>
+        <span class="plan-n">Básico</span>
+        <div class="price">$99<small> /mes</small></div>
+        <ul>
+          <li>Hasta 3 usuarios</li>
+          <li>200 cotizaciones al mes</li>
+          <li>500 MB de almacenamiento</li>
+          <li>Todo lo de Gratis</li>
+          <li>Avisos de cobranza en el celular</li>
+          <li>Exportar a Excel/CSV</li>
+          <li class="no">Reportes de ventas y cobros</li>
+        </ul>
+        <a class="btn primary" href="mailto:impulsorhub@gmail.com?subject=Cotízame%20·%20Básico&body=Hola%2C%20me%20interesa%20Cotízame%20(plan%20Básico).">Contratar Básico</a>
+      </div>
+      <div class="plan">
+        <span class="plan-n">Pro</span>
+        <div class="price">$249<small> /mes</small></div>
+        <ul>
+          <li>Hasta 10 usuarios</li>
+          <li>2,000 cotizaciones al mes</li>
+          <li>5 GB de almacenamiento</li>
+          <li>Todo lo de Básico</li>
+          <li>Reportes de ventas y cobros</li>
+          <li>Mejores clientes y comparativo mensual</li>
+        </ul>
+        <a class="btn ghost" href="mailto:impulsorhub@gmail.com?subject=Cotízame%20·%20Pro&body=Hola%2C%20me%20interesa%20Cotízame%20(plan%20Pro).">Contratar Pro</a>
+      </div>
+    </div>
+    <p class="note">Precios en pesos mexicanos, IVA incluido. Cancela cuando quieras. ¿Dudas? Escríbenos a <b>impulsorhub@gmail.com</b>.</p>
+  </div>
+</section>
+
+<section id="faq" class="alt">
+  <div class="wrap">
+    <span class="label">Preguntas frecuentes</span>
+    <h2 class="h2">Lo que más nos preguntan</h2>
+    <details><summary>¿Necesito computadora?</summary><p>No. Cotízame funciona desde el celular y también puedes usarlo en el navegador.</p></details>
+    <details><summary>¿Qué pasa si cambio de celular?</summary><p>Inicias sesión con tu cuenta y tus cotizaciones, clientes y pagos siguen ahí, porque se guardan en la nube.</p></details>
+    <details><summary>¿Puedo facturar desde Cotízame?</summary><p>Cotízame es para cotizar y cobrar. Para facturar con timbrado CFDI usa Ventor, de Impulsor.</p></details>
+    <details><summary>¿Funciona sin internet?</summary><p>Puedes consultar y capturar sin conexión; se sincroniza al volver a tener internet. El dictado por voz usa el servicio de tu celular.</p></details>
+    <details><summary>¿Cómo cambio de plan?</summary><p>Escríbenos a impulsorhub@gmail.com o desde Soporte dentro de la app y lo activamos en tu cuenta.</p></details>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="wrap">
+    <h2 class="h2">Tu próxima cotización, lista en dos minutos</h2>
+    <p class="sub" style="margin-inline:auto">Pruébalo gratis. Sin tarjeta y sin instalar nada si no quieres.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://martincv928-commits.github.io/impulsor-hub/quoteflow/">Empezar gratis</a>
+      <a class="btn ghost" href="mailto:impulsorhub@gmail.com">Hablar con nosotros</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Cotízame · un producto de Impulsor</span>
+    <span><a href="https://martincv928-commits.github.io/impulsor-hub/quoteflow/privacy.html">Privacidad</a> · impulsorhub@gmail.com</span>
+  </div>
+</footer>
+</body>
+</html>
