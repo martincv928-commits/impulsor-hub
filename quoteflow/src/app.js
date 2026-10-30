@@ -114,9 +114,15 @@
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
     const CapApp = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
     if (CapApp) {
-      CapApp.addListener('backButton', ({ canGoBack }) => {
-        if (canGoBack) window.history.back();
-        else CapApp.exitApp();
+      // No depende del historial (algunas pantallas se abren sin pasar por
+      // go() y no dejan marca): usa la pantalla actual. Primero la flecha
+      // "Volver" visible; si no hay, cualquier pantalla que no sea el inicio
+      // regresa al inicio; solo desde el inicio se sale de la app.
+      CapApp.addListener('backButton', () => {
+        const btn = app.querySelector('header.top .icon-btn[aria-label^="Volver"]');
+        if (btn) { btn.click(); return; }
+        if (S.view && S.view !== 'home') { go('home'); return; }
+        CapApp.exitApp();
       });
     }
   }
