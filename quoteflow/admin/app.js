@@ -1,4 +1,4 @@
-/* Cotízame Admin: consola del propietario de la plataforma.
+/* QuoteFlow Admin: consola del propietario de la plataforma.
  * Ninguna acción sensible ocurre aquí: este archivo solo llama a las
  * funciones admin_* de la base de datos, que verifican por su cuenta que
  * quien llama es un administrador real (ver supabase/schema_v0.3.1.sql). */
@@ -9,7 +9,7 @@
   const app = document.getElementById('app');
 
   if (!CLOUD.enabled()) {
-    app.innerHTML = '<div class="hero"><p>Cotízame Admin no está configurado.</p></div>';
+    app.innerHTML = '<div class="hero"><p>QuoteFlow Admin no está configurado.</p></div>';
     return;
   }
 
@@ -60,7 +60,7 @@
 
   function viewAuth() {
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">Cotízame<small>Admin</small></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
       <form class="stack" id="auth-form">
         <div class="field"><label for="a-email">Correo</label><input id="a-email" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="a-pass">Contraseña</label><input id="a-pass" name="password" type="password" required autocomplete="current-password"></div>
@@ -71,7 +71,7 @@
 
   function viewForgotPassword() {
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">Cotízame<small>Admin</small></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
       <form class="stack" id="forgot-password-form">
         <p class="hint">Escribe tu correo de administrador y te mandamos un enlace para restablecer tu contraseña.</p>
         <div class="field"><label for="fp-email">Correo</label><input id="fp-email" name="email" type="email" required autocomplete="email"></div>
@@ -82,7 +82,7 @@
 
   function viewResetPassword() {
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">Cotízame<small>Admin</small></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
       <form class="stack" id="reset-password-form">
         <p class="hint">Elige tu nueva contraseña.</p>
         <div class="field"><label for="rp-pass">Nueva contraseña</label><input id="rp-pass" name="password" type="password" required minlength="6" autocomplete="new-password"></div>
@@ -93,7 +93,7 @@
 
   function viewNotAdmin() {
     return `
-      <div class="hero" style="padding-top:14px"><div class="brand">Cotízame<small>Admin</small></div></div>
+      <div class="hero" style="padding-top:14px"><div class="brand">QuoteFlow<small>Admin</small></div></div>
       <div class="stack">
         <p>Esta cuenta (${esc(S.session.user.email)}) no tiene permisos de administrador de la plataforma.</p>
         <button class="btn block" data-act="logout">Cerrar sesión</button>
@@ -104,7 +104,7 @@
     const s = S.stats;
     const tile = (n, l) => `<div class="card" style="align-items:center;text-align:center"><div class="totals t" style="font-size:26px">${n}</div><div class="hint">${l}</div></div>`;
     return `
-      <header class="top"><div class="brand">Cotízame<small>Admin</small></div></header>
+      <header class="top"><div class="brand">QuoteFlow<small>Admin</small></div></header>
       ${nav('dashboard')}
       <div class="two-col" style="margin-top:14px">
         ${tile(s.businesses_total, 'Negocios totales')}
@@ -128,7 +128,7 @@
 
   function viewBusinesses() {
     return `
-      <header class="top"><div class="brand">Cotízame<small>Admin</small></div></header>
+      <header class="top"><div class="brand">QuoteFlow<small>Admin</small></div></header>
       ${nav('businesses')}
       <div class="field" style="margin-top:14px"><input id="biz-search" placeholder="Buscar por nombre o correo del dueño" value="${esc(S.search)}"></div>
       <div class="list">${S.businesses.map((b) => `
@@ -192,7 +192,7 @@
 
   function viewTickets() {
     return `
-      <header class="top"><div class="brand">Cotízame<small>Admin</small></div></header>
+      <header class="top"><div class="brand">QuoteFlow<small>Admin</small></div></header>
       ${nav('tickets')}
       ${S.feedback.length ? `
         <div class="section-h" style="margin-top:14px"><h2>Mensajes sin cuenta</h2></div>
@@ -250,7 +250,7 @@
 
   function viewAudit() {
     return `
-      <header class="top"><div class="brand">Cotízame<small>Admin</small></div></header>
+      <header class="top"><div class="brand">QuoteFlow<small>Admin</small></div></header>
       ${nav('audit')}
       <div class="sheet" style="margin-top:14px">${S.audit.map((a) => `
         <div style="padding-block:8px;border-top:1px solid var(--line)">
