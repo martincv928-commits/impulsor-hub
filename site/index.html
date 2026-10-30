@@ -115,6 +115,13 @@ footer{padding-block:32px;border-top:1px solid var(--line);color:var(--muted);fo
 footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
 
 
+
+.webs{padding-block:40px 8px}
+.webcard{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px;padding:26px;border:1px solid var(--line);border-radius:8px;background:var(--surface);background-image:radial-gradient(ellipse 60% 120% at 100% 0,rgba(46,226,111,.14),transparent 70%)}
+.webcard h2{font-size:clamp(26px,4vw,34px);font-weight:800;letter-spacing:-.02em}
+.webcard p{margin:6px 0 0;color:var(--muted);max-width:52ch}
+.webcard .label{color:#2ee26f}
+.btn.green{background:#2ee26f;color:#03120a;box-shadow:0 0 24px rgba(46,226,111,.3)}
 /* tarjetas como enlace */
 a.card.link{text-decoration:none;color:inherit;transition:border-color .15s}
 a.card.link:hover{border-color:var(--accent)}
@@ -196,6 +203,14 @@ details p{margin:10px 0 0;color:var(--muted)}
 </header>
 
 <main id="view-home">
+  <section class="webs"><div class="wrap">
+    <div class="webcard">
+      <div><span class="label">Sitio propio</span><h2>Ventor</h2>
+      <p>Punto de venta, inventario, cobranza y facturación CFDI. Gratis para empezar, planes desde $199 al mes.</p></div>
+      <a class="btn green" href="/ventor/">Ver web de Ventor →</a>
+    </div>
+  </div></section>
+
   <section class="block" id="negocio">
     <div class="wrap">
       <div class="block-head">
