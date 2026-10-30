@@ -1,7 +1,7 @@
 {
-  "name": "QuoteFlow Admin",
-  "short_name": "QF Admin",
-  "description": "Consola de administración de la plataforma QuoteFlow.",
+  "name": "Cotízame Admin",
+  "short_name": "Cotízame Admin",
+  "description": "Consola de administración de la plataforma Cotízame.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
