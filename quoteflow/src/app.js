@@ -539,9 +539,22 @@
       </div>`;
   }
 
+  // Copia local del negocio de esta cuenta: permite abrir la app SIN internet
+  // (si no, el arranque pide el negocio a la nube, falla y manda al login).
+  function cacheBusiness() {
+    try { localStorage.setItem('qf_biz_cache', JSON.stringify({ uid: S.cloudSession && S.cloudSession.user.id, biz: S.cloudBusiness })); } catch (e) { /* sin almacenamiento: se sigue sin copia */ }
+  }
+  function cachedBusinessFor(session) {
+    try {
+      const c = JSON.parse(localStorage.getItem('qf_biz_cache') || 'null');
+      return c && session && c.uid === session.user.id ? c.biz : null;
+    } catch (e) { return null; }
+  }
+
   async function afterLogin() {
     S.cloudBusiness = await CLOUD.business.getMine();
     if (!S.cloudBusiness) return go('business-new');
+    cacheBusiness();
     ensurePlans();
     const synced = DB.getSyncedBusinessId();
     if (synced && synced !== S.cloudBusiness.id) {
@@ -2509,6 +2522,7 @@
         await CLOUD.auth.signOut();
         S.cloudSession = null;
         S.cloudBusiness = null;
+        try { localStorage.removeItem('qf_biz_cache'); } catch (e) { /* nada que limpiar */ }
         toast('Sesión cerrada');
         return go('auth');
       }
@@ -2878,7 +2892,17 @@
       const session = await CLOUD.auth.getSession();
       S.cloudSession = session;
       if (!session) return go('auth');
-      await afterLogin();
+      try {
+        await afterLogin();
+      } catch (e) {
+        // Sin conexión: se entra con el negocio guardado en este dispositivo
+        // (lo pendiente se sincroniza solo al volver el internet).
+        const cached = /conexi|network|fetch/i.test(String(e && e.message)) ? cachedBusinessFor(session) : null;
+        if (!cached) throw e;
+        S.cloudBusiness = cached;
+        toast('Sin conexión: trabajando con tus datos guardados en este dispositivo.');
+        go('home');
+      }
     } catch (e) {
       toast('No se pudo conectar con la nube: ' + e.message);
       go('auth');
