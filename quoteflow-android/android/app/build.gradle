@@ -13,11 +13,24 @@ android {
         // la subida no se complete).
         versionCode 13
         versionName "2.4.0"
+        // Build para el dueño (-Pdueno): se instala AL LADO de la app de Play
+        // Store en vez de encima. La de Play va firmada por Google con otra
+        // llave, así que Android no deja reemplazarla con un APK firmado
+        // por nosotros; desinstalarla borraría lo guardado solo en el celular.
+        if (project.hasProperty('dueno')) {
+            applicationIdSuffix '.dueno'
+            versionNameSuffix '-dueno'
+        }
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    sourceSets {
+        release {
+            if (project.hasProperty('dueno')) res.srcDir 'src/dueno/res'
         }
     }
     // La llave de firma real nunca vive en el repo ni en este archivo: se lee
