@@ -117,6 +117,7 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
 
 
 .webs{padding-block:40px 8px}
+.webgrid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
 .webcard{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px;padding:26px;border:1px solid var(--line);border-radius:8px;background:var(--surface);background-image:radial-gradient(ellipse 60% 120% at 100% 0,rgba(46,226,111,.14),transparent 70%)}
 .webcard h2{font-size:clamp(26px,4vw,34px);font-weight:800;letter-spacing:-.02em}
 .webcard p{margin:6px 0 0;color:var(--muted);max-width:52ch}
@@ -203,7 +204,12 @@ details p{margin:10px 0 0;color:var(--muted)}
 </header>
 
 <main id="view-home">
-  <section class="webs"><div class="wrap">
+  <section class="webs"><div class="wrap webgrid">
+    <div class="webcard">
+      <div><span class="label">Sitio propio</span><h2>Cotízame</h2>
+      <p>Cotiza desde el celular, envía por WhatsApp y da seguimiento a tus cobros. Gratis para empezar, planes desde $99 al mes.</p></div>
+      <a class="btn" href="/cotizame/">Ver web de Cotízame →</a>
+    </div>
     <div class="webcard">
       <div><span class="label">Sitio propio</span><h2>Ventor</h2>
       <p>Punto de venta, inventario, cobranza y facturación CFDI. Gratis para empezar, planes desde $199 al mes.</p></div>
@@ -296,17 +302,12 @@ details p{margin:10px 0 0;color:var(--muted)}
 const MAIL='impulsorhub@gmail.com';
 /* Para activar pagos: pega en "pay" el link de pago de Mercado Pago de cada plan. */
 const P=[
- {id:'cotizame',group:'negocio',name:'Cotízame',was:'antes QuoteFlow',status:['ok','Disponible'],
-  short:'Arma cotizaciones profesionales desde tu celular y envíalas a tu cliente en minutos.',
-  pitch:'Deja las cotizaciones en Word y WhatsApp sueltos. Con Cotízame armas una cotización con tu logo en dos minutos, la mandas por WhatsApp o correo y sabes cuáles siguen pendientes.',
-  who:['Negocios de servicios y oficios','Vendedores y distribuidores','Freelancers y agencias'],
-  feats:[['Catálogo de productos','Guarda tus productos y precios una vez y úsalos en todas tus cotizaciones.'],['PDF con tu marca','Logo, colores, condiciones y vigencia en un PDF listo para enviar.'],['IVA y descuentos','Calcula IVA, descuentos por partida y totales sin errores.'],['Envío directo','Comparte por WhatsApp o correo desde la app.'],['Seguimiento','Ve qué cotizaciones están pendientes, aceptadas o perdidas.'],['Clientes','Historial de cotizaciones por cliente.']],
-  spec:'Android · Web',
-  plans:[{n:'Gratis',p:'$0',u:'',items:['5 cotizaciones al mes','PDF con marca Cotízame','1 usuario'],cta:'Descargar gratis'},
-         {n:'Pro',p:'$99',u:'/mes',hl:true,items:['Cotizaciones ilimitadas','PDF con tu logo y colores','Seguimiento de estados','Catálogo ilimitado'],cta:'Comprar Pro',pay:''},
-         {n:'Negocio',p:'$249',u:'/mes',items:['Todo lo de Pro','Hasta 3 usuarios','Reporte de ventas cotizadas','Soporte por WhatsApp'],cta:'Comprar Negocio',pay:''}],
-  note:'Precios en pesos mexicanos, IVA incluido. Cancela cuando quieras.',
-  faq:[['¿Necesito computadora?','No. Todo funciona desde el celular, y también puedes usarlo en el navegador.'],['¿Mis cotizaciones se pierden si cambio de celular?','No. Con los planes de pago tu información se respalda en la nube.'],['¿Puedo facturar desde Cotízame?','Cotízame es para cotizar. Para facturar con timbrado usa Ventor.']]},
+ {id:'cotizame',group:'negocio',name:'Cotízame',was:'antes QuoteFlow',status:['ok','Disponible'],href:'/cotizame/',fromText:'Gratis · planes desde $99/mes',
+  short:'Cotiza desde el celular, envía el PDF por WhatsApp y da seguimiento a tus cobros.',
+  pitch:'Cotízame es la app para armar cotizaciones profesionales y darles seguimiento.',
+  who:['Negocios de servicios','Vendedores y distribuidores','Freelancers'],
+  feats:[['Cotizaciones en PDF','Con tu marca, listas para enviar.']],spec:'Android · Web',
+  plans:[{n:'Gratis',p:'$0',u:'',items:['Para empezar'],cta:'Empezar gratis'}],note:'',faq:[['¿Dónde veo todo?','En la página de Cotízame.']]},
  {id:'fiscalbox',group:'negocio',name:'FiscalBox',was:'App fiscal',status:['warn','Preventa'],
   short:'Tu portal fiscal: descarga tus CFDI del SAT, calcula impuestos y prepara tu declaración.',
   pitch:'FiscalBox se conecta al SAT con tu e.firma, descarga todas tus facturas emitidas y recibidas, calcula tu IVA e ISR del mes y te deja todo listo para presentar tu declaración.',
