@@ -3,13 +3,26 @@
  * Estrategia: se sirve del caché al instante y, si hay red, se actualiza el
  * caché en segundo plano para la próxima vez ("stale-while-revalidate").
  * Sube CACHE_NAME cuando cambie esta lista para forzar limpieza del caché viejo. */
-const CACHE_NAME = 'quoteflow-v0.19.0';
+const CACHE_NAME = 'quoteflow-v0.19.2';
 const STATIC_ASSETS = [
   './',
   'index.html',
   'manifest.webmanifest',
   'src/styles.css',
-  'src/default-logo.js',
+  // Mismas direcciones (con ?v=) que pide index.html: sin esto, abrir la app sin
+  // internet justo después de la primera visita deja la pantalla en blanco.
+  'src/config.js?v=0.9.2',
+  'src/default-logo.js?v=0.12.0',
+  'src/money.js?v=0.9.2',
+  'src/catalog.js?v=0.9.2',
+  'src/parser.js?v=0.9.2',
+  'src/interpreter.js?v=0.9.2',
+  'src/storage.js?v=0.9.2',
+  'src/cloud.js?v=0.9.2',
+  'src/pdf.js?v=0.9.2',
+  'src/voice.js?v=0.9.2',
+  'src/share.js?v=0.9.2',
+  'src/app.js?v=0.9.2',
   'vendor/jspdf.umd.min.js',
   'vendor/supabase.umd.js',
   'icons/icon-192.png',
