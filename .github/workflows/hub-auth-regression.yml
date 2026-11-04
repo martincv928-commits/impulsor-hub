@@ -2,9 +2,9 @@ name: Hub authentication regression
 on:
   push:
     branches: [master]
-    paths: ['app/api/main.py', 'app/core/security.py', 'app/core/ui_*.py', 'ui/**', '.devcontainer/**', 'tests/*hub*', '.github/workflows/hub-auth-regression.yml']
+    paths: ['app/api/main.py', 'app/core/security.py', 'app/core/ui_*.py', 'ui/**', '.devcontainer/**', 'tests/*hub*', 'tests/test_security.py', 'tests/test_cloud_session.py', '.github/workflows/hub-auth-regression.yml']
   pull_request:
-    paths: ['app/api/main.py', 'app/core/security.py', 'app/core/ui_*.py', 'ui/**', '.devcontainer/**', 'tests/*hub*', '.github/workflows/hub-auth-regression.yml']
+    paths: ['app/api/main.py', 'app/core/security.py', 'app/core/ui_*.py', 'ui/**', '.devcontainer/**', 'tests/*hub*', 'tests/test_security.py', 'tests/test_cloud_session.py', '.github/workflows/hub-auth-regression.yml']
 permissions:
   contents: read
 jobs:
@@ -25,3 +25,4 @@ jobs:
         working-directory: ui
       - run: bash -n .devcontainer/start-hub.sh
       - run: python -m unittest discover -s tests -p test_hub_auth_regression.py -v
+      - run: python -m pytest tests/test_security.py tests/test_cloud_session.py -q

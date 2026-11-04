@@ -13,7 +13,7 @@ from app.api import main as api_main
 def client(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("IMPULSOR_HUB_DB_PATH", str(tmp_path / "cloud_test.db"))
     monkeypatch.setenv("IMPULSOR_HUB_AGENT_TOKEN", "the-agent-token")
-    with TestClient(api_main.app) as c:
+    with TestClient(api_main.app, base_url="http://localhost", client=("127.0.0.1", 1234)) as c:
         yield c
 
 
@@ -56,7 +56,7 @@ def test_served_index_never_embeds_the_token_in_cloud_mode(client, monkeypatch):
     monkeypatch.setenv("IMPULSOR_HUB_CLOUD_ACCESS_CODE", "let-me-in")
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "__IMPULSOR_AGENT_TOKEN__" not in resp.text
+    assert "let token = null;" in resp.text
     assert "the-agent-token" not in resp.text
 
 
@@ -65,3 +65,4 @@ def test_served_index_still_embeds_the_token_in_local_mode(client, monkeypatch):
     monkeypatch.delenv("IMPULSOR_HUB_CLOUD_ACCESS_CODE", raising=False)
     resp = client.get("/")
     assert "the-agent-token" in resp.text
+
