@@ -33,15 +33,26 @@ como protección adicional. Un visitante público sin capacidad sigue sin poder
 consultar proyectos ni crear el proyecto de prueba. Los accesos remotos mediante
 código siguen disponibles y conservan su Bearer y URL propios.
 
-En un Codespace ya abierto, actualizar y arrancar desde su terminal:
+## Despliegue desde Android sin terminal
 
-```sh
-git pull --ff-only && bash .devcontainer/start-hub.sh
-```
+El workflow **Deploy Hub to existing Codespace** solicita autorización de GitHub
+CLI en el navegador y después se conecta únicamente al Codespace existente del
+propietario para este repositorio. No crea un Codespace ni publica el puerto.
+La conexión requiere que el Codespace acepte el túnel SSH de GitHub CLI; hasta
+comprobar esa conexión y las operaciones HTTP reales no se declara desplegado.
 
-Después abrir en el celular el enlace privado que imprime. Si Git no puede
-avanzar sin conflictos, conserva los cambios y se detiene; no usar reset.
-El arranque no publica credenciales en `/api/health` ni en el log de uvicorn.
+La ejecución utiliza un worktree aislado y fijado al commit revisado. Conserva
+la rama, archivos y cambios del checkout del usuario. Compila, reinicia solo el
+Agent, verifica revisión/PID, carga HTML/assets, comprueba 401 anónimo y prueba
+listado/creación/lectura autenticados. Los fallos detienen la operación.
+
+La autorización utiliza los permisos normales de GitHub CLI más `codespace`;
+las credenciales quedan en el runner efímero y no se guardan en el repositorio.
+El estado del commit enlaza al paso de autorización. El enlace de acceso del Hub
+se devuelve cifrado con RSA-OAEP a la clave pública de esta sesión, para que no
+quede expuesto en los logs o informes públicos. La clave privada permanece fuera
+del repositorio y se necesita para recuperar el enlace. Esta sesión recupera el
+informe y entrega el enlace privado al propietario después de verificarlo.
 
 ## Validación reproducible
 

@@ -3,12 +3,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Preserve local work. A divergent checkout must be reconciled explicitly.
-git fetch origin master
-if [[ -z "$(git status --porcelain)" ]]; then
-  git merge --ff-only origin/master
+# A remote deployment uses an isolated worktree pinned to its reviewed commit.
+if [[ -n "${IMPULSOR_HUB_DEPLOY_REVISION:-}" ]]; then
+  [[ "$(git rev-parse HEAD)" == "$IMPULSOR_HUB_DEPLOY_REVISION" ]] || {
+    echo 'La copia no coincide con la revisión solicitada.' >&2
+    exit 1
+  }
 else
-  echo 'Hay cambios locales: se conservan y se compila este checkout.' >&2
+  # Preserve local work. Never reset or overwrite a dirty checkout.
+  git fetch origin master
+  if [[ -z "$(git status --porcelain)" ]]; then
+    git merge --ff-only origin/master
+  else
+    echo 'Hay cambios locales: se conservan y se compila este checkout.' >&2
+  fi
 fi
 
 export PYTHONPATH="$ROOT"
