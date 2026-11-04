@@ -4,7 +4,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from app.api.routers import agent, cloud_session, preview, projects, resources, settings, tasks, testgame, webexport
-from app.core.security import get_or_create_agent_token, require_agent_token
+from app.core.security import require_agent_token
+from app.core.ui_bootstrap import bootstrap_html
+from app.core.ui_build import build_info
 from app.database.db import init_db
 
 
@@ -55,7 +57,9 @@ app.include_router(webexport.router)  # mixed: /webexport/start routes apply the
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "pid": os.getpid(),
+            "code_revision": os.environ.get("IMPULSOR_HUB_CODE_REVISION", "unknown"),
+            "ui_revision": _BUILD_INFO.get("revision", "unknown")}
 
 
 # When a production real-mode UI build exists (ui/dist, built WITHOUT
@@ -64,31 +68,9 @@ def health() -> dict:
 # same-origin to this real Agent -- no separate frontend process, no
 # terminal beyond starting the Agent itself.
 #
-# Token bootstrap (LOCAL mode only): the browser has no other way to
-# learn the Agent's auth token (see app/core/security.py), so `GET /` --
-# and only `/`, never the static JS/CSS bundle -- injects it as an inline
-# script. Safe for a local Agent because anyone who can load this page at
-# all already has whatever access the token grants (same machine / same
-# local network path); it only ever stops a DIFFERENT origin's JS (some
-# other open tab) from blindly calling the API as a confused deputy.
+# Remote pages receive no server token. Owner launch links bootstrap the tab
+# before Vite modules execute; see app/core/ui_bootstrap.py.
 #
-# This does NOT apply when IMPULSOR_HUB_CLOUD_ACCESS_CODE is set (Cloud
-# mode, M2.7 SPEC section E): a Cloud Agent is reachable by anyone on the
-# internet, so auto-injecting the token into every page load would hand
-# it to any stranger who finds the URL, defeating the access-code gate
-# entirely. Cloud callers get their token exclusively through
-# POST /api/cloud/session (app/api/routers/cloud_session.py) and the
-# frontend caches it itself (localStorage) -- `GET /` here just serves
-# the same static page either way, token-free in Cloud mode.
-#
-# Read fresh per-request (not cached at import time) so it stays
-# consistent with every other cloud-mode check in this codebase
-# (agent.py's /status, cloud_session.py) and so tests can monkeypatch
-# the env var per-case.
-def _cloud_mode() -> bool:
-    return bool(os.environ.get("IMPULSOR_HUB_CLOUD_ACCESS_CODE"))
-
-
 # Same PyInstaller-frozen-bundle caveat as app/api/routers/testgame.py's
 # _template_dir(): __file__ is meaningless inside a --onefile bundle, use
 # sys._MEIPASS (where --add-data "ui/dist;ui/dist" places it) instead.
@@ -96,38 +78,21 @@ if getattr(sys, "frozen", False):
     _UI_DIST = Path(getattr(sys, "_MEIPASS")) / "ui" / "dist"
 else:
     _UI_DIST = Path(__file__).resolve().parents[2] / "ui" / "dist"
-if not _UI_DIST.is_dir():
-    # Source/cloud workspaces may not have a prebuilt frontend yet. Build it
-    # once at Agent startup so opening forwarded port 8000 always serves the Hub UI.
-    import subprocess
+_BUILD_INFO = build_info(_UI_DIST.parent)
 
-    _UI_ROOT = _UI_DIST.parent
-    if (_UI_ROOT / "package.json").is_file():
-        subprocess.run(["npm", "run", "build"], cwd=str(_UI_ROOT), check=False, timeout=120)
 
-if _UI_DIST.is_dir():
-    _INDEX_HTML = (_UI_DIST / "index.html").read_text(encoding="utf-8")
-    app.mount("/assets", StaticFiles(directory=str(_UI_DIST / "assets")), name="ui-assets")
+def mount_ui(application: FastAPI, dist: Path) -> None:
+    if not dist.is_dir():
+        return
+    index_html = (dist / "index.html").read_text(encoding="utf-8")
+    application.mount("/assets", StaticFiles(directory=str(dist / "assets")), name="ui-assets")
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def serve_ui() -> str:
-        # The Hub UI is served by the Agent itself. Bootstrap that same-origin
-        # UI with the Agent token in both local and Codespaces modes so the
-        # owner never has to copy workspace URLs/access codes into the app.
-        # Cross-origin callers still cannot read/use this token through CORS.
-        token = get_or_create_agent_token()
-        # Use JSON encoding, not Python repr: JavaScript does not reliably
-        # accept Python string literal syntax. This token must be available
-        # before the frontend bundle executes.
-        import json
-        bootstrap = (
-            "<script>"
-            f"window.__IMPULSOR_AGENT_TOKEN__={json.dumps(token)};"
-            "window.__IMPULSOR_SAME_ORIGIN__=true;"
-            "</script>"
+    @application.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def serve_ui(request: Request) -> HTMLResponse:
+        return HTMLResponse(
+            bootstrap_html(index_html, request),
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
         )
-        # Vite loads its module scripts from <head>. Inject immediately after
-        # <head> so activeToken() sees the token during module initialization.
-        if "<head>" in _INDEX_HTML:
-            return _INDEX_HTML.replace("<head>", "<head>" + bootstrap, 1)
-        return bootstrap + _INDEX_HTML
+
+
+mount_ui(app, _UI_DIST)

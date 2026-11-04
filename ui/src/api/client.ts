@@ -17,8 +17,8 @@ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 declare global {
   interface Window {
     // Injected inline by app/api/main.py's `GET /` handler when the Agent
-    // serves this build itself, LOCAL mode only (see app/core/security.py
-    // and app/api/main.py's Cloud-mode carve-out). Absent in the Vite dev
+    // serves this build to a loopback caller or a browser holding the
+    // owner's private launch link. Absent in the Vite dev
     // server, where VITE_AGENT_TOKEN (a dev-only .env value) is used
     // instead -- a developer running the two processes separately must
     // set it to match IMPULSOR_HUB_AGENT_TOKEN on the backend.
@@ -33,12 +33,12 @@ export const agentToken = activeToken;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = activeToken();
+  const headers = new Headers(options?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await fetch(`${apiBaseUrl()}/api${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     ...options,
+    headers,
   });
   if (!resp.ok) {
     const body = await resp.text();
@@ -93,3 +93,4 @@ const realApi: ApiClient = {
 // `api` here is always the real, fetch-based client; DEMO_MODE only
 // decides which top-level component App.tsx renders.
 export const api: ApiClient = realApi;
+

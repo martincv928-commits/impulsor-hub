@@ -17,12 +17,12 @@ export type AgentMode = "local" | "cloud";
 
 async function agentRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const token = activeToken();
+  const headers = new Headers(options?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   const resp = await fetch(`${apiBaseUrl()}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     ...options,
+    headers,
   });
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
   return resp.json() as Promise<T>;
@@ -95,3 +95,4 @@ export const startProjectWebexport = (projectId: string) =>
 
 export const startRunWebexport = (runId: string) =>
   agentRequest<{ status: "ready"; url: string }>(`/api/task-runs/${runId}/webexport/start`, { method: "POST" });
+
