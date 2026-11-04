@@ -37,6 +37,12 @@ class DeploymentSafeguards(unittest.TestCase):
         active = entry()
         self.assertEqual(deploy.select_codespace([entry(name='stopped-code-456', state='Shutdown'), active], deploy.OWNER), active)
 
+    def test_explicit_choice_stays_inside_the_authorized_owner_and_repository(self):
+        first, second = entry(), entry(name='second-code-456')
+        self.assertEqual(deploy.select_codespace([first, second], deploy.OWNER, second['name']), second)
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.select_codespace([first, entry(name='other-code-789', repo='someone/other')], deploy.OWNER, 'other-code-789')
+
     def test_invalid_codespace_name_cannot_reach_remote_command(self):
         with self.assertRaises(deploy.DeploymentError):
             deploy.select_codespace([entry(name='code; touch /tmp/unwanted')], deploy.OWNER)

@@ -14,6 +14,8 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 REPO = 'martincv928-commits/impulsor-hub'
@@ -26,12 +28,12 @@ class DeploymentError(Exception):
     pass
 
 
-def api(path: str, data: dict, status_token: str) -> dict:
+def api(path: str, data: dict | None, status_token: str) -> dict:
     request = urllib.request.Request(
-        'https://api.github.com/' + path, json.dumps(data).encode(),
+        'https://api.github.com/' + path, json.dumps(data).encode() if data is not None else None,
         {'Authorization': 'Bearer ' + status_token, 'Accept': 'application/vnd.github+json',
          'Content-Type': 'application/json', 'User-Agent': 'impulsor-hub-deploy'},
-        method='POST',
+        method='POST' if data is not None else 'GET',
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
@@ -44,12 +46,14 @@ def publish(state: str, description: str, target_url: str | None = None) -> None
     }, os.environ['STATUS_TOKEN'])
 
 
-def select_codespace(items: list[dict], login: str) -> dict:
+def select_codespace(items: list[dict], login: str, selected_name: str | None = None) -> dict:
     if login.casefold() != OWNER.casefold():
         raise DeploymentError('La autorización no pertenece al propietario esperado.')
     candidates = [item for item in items
                   if item.get('repository', {}).get('full_name', '').casefold() == REPO.casefold()
                   and item.get('owner', {}).get('login', '').casefold() == login.casefold()]
+    if selected_name:
+        candidates = [item for item in candidates if item.get('name') == selected_name]
     active = [item for item in candidates if item.get('state') == 'Available']
     choices = active if active else candidates
     if len(choices) != 1:
@@ -63,6 +67,10 @@ def select_codespace(items: list[dict], login: str) -> dict:
 def run_gh(args: list[str], env: dict, timeout: int = 120) -> str:
     result = subprocess.run(['gh', *args], env=env, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
+        if args[:2] == ['codespace', 'ssh']:
+            for marker in ['sshd', 'SSH server', 'Connection refused', 'Permission denied', 'RuntimeError:']:
+                if marker in result.stderr:
+                    print('Diagnóstico de conexión: ' + marker, flush=True)
         # CLI diagnostics can contain remote output. Do not echo them publicly.
         raise DeploymentError('GitHub CLI no pudo completar la operación solicitada.')
     return result.stdout
@@ -106,6 +114,41 @@ def authorize(env: dict) -> None:
         process.stdout.close()
 
 
+def choose_or_wait(items: list[dict], login: str) -> dict:
+    if login.casefold() != OWNER.casefold():
+        raise DeploymentError('La autorización no pertenece al propietario esperado.')
+    # Save a private diagnostic before selecting, so ambiguity never loses the list.
+    inventory = [{key: item.get(key) for key in ('name', 'state', 'last_used_at')}
+                 | {'repository': item.get('repository', {}).get('full_name'),
+                    'owner': item.get('owner', {}).get('login')} for item in items]
+    encrypted = [encrypt_link(json.dumps(item), ROOT / '.github' / 'impulsor-deploy.pub') for item in inventory]
+    blob = api(f'repos/{REPO}/git/blobs', {'content': json.dumps({'encrypted_inventory': encrypted}),
+                                        'encoding': 'utf-8'}, os.environ['STATUS_TOKEN'])
+    try:
+        return select_codespace(items, login)
+    except DeploymentError:
+        candidates = [item for item in items
+                      if item.get('repository', {}).get('full_name', '').casefold() == REPO.casefold()
+                      and item.get('owner', {}).get('login', '').casefold() == login.casefold()]
+        if not candidates:
+            raise DeploymentError('Sin Codespaces coincidentes. Inventario cifrado: ' + blob['sha']) from None
+    publish('pending', 'Elige Codespace. Inventario cifrado: ' + blob['sha'])
+    print('Autorización confirmada. Esperando selección del Codespace, sin tocar ninguno.', flush=True)
+    deadline = time.monotonic() + 900
+    while time.monotonic() < deadline:
+        try:
+            file = api(f'repos/{REPO}/contents/.github/codespace-target.json?ref=master', None, os.environ['STATUS_TOKEN'])
+            selection = json.loads(base64.b64decode(file['content']))
+            if (str(selection.get('run_id')) == os.environ['GITHUB_RUN_ID']
+                    and selection.get('revision') == os.environ['GITHUB_SHA']):
+                return select_codespace(items, login, selection.get('name'))
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+        time.sleep(5)
+    raise DeploymentError('Selección pendiente; no se modificó ningún Codespace.')
+
+
 def main() -> None:
     if os.environ.get('GITHUB_REPOSITORY') != REPO or os.environ.get('GITHUB_REF') != 'refs/heads/master':
         raise DeploymentError('Solo se permite desplegar este repositorio desde master.')
@@ -119,7 +162,7 @@ def main() -> None:
         identity = json.loads(run_gh(['api', 'user'], env))
         inventory = json.loads(run_gh(['api', '--paginate', '--slurp', f'repos/{REPO}/codespaces?per_page=100'], env))
         items = [item for page in inventory for item in page.get('codespaces', [])]
-        chosen = select_codespace(items, identity['login'])
+        chosen = choose_or_wait(items, identity['login'])
         publish('pending', 'Autorizado; desplegando y verificando el Agent existente.')
         remote = (ROOT / 'scripts' / 'codespace_deploy_remote.py').read_text()
         command = 'python -c ' + shlex.quote(remote) + ' ' + shlex.quote(revision) + ' ' + shlex.quote(chosen['name'])
