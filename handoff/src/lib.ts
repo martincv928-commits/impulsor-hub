@@ -95,3 +95,6 @@ export async function sharePdf(blob: Blob, name: string, title: string): Promise
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
   return 'Tu navegador no permite compartir archivos: se descargó el PDF.';
 }
+
+/** Fecha y hora cortas para la interfaz: «16 nov, 8:42 p.m.» */
+export const fdt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—');

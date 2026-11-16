@@ -1,5 +1,6 @@
 {
   "appId": "mx.impulsor.handoff",
   "appName": "HANDOFF",
-  "webDir": "dist"
+  "webDir": "dist",
+  "backgroundColor": "#0E2A3B"
 }

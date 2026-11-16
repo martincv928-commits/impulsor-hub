@@ -13,7 +13,7 @@ export default function Config() {
   return (
     <>
       <h2>Configuración</h2>
-      <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 10 }}>{tabs.map(([k, l]) => <button key={k} className="pill" style={tab === k ? { background: 'var(--pri)', color: '#fff' } : {}} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips">{tabs.map(([k, l]) => <button key={k} className={`pill ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'estructura' && <Estructura />}{tab === 'equipo' && <Equipo />}{tab === 'plantillas' && <Plantillas />}{tab === 'destinatarios' && <Destinatarios />}{tab === 'integraciones' && <Integraciones />}
     </>
   );
