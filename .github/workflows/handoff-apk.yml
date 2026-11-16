@@ -50,9 +50,17 @@ jobs:
           sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
       - name: Llave de pruebas fija (para que cada APK se instale sobre el anterior)
         run: |
-          mkdir -p ~/.android
-          cp signing/debug.keystore ~/.android/debug.keystore
-          keytool -list -v -keystore ~/.android/debug.keystore -storepass android | grep -E "SHA256"
+          # Firma configurada de forma explícita en el proyecto (no depende de ~/.android)
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android.signingConfigs.debug {
+              storeFile rootProject.file('../signing/debug.keystore')
+              storePassword 'android'
+              keyAlias 'androiddebugkey'
+              keyPassword 'android'
+          }
+          GRADLE
+          tail -8 android/app/build.gradle
       - name: "Compilar APK (firma de pruebas fija)"
         working-directory: handoff/android
         run: |
@@ -60,6 +68,10 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../handoff.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs ../handoff.apk | grep -E "SHA-256|Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY"
+          EXP=$(keytool -exportcert -keystore ../signing/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
+          GOT=$("$BT/apksigner" verify --print-certs ../handoff.apk | grep -m1 "SHA-256 digest" | sed 's/.*: //')
+          echo "esperada=$EXP obtenida=$GOT"
+          [ "$EXP" = "$GOT" ] || { echo "::error::El APK NO está firmado con la llave fija"; exit 1; }
       - name: Publicar APK (Release fijo handoff-apk-latest)
         env:
           GH_TOKEN: ${{ github.token }}
