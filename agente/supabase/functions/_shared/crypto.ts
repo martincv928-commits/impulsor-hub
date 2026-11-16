@@ -18,3 +18,9 @@ export async function decryptSecret(enc: string, keyB64: string, tenantId: strin
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.slice(0, 12), additionalData: new TextEncoder().encode(tenantId) }, await key(keyB64), all.slice(12));
   return new TextDecoder().decode(pt);
 }
+
+/** Si no hay ERP_ENC_KEY, se deriva una clave estable de un secreto del servidor (p. ej. la service key). */
+export async function deriveKeyB64(seed: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('agente-erp-v1:' + seed)));
+  return b64(h);
+}

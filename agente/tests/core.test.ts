@@ -8,7 +8,7 @@ import type { LlmClient, LlmResponse } from '../supabase/functions/_shared/llm.t
 import { buildSystemPrompt, findForbidden } from '../supabase/functions/_shared/prompt.ts';
 import { chunkText, htmlToText } from '../supabase/functions/_shared/knowledge.ts';
 import { assertSafeUrl } from '../supabase/functions/_shared/net.ts';
-import { decryptSecret, encryptSecret } from '../supabase/functions/_shared/crypto.ts';
+import { decryptSecret, deriveKeyB64, encryptSecret } from '../supabase/functions/_shared/crypto.ts';
 import { buildReport } from '../supabase/functions/_shared/reports.ts';
 
 // ---- Odoo simulado (fixtures sintéticos; NO es una conexión real) ----
@@ -188,6 +188,14 @@ describe('conocimiento y red', () => {
     expect(await decryptSecret(enc, key, 'tenant-1')).toBe('mi-api-key');
     await expect(decryptSecret(enc, key, 'tenant-2')).rejects.toThrow();
     await expect(decryptSecret(enc, other, 'tenant-1')).rejects.toThrow();
+  });
+});
+
+describe('clave derivada', () => {
+  it('es estable, de 32 bytes y distinta por semilla', async () => {
+    const a = await deriveKeyB64('x'); expect(Buffer.from(a, 'base64')).toHaveLength(32);
+    expect(await deriveKeyB64('x')).toBe(a); expect(await deriveKeyB64('y')).not.toBe(a);
+    expect(await decryptSecret(await encryptSecret('k', a, 't'), a, 't')).toBe('k');
   });
 });
 

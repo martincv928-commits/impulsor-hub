@@ -1,8 +1,8 @@
 // Edge Function única: chat (Gerente/Cliente), configuración del ERP y conocimiento.
-// Secretos requeridos: ANTHROPIC_API_KEY, ERP_ENC_KEY (32 bytes base64). SUPABASE_* los inyecta Supabase.
+// Secreto requerido: ANTHROPIC_API_KEY. Opcional: ERP_ENC_KEY (32 bytes base64; si falta se deriva de la service key). SUPABASE_* los inyecta Supabase.
 import { createClient } from '@supabase/supabase-js';
 import { runAgent } from '../_shared/agent.ts';
-import { decryptSecret, encryptSecret } from '../_shared/crypto.ts';
+import { decryptSecret, deriveKeyB64, encryptSecret } from '../_shared/crypto.ts';
 import { chunkText, fetchPageText } from '../_shared/knowledge.ts';
 import { AnthropicClient, type LlmMessage } from '../_shared/llm.ts';
 import { assertSafeUrl } from '../_shared/net.ts';
@@ -22,6 +22,7 @@ const cors = (origin: string | null) => ({
 });
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
+const encKey = async () => env('ERP_ENC_KEY') || deriveKeyB64(env('SUPABASE_SERVICE_ROLE_KEY'));
 const LIMITS = { gerenteMsg: 4000, clienteMsg: 1000, clienteConv: 30, clienteHour: 300 };
 
 async function userFrom(req: Request): Promise<string> {
@@ -48,7 +49,7 @@ async function audit(tenant: string, actor: string | null, action: string, detai
 async function connectorFor(tenant: string): Promise<OdooConnector | null> {
   const { data } = await sb.from('erp_connections').select('*').eq('tenant_id', tenant).maybeSingle();
   if (!data) return null;
-  const apiKey = await decryptSecret(data.secret_enc, env('ERP_ENC_KEY'), tenant);
+  const apiKey = await decryptSecret(data.secret_enc, await encKey(), tenant);
   return new OdooConnector({ url: data.url, db: data.db, username: data.username, apiKey });
 }
 
@@ -154,7 +155,7 @@ async function route(req: Request, origin: string | null) {
       const { tenant, user } = await requireAdmin(req, body.tenant_id);
       const url = assertSafeUrl(String(body.url ?? '')).origin;
       for (const k of ['db', 'username', 'api_key']) if (typeof body[k] !== 'string' || !body[k].trim()) throw new HttpError(400, `Falta ${k}`);
-      const secret_enc = await encryptSecret(body.api_key.trim(), env('ERP_ENC_KEY'), tenant);
+      const secret_enc = await encryptSecret(body.api_key.trim(), await encKey(), tenant);
       const { error } = await sb.from('erp_connections').upsert({ tenant_id: tenant, type: 'odoo', url, db: body.db.trim(), username: body.username.trim(), secret_enc, status: 'sin_probar', last_error: null });
       if (error) throw new HttpError(500, 'No se pudo guardar');
       await audit(tenant, user, 'erp_saved', { url });
