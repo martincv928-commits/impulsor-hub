@@ -18,3 +18,7 @@
 - Fuera de alcance V0.1: nómina, checador, facial, GPS continuo, inventario, facturación, ERP, IA generativa, chat, pagos, conectores específicos, multi-idioma. No pasar a V0.2 sin aprobación.
 - Sin secretos en el repo. Frontend sólo URL + publishable key (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 - Respuestas finales BREVES; el usuario trabaja desde Android.
+
+## Backend
+- Supabase proyecto `handoff` (ref `hppzsirfbvvwgdlhhhvt`, us-east-1, org Quoteflow). URL: https://hppzsirfbvvwgdlhhhvt.supabase.co. Migraciones 0001 y 0002 aplicadas.
+- Plan gratis = 2 proyectos activos: fiscalbox está PAUSADO para dar cupo (reactivarlo pausando handoff). Ventor (producción) no se toca.
