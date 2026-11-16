@@ -22,3 +22,6 @@
 ## Backend
 - Supabase proyecto `handoff` (ref `hppzsirfbvvwgdlhhhvt`, us-east-1, org Quoteflow). URL: https://hppzsirfbvvwgdlhhhvt.supabase.co. Migraciones 0001 y 0002 aplicadas.
 - Plan gratis = 2 proyectos activos: fiscalbox está PAUSADO para dar cupo (reactivarlo pausando handoff). Ventor (producción) no se toca.
+
+## Firma del APK
+- `handoff/signing/debug.keystore` es una llave de PRUEBAS pública a propósito (alias androiddebugkey, pass `android`): mantiene la misma firma entre builds para poder instalar encima. NO usar para Google Play ni datos reales; para publicar se crea una llave de subida distinta fuera del repo (secretos de GitHub).
