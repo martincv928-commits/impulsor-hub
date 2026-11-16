@@ -1,0 +1,16 @@
+:root { --bg:#f6f7f8; --fg:#14181b; --mut:#5b6670; --pri:#0f766e; --card:#fff; --bd:#dfe3e6; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0e1214; --fg:#e8ecee; --mut:#9aa6af; --card:#171c1f; --bd:#2a3238; } }
+* { box-sizing: border-box; } body { margin:0; font:16px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+.center { text-align:center; padding:2rem; } .muted { color:var(--mut); font-size:.92rem; } .note { margin-left:.6rem; font-size:.9rem; }
+.card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:1rem; margin:.8rem; display:flex; flex-direction:column; gap:.6rem; }
+.narrow { max-width:420px; margin:2rem auto; }
+input,textarea,select { width:100%; padding:.6rem; border:1px solid var(--bd); border-radius:8px; background:var(--bg); color:var(--fg); font:inherit; }
+button { padding:.6rem 1rem; border:0; border-radius:8px; background:var(--pri); color:#fff; font:inherit; cursor:pointer; } button:disabled { opacity:.5; }
+button.link { background:none; color:var(--pri); padding:.2rem; } label { display:flex; flex-direction:column; gap:.25rem; font-size:.92rem; } label.row { flex-direction:row; align-items:center; } label.row input { width:auto; }
+.shell { max-width:760px; margin:0 auto; display:flex; flex-direction:column; min-height:100dvh; }
+header { display:flex; justify-content:space-between; align-items:center; padding:.7rem .8rem; border-bottom:1px solid var(--bd); flex-wrap:wrap; gap:.4rem; }
+nav { display:flex; gap:.3rem; } nav button { background:none; color:var(--fg); border:1px solid var(--bd); } nav button.on { background:var(--pri); color:#fff; border-color:var(--pri); }
+.chat { flex:1; display:flex; flex-direction:column; min-height:0; } .msgs { flex:1; overflow-y:auto; padding:.8rem; display:flex; flex-direction:column; gap:.5rem; }
+.msg { max-width:88%; padding:.6rem .8rem; border-radius:12px; white-space:pre-wrap; background:var(--card); border:1px solid var(--bd); } .msg.user { align-self:flex-end; background:var(--pri); color:#fff; border-color:var(--pri); }
+.att { display:block; margin-top:.5rem; background:var(--bg); color:var(--fg); border:1px solid var(--bd); } .chips { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; } .chips button { background:var(--card); color:var(--fg); border:1px solid var(--bd); }
+.composer { display:flex; gap:.4rem; padding:.6rem; border-top:1px solid var(--bd); position:sticky; bottom:0; background:var(--bg); } ul { padding-left:1.1rem; margin:.2rem 0; }

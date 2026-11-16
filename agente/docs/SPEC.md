@@ -40,3 +40,11 @@ Agente de IA multiempresa (SaaS) que se conecta a UN ERP por empresa, **sólo le
 - Para probar contra Odoo real: URL, base de datos y usuario/API key de sólo lectura de una instancia de prueba (p. ej. Odoo.sh o Odoo Online).
 - Para WhatsApp (F2): cuenta Meta Business y número dedicado.
 - Alojamiento: proyecto Supabase nuevo (el plan gratis ya tiene 2 proyectos; hay que pausar uno o subir de plan).
+
+## 7. Estado F1 (2026-11-16)
+- Hecho y probado: esquema + RLS (tests con PGlite), conector Odoo de sólo lectura (tests con Odoo simulado), herramientas con visibilidad por modo en código, agente, reportes PDF/Excel, panel, chat Gerente, widget web, Edge Function `api`.
+- Decisión F1: conocimiento con búsqueda de texto completo de Postgres (español), sin embeddings (sin proveedor extra, determinístico). Se puede añadir pgvector después.
+- Fuera de F1: caja/bancos, WhatsApp, voz.
+- Supabase: proyecto `agente` (ref `lsbayfiblnylafyuxbeh`). Secretos de la función: `ANTHROPIC_API_KEY`, `ERP_ENC_KEY` (32 bytes base64). Opcional `ANTHROPIC_MODEL`.
+- Límite conocido: el chequeo de dominio autorizado del widget usa el encabezado Origin (lo respetan los navegadores; un cliente no-navegador puede falsificarlo). Mitigación: límites de tasa y modo Cliente sin datos privados.
+- Límite conocido: la descarga de páginas valida el host por nombre (no resuelve DNS); no cubre DNS rebinding.
