@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:pages": "tsc --noEmit && vite build --base ./ --outDir app --emptyOutDir"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
