@@ -48,11 +48,18 @@ jobs:
           VC=$(( ${{ github.run_number }} * 10 + ${{ github.run_attempt }} ))
           echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
           sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
-      - name: "Compilar APK (firma debug, sólo para pruebas)"
+      - name: Llave de pruebas fija (para que cada APK se instale sobre el anterior)
+        run: |
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android | grep -E "SHA256"
+      - name: "Compilar APK (firma de pruebas fija)"
         working-directory: handoff/android
         run: |
           ./gradlew --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../handoff.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs ../handoff.apk | grep -E "SHA-256|Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Publicar APK (Release fijo handoff-apk-latest)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,6 +67,6 @@ jobs:
         run: |
           gh release delete handoff-apk-latest --cleanup-tag -y || true
           gh release create handoff-apk-latest handoff.apk --target "$GITHUB_SHA" --prerelease \
-            --title "HANDOFF APK (último build, firma debug)" \
-            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: debug (sólo pruebas)"
+            --title "HANDOFF APK (último build, llave de pruebas fija)" \
+            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: llave de pruebas fija (se instala sobre la anterior)"
           echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/handoff-apk-latest/handoff.apk" >> "$GITHUB_STEP_SUMMARY"
