@@ -48,7 +48,7 @@ jobs:
           VC=$(( ${{ github.run_number }} * 10 + ${{ github.run_attempt }} ))
           echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
           sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
-      - name: Compilar APK (firma debug: sólo para pruebas)
+      - name: "Compilar APK (firma debug, sólo para pruebas)"
         working-directory: handoff/android
         run: |
           ./gradlew --no-daemon assembleDebug
