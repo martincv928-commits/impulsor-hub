@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabase';
 import type { Row } from './report';
 
@@ -78,6 +79,14 @@ export function pdfFromLines(lines: string[]): Blob {
 }
 /** Comparte el PDF con las funciones del dispositivo (WhatsApp, correo…); si no hay soporte, lo descarga. */
 export async function sharePdf(blob: Blob, name: string, title: string): Promise<string> {
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const { Share } = await import('@capacitor/share');
+    const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+    const saved = await Filesystem.writeFile({ path: name, data, directory: Directory.Cache });
+    await Share.share({ title, files: [saved.uri] });
+    return '';
+  }
   const file = new File([blob], name, { type: 'application/pdf' });
   const nav = navigator as any;
   if (nav.canShare?.({ files: [file] })) {
