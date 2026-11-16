@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabase';
+import { Ic } from '../brand';
 import { Msg, nameOf, useCtx, useLoad } from '../ctx';
 import { errText, rpc, sel, today, uploadPhoto, uuid } from '../lib';
 import { Thumbs } from './Recibir';
@@ -125,12 +126,12 @@ function Draft({ id, done }: { id: string; done: () => void }) {
     } catch (e) { setErr(errText(e)); }
     setBusy(false);
   }
-  if (sent) return <><h2>✅ Turno entregado</h2><div className="okmsg">El servidor confirmó el envío. La entrega quedó registrada con huella e inmutable; el entrante ya puede recibirla.</div><button className="btn" onClick={done}>Listo</button></>;
+  if (sent) return <><h2>Turno entregado</h2><div className="okmsg">El servidor confirmó el envío. La entrega quedó registrada con huella e inmutable; el entrante ya puede recibirla.</div><button className="btn" onClick={done}>Listo</button></>;
 
   return (
     <>
       <h2>{h.areas?.name} · {h.shift_definitions?.name}</h2>
-      <p className="mut">Fecha {h.shift_date} · Receptor: {h.to_user ? nameOf(members, h.to_user) : 'cualquiera del equipo'} · {sync === 'ok' ? '☁️ guardado en servidor' : sync === 'pending' ? '⏳ guardando…' : '⚠️ NO guardado en servidor (se conserva en este teléfono)'}</p>
+      <p className="mut">Fecha {h.shift_date} · Receptor: {h.to_user ? nameOf(members, h.to_user) : 'cualquiera del equipo'} · {sync === 'ok' ? 'Guardado en el servidor' : sync === 'pending' ? 'Guardando…' : 'NO guardado en el servidor (se conserva en este teléfono)'}</p>
       <div className="card">
         {fields.map((f: Row) => (
           <FieldInput key={f.id} f={f} v={vals[f.id]} set={(x) => set(f.id, x)} onPhoto={(file) => addPhoto(f.id, file)} atts={atts} />
@@ -170,7 +171,7 @@ function FieldInput({ f, v, set, onPhoto, atts }: { f: Row; v: any; set: (x: any
       return <>{label}<textarea value={v ?? ''} onChange={(e) => set(e.target.value)} /></>;
     case 'photo': {
       const mine = ((v as string[]) ?? []).map((id) => atts.find((a) => a.id === id)).filter(Boolean) as Row[];
-      return <>{label}<Thumbs paths={mine.map((a) => a.path)} /><label className="btn sec" style={{ margin: '4px 0', textAlign: 'center', padding: 12, borderRadius: 12, border: '2px solid var(--pri)', color: 'var(--pri)' }}>📷 Tomar / agregar foto
+      return <>{label}<Thumbs paths={mine.map((a) => a.path)} /><label className="btn sec"><Ic n="camera" size={20} />Tomar / agregar foto
         <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) onPhoto(file); e.target.value = ''; }} /></label></>;
     }
     default:
@@ -184,7 +185,7 @@ export function IssueForm({ handoff, onAdded }: { handoff: Row; onAdded: () => v
   const [f, setF] = useState({ title: '', description: '', category: 'incidencia', priority: 'medium', due: '', assignee: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const nid = useRef(uuid());
-  if (!open) return <button className="btn sec" onClick={() => setOpen(true)}>＋ Agregar pendiente / incidencia</button>;
+  if (!open) return <button className="btn sec" onClick={() => setOpen(true)}><Ic n="plus" size={20} />Agregar pendiente / incidencia</button>;
   async function add() {
     setBusy(true); setErr('');
     try {

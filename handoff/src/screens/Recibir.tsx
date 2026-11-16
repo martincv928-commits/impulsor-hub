@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
+import { Ic } from '../brand';
 import { Msg, isManager, nameOf, useCtx, useLoad } from '../ctx';
-import { errText, pdfFromLines, rpc, sel, sharePdf, signedUrl } from '../lib';
+import { errText, pdfFromLines, rpc, sel, sharePdf, signedUrl, fdt } from '../lib';
 import { handoffLines, fieldValueText, ISSUE_STATUS, PRIORITY, STATUS_LABEL, type Row } from '../report';
 
 export function Thumbs({ paths }: { paths: string[] }) {
@@ -19,11 +20,11 @@ export function Recibir({ arg }: { arg?: string }) {
     <>
       <h2>Turnos por recibir</h2>
       <Msg err={list.err} />
-      {rows.length === 0 && !list.loading && <div className="card mut">No hay entregas pendientes de recibir para ti.</div>}
+      {rows.length === 0 && !list.loading && <div className="card empty"><div className="ico"><Ic n="inbox" size={26} /></div>No hay entregas pendientes de recibir para ti.</div>}
       {rows.map((h: Row) => (
-        <div className="card" key={h.id} onClick={() => go('recibir', h.id)}>
-          <div className="row"><b>{h.areas?.name} · {h.shift_definitions?.name}</b><span className="badge b-pending_receipt">Por recibir</span></div>
-          <div className="mut">De {nameOf(members, h.from_user)} · {new Date(h.submitted_at).toLocaleString('es-MX')}</div>
+        <div className="card tap s-pending_receipt" key={h.id} onClick={() => go('recibir', h.id)}>
+          <div className="row"><span className="title">{h.areas?.name} · {h.shift_definitions?.name}</span><span className="badge b-pending_receipt">Por recibir</span></div>
+          <div className="mut">De {nameOf(members, h.from_user)} · {fdt(h.submitted_at)}</div>
         </div>
       ))}
     </>
@@ -39,8 +40,8 @@ export function Historial({ arg }: { arg?: string }) {
       <h2>Historial de entregas</h2>
       <Msg err={list.err} />
       {(list.data ?? []).map((h: Row) => (
-        <div className="card" key={h.id} onClick={() => go('historial', h.id)}>
-          <div className="row"><b>{h.areas?.name} · {h.shift_definitions?.name}</b><span className={`badge b-${h.status}`}>{STATUS_LABEL[h.status]}</span></div>
+        <div className={`card tap s-${h.status}`} key={h.id} onClick={() => go('historial', h.id)}>
+          <div className="row"><span className="title">{h.areas?.name} · {h.shift_definitions?.name}</span><span className={`badge b-${h.status}`}>{STATUS_LABEL[h.status]}</span></div>
           <div className="mut">{h.shift_date} · de {nameOf(members, h.from_user)}</div>
         </div>
       ))}
@@ -61,7 +62,7 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
   }, [id]);
   const [notes, setNotes] = useState(''); const [ack, setAck] = useState({ checklist: false, issues: false });
   const [err, setErr] = useState(''); const [ok, setOk] = useState(''); const [busy, setBusy] = useState(false); const [addendum, setAddendum] = useState('');
-  if (!d.data) return <><Msg err={d.err} /><button className="link" onClick={back}>← Volver</button></>;
+  if (!d.data) return <><Msg err={d.err} /><button className="link back" onClick={back}><Ic n="back" size={18} />Volver</button></>;
   const { h, receipt, addenda, atts } = d.data;
   const snap = h.snapshot as Row;
   const canReceive = h.status === 'pending_receipt' && h.from_user !== uid && (!h.to_user || h.to_user === uid || isManager(role));
@@ -86,9 +87,9 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
   );
   return (
     <>
-      <button className="link" onClick={back}>← Volver</button>
+      <button className="link back" onClick={back}><Ic n="back" size={18} />Volver</button>
       <h2>{snap.handoff.area.name} · {snap.handoff.shift.name}</h2>
-      <p className="mut">{snap.handoff.site.name} · {snap.handoff.shift_date} · de {snap.handoff.from_name} · <span className={`badge b-${h.status}`}>{STATUS_LABEL[h.status]}</span><br />Enviada {new Date(h.submitted_at).toLocaleString('es-MX')} · huella {h.snapshot_hash.slice(0, 12)}…</p>
+      <p className="mut">{snap.handoff.site.name} · {snap.handoff.shift_date} · de {snap.handoff.from_name} · <span className={`badge b-${h.status}`}>{STATUS_LABEL[h.status]}</span><br />Enviada {fdt(h.submitted_at)} · huella {h.snapshot_hash.slice(0, 12)}…</p>
       <div className="card">
         <h3>Contenido entregado</h3>
         {snap.fields.map((f: Row) => <div className="item" key={f.field_id}><b>{f.label}</b><div>{fieldValueText(f)}</div></div>)}
@@ -97,8 +98,8 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
       <div className="card"><h3>Reportados en este turno</h3>{snap.issues_created.length === 0 && <p className="mut">Ninguno.</p>}{snap.issues_created.map((i: Row) => <IssueRow key={i.id} i={i} />)}</div>
       <div className="card"><h3>Pendientes heredados</h3>{snap.issues_open.length === 0 && <p className="mut">Ninguno.</p>}{snap.issues_open.map((i: Row) => <IssueRow key={i.id} i={i} />)}
         <p className="mut">Recibir la entrega no te hace responsable de resolver estos pendientes: para asumirlos, ábrelos y usa «Asumir responsabilidad».</p></div>
-      {addenda.length > 0 && <div className="card"><h3>Anexos posteriores</h3>{addenda.map((a: Row) => <div className="item" key={a.id}>{a.body}<div className="mut">{nameOf(members, a.author)} · {new Date(a.created_at).toLocaleString('es-MX')}</div></div>)}</div>}
-      {receipt && <div className="card"><h3>Recepción</h3><b>{{ accepted: 'Aceptada', accepted_with_observations: 'Aceptada con observaciones', discrepancy: 'Discrepancia registrada', rejected: 'Rechazada' }[receipt.decision as string]}</b> por {nameOf(members, receipt.received_by)} · {new Date(receipt.received_at).toLocaleString('es-MX')}<div className="mut">{receipt.notes}</div></div>}
+      {addenda.length > 0 && <div className="card"><h3>Anexos posteriores</h3>{addenda.map((a: Row) => <div className="item" key={a.id}>{a.body}<div className="mut">{nameOf(members, a.author)} · {fdt(a.created_at)}</div></div>)}</div>}
+      {receipt && <div className="card"><h3>Recepción</h3><b>{{ accepted: 'Aceptada', accepted_with_observations: 'Aceptada con observaciones', discrepancy: 'Discrepancia registrada', rejected: 'Rechazada' }[receipt.decision as string]}</b> por {nameOf(members, receipt.received_by)} · {fdt(receipt.received_at)}<div className="mut">{receipt.notes}</div></div>}
       {(receiving || canReceive) && canReceive && (
         <div className="card">
           <h3>Tu decisión</h3>
@@ -117,7 +118,7 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
           <button className="btn sec" disabled={!addendum.trim() || busy} onClick={async () => { try { await rpc('add_handoff_addendum', { p_id: id, p_body: addendum }); setAddendum(''); d.reload(); } catch (e) { setErr(errText(e)); } }}>Guardar anexo</button></div>
       )}
       <Msg err={err} ok={ok} />
-      <button className="btn sec" onClick={pdf}>📄 Generar y compartir PDF</button>
+      <button className="btn sec" onClick={pdf}><Ic n="pdf" size={20} />Generar y compartir PDF</button>
       <span hidden>{atts.length}</span>
     </>
   );
