@@ -1,0 +1,65 @@
+# HANDOFF: pruebas -> build web -> APK Android (Capacitor) en Release fijo "handoff-apk-latest".
+name: HANDOFF APK
+
+on:
+  push:
+    branches: [master]
+    paths: ['handoff/**', '.github/workflows/handoff-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: handoff-apk
+  cancel-in-progress: false
+
+env:
+  # Valores públicos por diseño (URL y publishable key); nunca service_role.
+  VITE_SUPABASE_URL: https://hppzsirfbvvwgdlhhhvt.supabase.co
+  VITE_SUPABASE_ANON_KEY: sb_publishable_BcZnI2fMmbxHWvtGzvyMRg_oNyJHrYy
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handoff
+    steps:
+      - uses: actions/checkout@v5
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: handoff/package-lock.json }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap add android && npx cap sync android
+      - name: Permisos y ajustes del manifiesto
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          # cámara para <input capture> (fotos de evidencia); sin respaldos de Android
+          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>#' "$M"
+          sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$M"
+          grep -n "CAMERA\|allowBackup" "$M"
+      - name: Versión autoincremental
+        run: |
+          VC=$(( ${{ github.run_number }} * 10 + ${{ github.run_attempt }} ))
+          echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
+      - name: Compilar APK (firma debug: sólo para pruebas)
+        working-directory: handoff/android
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../handoff.apk
+      - name: Publicar APK (Release fijo handoff-apk-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete handoff-apk-latest --cleanup-tag -y || true
+          gh release create handoff-apk-latest handoff.apk --target "$GITHUB_SHA" --prerelease \
+            --title "HANDOFF APK (último build, firma debug)" \
+            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: debug (sólo pruebas)"
+          echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/handoff-apk-latest/handoff.apk" >> "$GITHUB_STEP_SUMMARY"
