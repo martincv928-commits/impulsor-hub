@@ -77,6 +77,7 @@
   function go(view) {
     S.view = view;
     S.confirmDelete = false;
+    S.confirmAccountDeletion = false;
     render();
     window.scrollTo(0, 0);
     // Atrapa el botón/gesto de "atrás" del celular: cada pantalla que no sea
@@ -2117,6 +2118,13 @@
           <button class="btn block ghost" data-act="force-refresh" ${S.authBusy ? 'disabled' : ''}>Forzar actualización de la app</button>
           <p class="hint" style="margin-top:-4px">Si acabas de actualizar Cotízame y no ves los cambios, usa esto — no afecta tu sesión ni tus datos guardados.</p>
           <button class="btn block ghost danger" data-act="logout">Cerrar sesión</button>
+          ${S.confirmAccountDeletion ? `
+            <div class="confirm-row">Se enviará una solicitud a Soporte para eliminar tu cuenta y los datos de tu negocio. No se borra nada de inmediato: te contactamos por correo para confirmar antes de hacerlo.
+              <div class="two-col" style="margin-top:10px">
+                <button class="btn block ghost" data-act="cancel-account-deletion">Cancelar</button>
+                <button class="btn block danger" data-act="confirm-account-deletion" ${S.authBusy ? 'disabled' : ''}>Sí, solicitar</button>
+              </div>
+            </div>` : `<button class="btn block ghost" data-act="request-account-deletion">Solicitar eliminación de mi cuenta</button>`}
         </div>
         ${S.pushStatus === 'on' || S.pushStatus === 'off' ? `
         <div class="section-h"><h2>Notificaciones</h2></div>
@@ -2518,6 +2526,24 @@
       case 'auth-recover': S.authMode = 'recover'; return render();
       case 'auth-back-to-login': S.authMode = 'login'; return render();
       case 'auth': return go('auth');
+      case 'request-account-deletion': S.confirmAccountDeletion = true; return render();
+      case 'cancel-account-deletion': S.confirmAccountDeletion = false; return render();
+      case 'confirm-account-deletion': {
+        if (!(S.cloudBusiness && S.cloudSession)) return toast('Inicia sesión para enviar la solicitud.');
+        S.authBusy = true; render();
+        try {
+          const name = S.cloudBusiness.name || '';
+          const email = (S.cloudSession.user && S.cloudSession.user.email) || '';
+          await CLOUD.support.create(S.cloudBusiness.id, S.cloudSession.user.id,
+            'Solicitud de eliminación de cuenta',
+            `Solicito eliminar mi cuenta y los datos de mi negocio.\nNegocio: ${name}\nCorreo: ${email}`, null);
+          toast('Solicitud enviada. Te contactaremos por correo para confirmarla.');
+        } catch (err) {
+          toast(err.message);
+        }
+        S.authBusy = false; S.confirmAccountDeletion = false;
+        return render();
+      }
       case 'logout': {
         await CLOUD.auth.signOut();
         S.cloudSession = null;
