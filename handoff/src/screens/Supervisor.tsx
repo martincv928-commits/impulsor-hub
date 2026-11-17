@@ -15,7 +15,7 @@ export default function Supervisor() {
   return (
     <>
       <h2>Supervisor</h2>
-      <div className="chips">{[1, 7, 30].map((n) => <button key={n} className={`pill ${days === n ? 'on' : ''}`} onClick={() => setDays(n)}>{n === 1 ? 'Hoy' : `${n} días`}</button>)}</div>
+      <div className="chips">{[0, 7, 30].map((n) => <button key={n} className={`pill ${days === n ? 'on' : ''}`} onClick={() => setDays(n)}>{n === 0 ? 'Hoy' : `${n} días`}</button>)}</div>
       <h3>Turnos</h3>
       <div className="grid"><Stat n={s.handoffs.pending_receipt} l="Por recibir" hot to="recibir" ic="inbox" /><Stat n={s.handoffs.accepted + s.handoffs.accepted_obs} l="Recibidos" ic="check" /><Stat n={s.handoffs.disputed + s.handoffs.rejected} l="Discrepancia / rechazo" hot to="historial" ic="alert" /></div>
       <h3>Pendientes</h3>
@@ -25,7 +25,7 @@ export default function Supervisor() {
       {s.critical_list.length > 0 && <div className="card"><h3>Requieren atención</h3>{s.critical_list.map((p: Row) => <div className="item" key={p.id} onClick={() => go('pendientes', p.id)}>{p.title} <span className={`badge b-${p.priority}`}>{PRIORITY[p.priority]}</span><div className="mut">{ISSUE_STATUS[p.status]}{p.assignee ? '' : ' · sin responsable'}{p.due_date ? ` · vence ${p.due_date}` : ''}</div></div>)}</div>}
       <div className="card"><h3>Actividad reciente</h3>{s.recent_activity.length === 0 && <p className="mut">Sin actividad.</p>}{s.recent_activity.map((a: Row, i: number) => <div className="item mut" key={i}>{a.action} · {a.actor ?? '—'} · {fdt(a.at)}</div>)}</div>
       <Msg ok={ok} />
-      <button className="btn" onClick={async () => setOk(await sharePdf(pdfFromLines(summaryLines(s, orgName)), `handoff-resumen-${today()}.pdf`, 'HANDOFF — Resumen de turno'))}><Ic n="pdf" size={20} />Generar y compartir resumen PDF</button>
+      <button className="btn" onClick={async () => setOk(await sharePdf(await pdfFromLines(summaryLines(s, orgName)), `handoff-resumen-${today()}.pdf`, 'HANDOFF — Resumen de turno'))}><Ic n="pdf" size={20} />Generar y compartir resumen PDF</button>
       <button className="link" onClick={d.reload}>Actualizar</button>
     </>
   );

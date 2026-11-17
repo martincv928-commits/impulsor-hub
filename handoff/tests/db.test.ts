@@ -336,6 +336,16 @@ describe('14. API / integraciones: operaciones no autorizadas', () => {
   });
 });
 
+describe('resumen con hora de México', () => {
+  it('un pendiente creado a las 9:30 p.m. (hora de México) cuenta en ese día y no en el siguiente', async () => {
+    const [iss] = await as(db, u.sal, "select * from create_issue($1,$2,$3,'Pendiente tarde',null,'x','low')", [orgA, siteA, areaA]);
+    await db.query("update issues set created_at='2027-03-11 03:30:00+00' where id=$1", [iss.id]); // 10-mar 21:30 en CDMX
+    const day = async (d: string) => (await as(db, u.supA, 'select supervisor_summary($1,$2,$2) s', [orgA, d]))[0].s.issues.created_in_range;
+    expect(await day('2027-03-10')).toBeGreaterThanOrEqual(1);
+    expect(await day('2027-03-11')).toBe(0);
+  });
+});
+
 describe('membresía', () => {
   it('invitaciones de un solo uso; no se puede quitar al último admin; plantillas iniciales presentes', async () => {
     const code = (await as(db, u.admA, "select create_invite($1,'worker') c", [orgA]))[0].c;
