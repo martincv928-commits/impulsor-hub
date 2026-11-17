@@ -9,6 +9,8 @@ import { assertSafeUrl } from '../_shared/net.ts';
 import { OdooConnector } from '../_shared/odoo.ts';
 import { buildSystemPrompt, findForbidden, REFUSAL, type Settings } from '../_shared/prompt.ts';
 import { buildReport } from '../_shared/reports.ts';
+import { WIDGET_JS } from '../_shared/widget.ts';
+import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, verifySignature } from '../_shared/whatsapp.ts';
 import { toolsForMode, type Mode, type ToolCtx } from '../_shared/tools.ts';
 import type { Attachment } from '../_shared/reports.ts';
 
@@ -53,33 +55,11 @@ async function connectorFor(tenant: string): Promise<OdooConnector | null> {
   return new OdooConnector({ url: data.url, db: data.db, username: data.username, apiKey });
 }
 
-async function chat(req: Request, body: any, origin: string | null) {
-  const text = typeof body.message === 'string' ? body.message.trim() : '';
-  if (!text) throw new HttpError(400, 'Mensaje vacío');
-  if (!env('ANTHROPIC_API_KEY')) throw new HttpError(503, 'El asistente aún no está configurado (falta la clave del modelo de IA).');
+interface Turn { tenant: string; mode: Mode; channel: 'app' | 'web' | 'whatsapp'; user: string | null; text: string; convId: string | null; reuseHours?: number }
 
-  let mode: Mode, tenant: string, user: string | null = null, channel: 'app' | 'web';
-  if (typeof body.channel_token === 'string') {
-    mode = 'cliente'; channel = 'web';
-    const { data: ch } = await sb.from('channels').select('tenant_id, enabled, allowed_origins').eq('public_token', body.channel_token).maybeSingle();
-    if (!ch || !ch.enabled) throw new HttpError(403, 'Canal no disponible');
-    const allowed: string[] = ch.allowed_origins ?? [];
-    if (!origin || !allowed.includes(origin)) throw new HttpError(403, 'Este sitio no está autorizado para usar el asistente');
-    tenant = ch.tenant_id;
-    if (text.length > LIMITS.clienteMsg) throw new HttpError(400, 'Mensaje demasiado largo');
-    const since = new Date(Date.now() - 3600_000).toISOString();
-    const { count } = await sb.from('messages').select('id, conversations!inner(channel)', { count: 'exact', head: true })
-      .eq('tenant_id', tenant).eq('role', 'user').eq('conversations.channel', 'web').gte('created_at', since);
-    if ((count ?? 0) >= LIMITS.clienteHour) throw new HttpError(429, 'Demasiadas consultas; intenta más tarde');
-  } else {
-    mode = 'gerente'; channel = 'app'; user = await userFrom(req);
-    if (typeof body.tenant_id !== 'string') throw new HttpError(400, 'Falta tenant_id');
-    tenant = body.tenant_id;
-    const role = await roleOf(tenant, user);
-    if (role !== 'admin' && role !== 'gerente') throw new HttpError(403, 'Sin permiso para el modo Gerente');
-    if (text.length > LIMITS.gerenteMsg) throw new HttpError(400, 'Mensaje demasiado largo');
-  }
-
+/** Una vuelta de conversación (compartida por la app, el widget web y WhatsApp). */
+async function converse(a: Turn) {
+  const { tenant, mode, channel, user, text } = a;
   const [{ data: s }, { data: tx }] = await Promise.all([
     sb.from('tenant_settings').select('*').eq('tenant_id', tenant).single(),
     sb.from('tools_exposed').select('tool, is_public').eq('tenant_id', tenant),
@@ -87,8 +67,12 @@ async function chat(req: Request, body: any, origin: string | null) {
   const settings = s as Settings;
   const flags = Object.fromEntries((tx ?? []).map((t: any) => [t.tool, t.is_public]));
 
-  // Conversación
-  let convId: string | null = typeof body.conversation_id === 'string' ? body.conversation_id : null;
+  let convId: string | null = a.convId;
+  if (!convId && a.reuseHours && user) {
+    const since = new Date(Date.now() - a.reuseHours * 3600_000).toISOString();
+    const { data: last } = await sb.from('conversations').select('id').eq('tenant_id', tenant).eq('user_id', user).eq('channel', channel).gte('created_at', since).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    convId = last?.id ?? null;
+  }
   let history: LlmMessage[] = [];
   if (convId) {
     const { data: c } = await sb.from('conversations').select('id, mode, user_id, tenant_id').eq('id', convId).maybeSingle();
@@ -128,7 +112,67 @@ async function chat(req: Request, body: any, origin: string | null) {
   }
   await sb.from('messages').insert({ conversation_id: convId, tenant_id: tenant, role: 'assistant', content: reply });
   if (traces.length) await sb.from('tool_calls').insert(traces.map((t) => ({ tenant_id: tenant, conversation_id: convId, tool: t.tool, params: t.params, ok: t.ok, summary: t.summary })));
-  return { conversation_id: convId, reply, attachments: mode === 'gerente' ? attachments : [] };
+  return { conversation_id: convId as string, reply, attachments: mode === 'gerente' ? attachments : [] };
+}
+
+async function chat(req: Request, body: any, origin: string | null) {
+  const text = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!text) throw new HttpError(400, 'Mensaje vacío');
+  if (!env('ANTHROPIC_API_KEY')) throw new HttpError(503, 'El asistente aún no está configurado (falta la clave del modelo de IA).');
+  const convId: string | null = typeof body.conversation_id === 'string' ? body.conversation_id : null;
+
+  if (typeof body.channel_token === 'string') {
+    const { data: ch } = await sb.from('channels').select('tenant_id, enabled, allowed_origins').eq('public_token', body.channel_token).eq('kind', 'web').maybeSingle();
+    if (!ch || !ch.enabled) throw new HttpError(403, 'Canal no disponible');
+    const allowed: string[] = ch.allowed_origins ?? [];
+    if (!origin || !allowed.includes(origin)) throw new HttpError(403, 'Este sitio no está autorizado para usar el asistente');
+    if (text.length > LIMITS.clienteMsg) throw new HttpError(400, 'Mensaje demasiado largo');
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const { count } = await sb.from('messages').select('id, conversations!inner(channel)', { count: 'exact', head: true })
+      .eq('tenant_id', ch.tenant_id).eq('role', 'user').eq('conversations.channel', 'web').gte('created_at', since);
+    if ((count ?? 0) >= LIMITS.clienteHour) throw new HttpError(429, 'Demasiadas consultas; intenta más tarde');
+    return converse({ tenant: ch.tenant_id, mode: 'cliente', channel: 'web', user: null, text, convId });
+  }
+  const user = await userFrom(req);
+  if (typeof body.tenant_id !== 'string') throw new HttpError(400, 'Falta tenant_id');
+  const role = await roleOf(body.tenant_id, user);
+  if (role !== 'admin' && role !== 'gerente') throw new HttpError(403, 'Sin permiso para el modo Gerente');
+  if (text.length > LIMITS.gerenteMsg) throw new HttpError(400, 'Mensaje demasiado largo');
+  return converse({ tenant: body.tenant_id, mode: 'gerente', channel: 'app', user, text, convId });
+}
+
+// ---- WhatsApp (Cloud API de Meta): modo Gerente para números autorizados. NO PROBADO contra Meta real. ----
+async function whatsappWebhook(req: Request): Promise<Response> {
+  if (req.method === 'GET') {
+    const u = new URL(req.url);
+    const ok = u.searchParams.get('hub.mode') === 'subscribe' && env('WHATSAPP_VERIFY_TOKEN') && u.searchParams.get('hub.verify_token') === env('WHATSAPP_VERIFY_TOKEN');
+    return ok ? new Response(u.searchParams.get('hub.challenge') ?? '', { status: 200 }) : new Response('forbidden', { status: 403 });
+  }
+  const raw = await req.text();
+  if (!(await verifySignature(raw, req.headers.get('x-hub-signature-256'), env('WHATSAPP_APP_SECRET')))) return new Response('bad signature', { status: 401 });
+  let payload: unknown; try { payload = JSON.parse(raw); } catch { return new Response('bad json', { status: 400 }); }
+  for (const m of parseWebhook(payload)) {
+    try { await handleWhatsApp(m); } catch (e) { console.error('whatsapp error', e instanceof Error ? e.message : e); }
+  }
+  return new Response('ok', { status: 200 }); // siempre 200: Meta reintenta si no
+}
+
+async function handleWhatsApp(m: { wamid: string; from: string; phoneNumberId: string; type: string; text: string }) {
+  const { data: acc } = await sb.from('whatsapp_accounts').select('tenant_id, token_enc, enabled').eq('phone_number_id', m.phoneNumberId).maybeSingle();
+  if (!acc || !acc.enabled) return;
+  const { data: nums } = await sb.from('whatsapp_numbers').select('phone, user_id').eq('tenant_id', acc.tenant_id);
+  const who = (nums ?? []).find((n: any) => phonesMatch(n.phone, m.from));
+  if (!who) { console.log('whatsapp: número no autorizado'); return; } // sin respuesta: no se confirma nada a desconocidos
+  const role = await roleOf(acc.tenant_id, who.user_id);
+  if (role !== 'admin' && role !== 'gerente') return;
+  const { error: dup } = await sb.from('whatsapp_processed').insert({ wamid: m.wamid });
+  if (dup) return; // ya procesado (reintento de Meta)
+  const wa = new WhatsAppClient(await decryptSecret(acc.token_enc, await encKey(), acc.tenant_id), m.phoneNumberId, env('WHATSAPP_GRAPH_VERSION') || 'v23.0');
+  if (m.type !== 'text' || !m.text.trim()) { await wa.sendText(m.from, 'Por ahora sólo puedo leer mensajes de texto.'); return; }
+  if (!env('ANTHROPIC_API_KEY')) { await wa.sendText(m.from, 'El asistente aún no está configurado.'); return; }
+  const r = await converse({ tenant: acc.tenant_id, mode: 'gerente', channel: 'whatsapp', user: who.user_id, text: m.text.trim().slice(0, LIMITS.gerenteMsg), convId: null, reuseHours: 12 });
+  for (const part of splitMessage(r.reply)) await wa.sendText(m.from, part);
+  for (const att of r.attachments) await wa.sendDocument(m.from, att);
 }
 
 async function erpTest(tenant: string, actor: string) {
@@ -161,6 +205,15 @@ async function route(req: Request, origin: string | null) {
       await audit(tenant, user, 'erp_saved', { url });
       return erpTest(tenant, user);
     }
+    case 'wa_save': {
+      const { tenant, user } = await requireAdmin(req, body.tenant_id);
+      const pid = String(body.phone_number_id ?? '').trim(); const token = String(body.access_token ?? '').trim();
+      if (!/^[0-9]{5,25}$/.test(pid) || !token) throw new HttpError(400, 'Falta el ID del número o el token');
+      const { error } = await sb.from('whatsapp_accounts').upsert({ tenant_id: tenant, phone_number_id: pid, token_enc: await encryptSecret(token, await encKey(), tenant), enabled: true });
+      if (error) throw new HttpError(error.code === '23505' ? 409 : 500, error.code === '23505' ? 'Ese número ya está registrado en otra empresa' : 'No se pudo guardar');
+      await audit(tenant, user, 'wa_saved', { phone_number_id: pid });
+      return { ok: true };
+    }
     case 'erp_test': { const { tenant, user } = await requireAdmin(req, body.tenant_id); return erpTest(tenant, user); }
     case 'knowledge_add': {
       const { tenant, user } = await requireAdmin(req, body.tenant_id);
@@ -191,6 +244,11 @@ async function route(req: Request, origin: string | null) {
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
+  const path = new URL(req.url).pathname;
+  if (path.endsWith('/widget.js') && req.method === 'GET') {
+    return new Response(WIDGET_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' } });
+  }
+  if (path.endsWith('/whatsapp')) return whatsappWebhook(req);
   try {
     const out = await route(req, origin);
     return Response.json(out, { headers: cors(origin) });

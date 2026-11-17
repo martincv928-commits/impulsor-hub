@@ -1,8 +1,10 @@
-/* Widget de chat para sitios web (modo Cliente). Uso:
-   <script src=".../widget.js" data-token="TOKEN" data-api="URL_API" data-key="PUBLISHABLE_KEY"></script> */
+// Codigo del widget de chat (modo Cliente). Unica fuente: la funcion api lo sirve en GET /widget.js.
+export const WIDGET_JS = String.raw`/* Widget de chat para sitios web (modo Cliente). Se sirve desde la funcion api (GET /widget.js). Uso:
+   <script src="https://PROYECTO.supabase.co/functions/v1/api/widget.js" data-token="TOKEN"></script> */
 (function () {
   var s = document.currentScript; if (!s) return;
-  var token = s.getAttribute('data-token'), api = s.getAttribute('data-api'), key = s.getAttribute('data-key') || '';
+  var token = s.getAttribute('data-token'), key = s.getAttribute('data-key') || '';
+  var api = s.getAttribute('data-api') || (s.src ? s.src.replace(/\/widget\.js.*$/, '') : '');
   var title = s.getAttribute('data-title') || 'Asistente', color = s.getAttribute('data-color') || '#0f766e';
   if (!token || !api) return;
   var conv = null, busy = false;
@@ -32,3 +34,4 @@
   };
   document.body.appendChild(host);
 })();
+`;

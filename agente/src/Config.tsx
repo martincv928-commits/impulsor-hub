@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { API_URL, SUPABASE_KEY, api, supabase } from './supabase';
+import { API_URL, api, supabase } from './supabase';
 
 type S = { company_name: string; company_profile: string; rules: string; forbidden_topics: string[]; tone: string; website_url: string; human_contact: string };
 const PUBLIC_TOOLS = [['buscar_conocimiento', 'Responder con la información de la empresa y del sitio'], ['catalogo_productos', 'Mostrar el catálogo de productos publicados en Odoo (requiere módulo Sitio web)']] as const;
 
 export default function Config({ tenantId }: { tenantId: string }) {
   return (<div className="config">
-    <Empresa t={tenantId} /><Erp t={tenantId} /><Publico t={tenantId} /><Conocimiento t={tenantId} /><Sitio t={tenantId} /><Equipo t={tenantId} />
+    <Empresa t={tenantId} /><Erp t={tenantId} /><Publico t={tenantId} /><Conocimiento t={tenantId} /><Sitio t={tenantId} /><WhatsApp t={tenantId} /><Equipo t={tenantId} />
   </div>);
 }
 const useMsg = () => { const [m, set] = useState(''); return [m, (x: string) => { set(x); setTimeout(() => set(''), 6000); }] as const; };
@@ -89,8 +89,7 @@ function Sitio({ t }: { t: string }) {
     if (list.some((o) => !/^https:\/\/[^/]+$/.test(o))) return say('Cada dominio debe ser como https://www.miempresa.mx (sin ruta)');
     const { error } = await supabase.from('channels').update({ allowed_origins: list, enabled: ch.enabled }).eq('id', ch.id); say(error ? error.message : 'Guardado');
   }
-  const base = location.href.replace(/[#?].*$/, '').replace(/index\.html$/, '').replace(/\/?$/, '/');
-  const snippet = `<script src="${base}widget.js" data-token="${ch.public_token}" data-api="${API_URL}" data-key="${SUPABASE_KEY}" data-title="Asistente"></script>`;
+  const snippet = `<script src="${API_URL}/widget.js" data-token="${ch.public_token}"></script>`;
   return (<section className="card"><h2>Chat en tu sitio web</h2>
     <label>Dominios autorizados (uno por línea)<textarea rows={3} value={origins} onChange={(e) => setOrigins(e.target.value)} placeholder="https://www.miempresa.mx" /></label>
     <label className="row"><input type="checkbox" checked={ch.enabled} onChange={(e) => setCh({ ...ch, enabled: e.target.checked })} /> Chat activo</label>
@@ -109,4 +108,35 @@ function Equipo({ t }: { t: string }) {
     <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="correo@empresa.mx" type="email" />
     <select value={role} onChange={(e) => setRole(e.target.value)}><option value="gerente">Gerente (usa el asistente)</option><option value="lector">Lector</option><option value="admin">Administrador</option></select>
     <button onClick={add} disabled={!email}>Agregar</button>{msg && <span className="note">{msg}</span>}</section>);
+}
+
+function WhatsApp({ t }: { t: string }) {
+  const [acc, setAcc] = useState<{ phone_number_id: string; enabled: boolean } | null>(null);
+  const [nums, setNums] = useState<{ phone: string; email: string }[]>([]);
+  const [f, setF] = useState({ phone_number_id: '', access_token: '' });
+  const [n, setN] = useState({ email: '', phone: '' }); const [msg, say] = useMsg();
+  const load = () => {
+    supabase.rpc('whatsapp_account_public', { p_tenant: t }).then(({ data }) => setAcc(data?.[0] ?? null));
+    supabase.rpc('list_whatsapp_numbers', { p_tenant: t }).then(({ data }) => setNums(data ?? []));
+  };
+  useEffect(() => { load(); }, [t]);
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    try { await api({ action: 'wa_save', tenant_id: t, ...f }); say('Guardado'); setF({ ...f, access_token: '' }); load(); } catch (e) { say((e as Error).message); }
+  }
+  async function add() { const { error } = await supabase.rpc('add_whatsapp_number', { p_tenant: t, p_email: n.email, p_phone: n.phone }); say(error ? error.message : 'Listo'); if (!error) { setN({ email: '', phone: '' }); load(); } }
+  return (<section className="card"><h2>WhatsApp (modo Gerente)</h2>
+    <p className="muted">Requiere una cuenta de WhatsApp Business (Cloud API de Meta). Sólo los números autorizados abajo pueden consultar; a los demás no se les responde.</p>
+    <p className="muted">URL del webhook para Meta: <code>{API_URL}/whatsapp</code></p>
+    {acc && <p>Número conectado (ID): <strong>{acc.phone_number_id}</strong></p>}
+    <form onSubmit={save}>
+      <label>ID del número de teléfono (Meta)<input value={f.phone_number_id} onChange={(e) => setF({ ...f, phone_number_id: e.target.value })} required /></label>
+      <label>Token de acceso permanente<input type="password" value={f.access_token} onChange={(e) => setF({ ...f, access_token: e.target.value })} required autoComplete="off" /></label>
+      <button>Guardar</button>
+    </form>
+    <h3>Números autorizados</h3>
+    <ul>{nums.map((x) => <li key={x.phone}>+{x.phone} — {x.email} <button className="link" onClick={async () => { await supabase.rpc('remove_whatsapp_number', { p_tenant: t, p_phone: x.phone }); load(); }}>quitar</button></li>)}</ul>
+    <input type="email" value={n.email} onChange={(e) => setN({ ...n, email: e.target.value })} placeholder="correo del gerente/admin" />
+    <input value={n.phone} onChange={(e) => setN({ ...n, phone: e.target.value })} placeholder="Número con código de país, ej. 5215512345678" />
+    <button onClick={add} disabled={!n.email || !n.phone}>Autorizar número</button>{msg && <span className="note">{msg}</span>}</section>);
 }

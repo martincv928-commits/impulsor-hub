@@ -48,3 +48,10 @@ Agente de IA multiempresa (SaaS) que se conecta a UN ERP por empresa, **sólo le
 - Supabase: proyecto `agente` (ref `lsbayfiblnylafyuxbeh`). Secretos de la función: `ANTHROPIC_API_KEY`, `ERP_ENC_KEY` (32 bytes base64). Opcional `ANTHROPIC_MODEL`.
 - Límite conocido: el chequeo de dominio autorizado del widget usa el encabezado Origin (lo respetan los navegadores; un cliente no-navegador puede falsificarlo). Mitigación: límites de tasa y modo Cliente sin datos privados.
 - Límite conocido: la descarga de páginas valida el host por nombre (no resuelve DNS); no cubre DNS rebinding.
+
+## 8. Avance posterior (2026-11-17) — pendiente de desplegar
+- Widget servido por la función: `GET {API}/widget.js` (única fuente `_shared/widget.ts`); el snippet del panel ya no depende de hospedaje aparte.
+- WhatsApp (modo Gerente) por números autorizados: migración `0002_whatsapp.sql`, webhook `{API}/whatsapp` (verificación GET, firma HMAC `X-Hub-Signature-256`, deduplicación por `wamid`, texto y reportes como documento). NO probado contra Meta real. Secretos de la función: `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`; opcional `WHATSAPP_GRAPH_VERSION` (por defecto `v23.0`; confirmar en la documentación de Meta). El token por empresa se guarda cifrado desde el panel.
+- Mensajes no autorizados reciben NO respuesta (no se confirma nada a desconocidos). Audios y otros tipos: respuesta fija de "sólo texto".
+- Voz: sin proveedor de voz a texto aún; el teclado de Android ya dicta en la app.
+- Para activar: aplicar `0002`, desplegar la función, crear la app en Meta (WhatsApp Cloud API), registrar el webhook y los dos secretos.

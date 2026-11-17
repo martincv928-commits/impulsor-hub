@@ -95,3 +95,39 @@ describe('seguridad de datos sensibles', () => {
     await expect(as(db, u.admA, "select add_member_by_email($1,'ext@test.mx','dios')", [tA])).rejects.toThrow(/rol/);
   });
 });
+
+describe('whatsapp (BD)', () => {
+  it('sólo admin autoriza números, y sólo para admin/gerente de su empresa', async () => {
+    await as(db, u.admA, "select add_whatsapp_number($1,'gerA@test.mx','+52 1 55 1234 5678')", [tA]);
+    expect((await as(db, u.admA, 'select phone, email from list_whatsapp_numbers($1)', [tA]))).toEqual([{ phone: '5215512345678', email: 'gerA@test.mx' }]);
+    await expect(as(db, u.gerA, "select add_whatsapp_number($1,'gerA@test.mx','5215500000000')", [tA])).rejects.toThrow(/admin/);
+    await expect(as(db, u.admA, "select add_whatsapp_number($1,'lecA@test.mx','5215500000000')", [tA])).rejects.toThrow(/gerente/); // lector no
+    await expect(as(db, u.admA, "select add_whatsapp_number($1,'admB@test.mx','5215500000000')", [tA])).rejects.toThrow(/gerente/); // otra empresa
+    await expect(as(db, u.admA, "select add_whatsapp_number($1,'gerA@test.mx','abc')", [tA])).rejects.toThrow(/inválido/);
+  });
+  it('otra empresa no ve los números; quitar requiere admin', async () => {
+    expect(await as(db, u.admB, 'select * from list_whatsapp_numbers($1)', [tA])).toHaveLength(0);
+    await expect(as(db, u.gerA, "select remove_whatsapp_number($1,'5215512345678')", [tA])).rejects.toThrow(/admin/);
+    await as(db, u.admA, "select remove_whatsapp_number($1,'5215512345678')", [tA]);
+    expect(await as(db, u.admA, 'select * from list_whatsapp_numbers($1)', [tA])).toHaveLength(0);
+  });
+  it('el token de WhatsApp y los mensajes procesados no son legibles por clientes', async () => {
+    await asRole(db, 'service_role', "insert into whatsapp_accounts(tenant_id,phone_number_id,token_enc) values ($1,'123456','v1.zzz')", [tA]);
+    await expect(as(db, u.admA, 'select * from whatsapp_accounts')).rejects.toThrow();
+    await expect(asRole(db, 'anon', 'select * from whatsapp_accounts')).rejects.toThrow();
+    await expect(as(db, u.admA, 'select * from whatsapp_processed')).rejects.toThrow();
+    const r = await as(db, u.admA, 'select * from whatsapp_account_public($1)', [tA]);
+    expect(r).toEqual([{ phone_number_id: '123456', enabled: true }]);
+    expect(await as(db, u.admB, 'select * from whatsapp_account_public($1)', [tA])).toHaveLength(0);
+  });
+  it('un número de teléfono de Meta no puede registrarse en dos empresas', async () => {
+    await expect(asRole(db, 'service_role', "insert into whatsapp_accounts(tenant_id,phone_number_id,token_enc) values ($1,'123456','v1.yyy')", [tB])).rejects.toThrow();
+  });
+  it('dedupe de mensajes: el mismo wamid no se inserta dos veces', async () => {
+    await asRole(db, 'service_role', "insert into whatsapp_processed(wamid) values ('wamid.A')");
+    await expect(asRole(db, 'service_role', "insert into whatsapp_processed(wamid) values ('wamid.A')")).rejects.toThrow();
+  });
+  it('las conversaciones por whatsapp son válidas', async () => {
+    await asRole(db, 'service_role', "insert into conversations(tenant_id,mode,channel,user_id) values ($1,'gerente','whatsapp',$2)", [tA, u.gerA]);
+  });
+});
