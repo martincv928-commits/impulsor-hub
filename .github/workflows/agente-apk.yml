@@ -1,0 +1,63 @@
+# AGENTE: pruebas -> build web -> APK Android (Capacitor) en Release fijo "agente-apk-latest".
+name: AGENTE APK
+
+on:
+  push:
+    branches: [master]
+    paths: ['agente/**', '.github/workflows/agente-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agente-apk
+  cancel-in-progress: false
+
+env:
+  # Valores públicos por diseño (URL y publishable key); nunca service_role.
+  VITE_SUPABASE_URL: https://lsbayfiblnylafyuxbeh.supabase.co
+  VITE_SUPABASE_ANON_KEY: sb_publishable_c-jJs9sYWC3d1O3t1643tQ_HU9ZyE2n
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agente
+    steps:
+      - uses: actions/checkout@v5
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: agente/package-lock.json }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap add android && npx cap sync android
+      - name: Ajustes del manifiesto
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$M"
+          grep -n allowBackup "$M"
+      - name: Versión autoincremental
+        run: |
+          VC=$(( ${{ github.run_number }} * 10 + ${{ github.run_attempt }} ))
+          echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
+      - name: "Compilar APK (firma debug, sólo para pruebas)"
+        working-directory: agente/android
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../agente.apk
+      - name: Publicar APK (Release fijo agente-apk-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete agente-apk-latest --cleanup-tag -y || true
+          gh release create agente-apk-latest agente.apk --target "$GITHUB_SHA" --prerelease \
+            --title "AGENTE APK (último build, firma debug)" \
+            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: debug (sólo pruebas)"
+          echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/agente-apk-latest/agente.apk" >> "$GITHUB_STEP_SUMMARY"
