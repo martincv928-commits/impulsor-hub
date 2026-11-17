@@ -1,6 +1,6 @@
 // Postgres real (PGlite) con un stub mínimo de los esquemas auth/storage de Supabase.
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 const BOOT = `
@@ -25,8 +25,8 @@ export type Db = PGlite;
 export async function makeDb(): Promise<Db> {
   const db = new PGlite();
   await db.exec(BOOT);
-  await db.exec(readFileSync('supabase/migrations/0001_handoff_v01.sql', 'utf8'));
-  await db.exec(readFileSync('supabase/migrations/0002_storage.sql', 'utf8'));
+  for (const f of readdirSync('supabase/migrations').filter((n) => n.endsWith('.sql')).sort())
+    await db.exec(readFileSync('supabase/migrations/' + f, 'utf8'));
   return db;
 }
 

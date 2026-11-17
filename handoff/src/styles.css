@@ -108,3 +108,15 @@ button.back{display:inline-flex;align-items:center;gap:4px;margin:-4px 0 8px -6p
 .auth .wordmark{display:block;margin-top:14px}
 
 .grid>.stat:last-child:nth-child(odd){grid-column:span 2}
+
+.offline{position:sticky;top:0;z-index:9;background:var(--coral);color:#fff;font:700 13px/1.35 system-ui;padding:9px 16px;text-align:center}
+nav.tabs button .dot{position:absolute;top:-6px;right:-12px;min-width:19px;height:19px;border-radius:99px;background:var(--coral);color:#fff;font:800 11px/19px system-ui;text-align:center;padding:0 5px;font-style:normal}
+.steps{counter-reset:s;list-style:none;margin:0;padding:0}.steps li{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.steps li:last-child{border:0}
+.steps .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;font:800 13px system-ui;background:var(--bg);border:1.5px solid var(--line);color:var(--mut)}
+.steps li.done .n{background:var(--mint);border-color:var(--mint);color:#fff}.steps li.done span.t{color:var(--mut);text-decoration:line-through}
+
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg button{min-height:52px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);font:700 16px system-ui}
+.seg button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.opt{display:flex;align-items:center;gap:12px;margin:8px 0;padding:14px;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);font-weight:600;font-size:16px;cursor:pointer}
+.opt.on{border-color:var(--amber);background:var(--amber-l)}.opt input{margin:0;flex:none}

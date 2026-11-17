@@ -20,7 +20,7 @@
 - Respuestas finales BREVES; el usuario trabaja desde Android.
 
 ## Backend
-- Supabase proyecto `handoff` (ref `hppzsirfbvvwgdlhhhvt`, us-east-1, org Quoteflow). URL: https://hppzsirfbvvwgdlhhhvt.supabase.co. Migraciones 0001 y 0002 aplicadas.
+- Supabase proyecto `handoff` (ref `hppzsirfbvvwgdlhhhvt`, us-east-1, org Quoteflow). URL: https://hppzsirfbvvwgdlhhhvt.supabase.co. Migraciones 0001, 0002 y 0003 aplicadas.
 - Plan gratis = 2 proyectos activos: fiscalbox está PAUSADO para dar cupo (reactivarlo pausando handoff). Ventor (producción) no se toca.
 
 ## Firma del APK

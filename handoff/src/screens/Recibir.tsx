@@ -77,7 +77,7 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
   }
   async function pdf() {
     const lines = handoffLines(snap, h, receipt, addenda, receipt ? nameOf(members, receipt.received_by) : undefined);
-    setOk(await sharePdf(pdfFromLines(lines), `handoff-${h.shift_date}-${h.id.slice(0, 8)}.pdf`, 'Entrega de turno'));
+    setOk(await sharePdf(await pdfFromLines(lines), `handoff-${h.shift_date}-${h.id.slice(0, 8)}.pdf`, 'Entrega de turno'));
   }
   const IssueRow = ({ i }: { i: Row }) => (
     <div className="item" onClick={() => go('pendientes', i.id)}>

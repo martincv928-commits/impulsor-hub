@@ -25,7 +25,7 @@ export default function Entregar() {
 }
 
 function Setup({ onStart }: { onStart: (id: string) => void }) {
-  const { org, uid, members } = useCtx();
+  const { org, uid, members, role, go } = useCtx();
   const cfg = useLoad(async () => {
     const [sites, areas, shifts, templates] = await Promise.all([
       sel(supabase.from('sites').select('id,name').eq('org_id', org).eq('active', true)),
@@ -37,6 +37,19 @@ function Setup({ onStart }: { onStart: (id: string) => void }) {
   }, [org]);
   const [f, setF] = useState({ site: '', area: '', shift: '', tpl: '', date: today(), to: '' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!cfg.data) return;
+    const { sites, areas, shifts, templates } = cfg.data;
+    let saved: Record<string, string> = {};
+    try { saved = JSON.parse(localStorage.getItem('hf_setup_' + org) ?? '{}'); } catch { /* sin preferencias */ }
+    const pick = (id: string | undefined, opts: Row[]) => (id && opts.some((o) => o.id === id) ? id : opts.length === 1 ? opts[0].id : '');
+    const site = pick(saved.site, sites);
+    const area = pick(saved.area, areas.filter((a: Row) => a.site_id === site));
+    const shift = pick(saved.shift, shifts);
+    const tpl = pick(saved.tpl, templates.filter((t: Row) => (!t.site_id || t.site_id === site) && (!t.area_id || t.area_id === area)));
+    const to = members.some((m) => m.user_id === saved.to && m.user_id !== uid) ? saved.to : '';
+    setF((x) => ({ ...x, site, area, shift, tpl, to }));
+  }, [cfg.data]); // eslint-disable-line
   if (!cfg.data) return <><Msg err={cfg.err} /><p className="mut">Cargando…</p></>;
   const { sites, areas, shifts, templates } = cfg.data;
   const areaOpts = areas.filter((a: Row) => a.site_id === f.site);
@@ -46,6 +59,7 @@ function Setup({ onStart }: { onStart: (id: string) => void }) {
     try {
       const id = uuid();
       await rpc('save_handoff_draft', { p_id: id, p_org: org, p_site: f.site, p_area: f.area, p_shift: f.shift, p_template: f.tpl, p_date: f.date, p_to_user: f.to || null, p_responses: null });
+      localStorage.setItem('hf_setup_' + org, JSON.stringify({ site: f.site, area: f.area, shift: f.shift, tpl: f.tpl, to: f.to }));
       onStart(id);
     } catch (e) { setErr(errText(e)); }
     setBusy(false);
@@ -56,7 +70,12 @@ function Setup({ onStart }: { onStart: (id: string) => void }) {
   return (
     <div className="card">
       <h3>Nueva entrega</h3>
-      {sites.length === 0 && <div className="err">Aún no hay sedes/áreas/turnos. Pide al administrador configurarlos.</div>}
+      {(sites.length === 0 || areas.length === 0 || shifts.length === 0) && (
+        <div className="err">
+          Falta configurar {sites.length === 0 ? 'una sede' : areas.length === 0 ? 'un área' : 'un turno'} antes de entregar.
+          {role === 'admin' ? <button className="btn dark" onClick={() => go('config', 'estructura')}>Ir a configuración</button> : ' Pídeselo a tu administrador.'}
+        </div>
+      )}
       {sel1('site', 'Sede', sites)}{sel1('area', 'Área', areaOpts)}{sel1('shift', 'Turno', shifts)}{sel1('tpl', 'Plantilla', tplOpts)}
       <label>Fecha<input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
       <label>Receptor <small>(opcional; si no eliges, cualquiera del equipo puede recibir)</small>
@@ -126,6 +145,7 @@ function Draft({ id, done }: { id: string; done: () => void }) {
     } catch (e) { setErr(errText(e)); }
     setBusy(false);
   }
+  const missing = fields.filter((f: Row) => f.required && !answered(f, vals[f.id])).map((f: Row) => f.label as string);
   if (sent) return <><h2>Turno entregado</h2><div className="okmsg">El servidor confirmó el envío. La entrega quedó registrada con huella e inmutable; el entrante ya puede recibirla.</div><button className="btn" onClick={done}>Listo</button></>;
 
   return (
@@ -145,7 +165,10 @@ function Draft({ id, done }: { id: string; done: () => void }) {
       </div>
       {inherited.length > 0 && <><h3>Pendientes heredados abiertos en el área ({inherited.length})</h3><div className="card">{inherited.map((i: Row) => <div key={i.id} className="item">{i.title} <span className="mut">· {i.assignee ? nameOf(members, i.assignee) : 'sin responsable'}</span></div>)}<p className="mut">Se incluirán en la entrega para que el entrante los vea.</p></div></>}
       <Msg err={err} />
-      <button className="btn ok" disabled={busy || sync === 'pending'} onClick={submit}>ENTREGAR TURNO</button>
+      {missing.length > 0
+        ? <p className="mut" style={{ margin: '4px 2px' }}><b>Falta por llenar:</b> {missing.join(', ')}.</p>
+        : <p className="mut" style={{ margin: '4px 2px' }}>Todo lo obligatorio está completo.</p>}
+      <button className="btn ok" disabled={busy || sync === 'pending' || missing.length > 0} onClick={submit}>ENTREGAR TURNO</button>
       <button className="btn sec" onClick={done}>Salir (el borrador se conserva)</button>
     </>
   );
@@ -155,15 +178,18 @@ function FieldInput({ f, v, set, onPhoto, atts }: { f: Row; v: any; set: (x: any
   const label = <label>{f.label}{f.required && ' *'}{f.instructions && <small> — {f.instructions}</small>}</label>;
   switch (f.type) {
     case 'boolean':
-      return <>{label}<div className="row" style={{ justifyContent: 'flex-start' }}>{[true, false].map((b) => <label key={String(b)} style={{ margin: '0 16px 0 0' }}><input type="radio" checked={v === b} onChange={() => set(b)} />{b ? 'Sí' : 'No'}</label>)}</div></>;
+      return <>{label}<div className="seg">{[true, false].map((b) => <button type="button" key={String(b)} className={v === b ? 'on' : ''} onClick={() => set(b)}>{b ? 'Sí' : 'No'}</button>)}</div></>;
     case 'select':
       return <>{label}<select value={v ?? ''} onChange={(e) => set(e.target.value)}><option value="">— elegir —</option>{(f.options as string[]).map((o) => <option key={o}>{o}</option>)}</select></>;
     case 'checklist': {
+      const opts = f.options as string[];
       const cur = (v ?? {}) as Record<string, boolean>;
-      return <>{label}{(f.options as string[]).map((o) => (
-        <div key={o} className="row" style={{ justifyContent: 'flex-start', gap: 6 }}>
-          <label style={{ margin: 0, fontWeight: 400 }}><input type="checkbox" checked={cur[o] === true} onChange={(e) => set({ ...Object.fromEntries((f.options as string[]).map((x) => [x, cur[x] ?? false])), [o]: e.target.checked })} />{o}</label>
-        </div>))}</>;
+      const all = (val: boolean) => Object.fromEntries(opts.map((x) => [x, val]));
+      return <>{label}{opts.map((o) => (
+        <label key={o} className={`opt ${cur[o] === true ? 'on' : ''}`}>
+          <input type="checkbox" checked={cur[o] === true} onChange={(e) => set({ ...Object.fromEntries(opts.map((x) => [x, cur[x] ?? false])), [o]: e.target.checked })} />{o}
+        </label>))}
+        <button type="button" className="link" onClick={() => set(all(false))}>Ninguna aplica</button></>;
     }
     case 'number':
       return <>{label}<input type="number" inputMode="decimal" value={v ?? ''} onChange={(e) => set(e.target.value === '' ? null : Number(e.target.value))} /></>;
@@ -209,4 +235,15 @@ export function IssueForm({ handoff, onAdded }: { handoff: Row; onAdded: () => v
       <button className="link" onClick={() => setOpen(false)}>Cancelar</button>
     </div>
   );
+}
+
+/** Misma regla que valida el servidor al enviar (el servidor es la autoridad). */
+function answered(f: Row, v: any): boolean {
+  if (v === null || v === undefined) return false;
+  if (f.type === 'boolean') return typeof v === 'boolean';
+  if (f.type === 'number') return typeof v === 'number';
+  if (f.type === 'checklist') return typeof v === 'object' && !Array.isArray(v) && (f.options as string[]).every((o) => o in v);
+  if (f.type === 'photo') return Array.isArray(v) && v.length > 0;
+  if (typeof v === 'string') return v.trim().length > 0;
+  return true;
 }
