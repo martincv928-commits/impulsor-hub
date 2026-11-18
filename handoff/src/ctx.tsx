@@ -3,11 +3,13 @@ import type { Row } from './report';
 
 export type Ctx = {
   uid: string; org: string; orgName: string; role: 'admin' | 'supervisor' | 'worker'; me: string;
-  members: Row[]; reloadMembers: () => void; go: (screen: string, arg?: string) => void;
+  members: Row[]; reloadMembers: () => void; refresh: () => void; go: (screen: string, arg?: string) => void;
 };
 export const C = createContext<Ctx>(null as any);
 export const useCtx = () => useContext(C);
 export const isManager = (r: string) => r === 'admin' || r === 'supervisor';
+/** Equipo de una sola persona activa: puede recibir sus propias entregas (queda marcado como «recepción propia»). */
+export const isSolo = (members: Row[]) => members.length === 1;
 export const nameOf = (members: Row[], id?: string | null) => members.find((m) => m.user_id === id)?.display_name ?? '—';
 
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; err: string; loading: boolean; reload: () => void } {

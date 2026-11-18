@@ -87,7 +87,7 @@ function Setup({ onStart }: { onStart: (id: string) => void }) {
 }
 
 function Draft({ id, done }: { id: string; done: () => void }) {
-  const { org, members } = useCtx();
+  const { org, members, go, refresh } = useCtx();
   const data = useLoad(async () => {
     const h = (await sel<Row[]>(supabase.from('handoffs').select('*,areas(name),shift_definitions(name)').eq('id', id)))[0];
     const [fields, resp, issues, inherited, atts] = await Promise.all([
@@ -141,12 +141,12 @@ function Draft({ id, done }: { id: string; done: () => void }) {
     try {
       await save(vals!);
       await rpc('submit_handoff', { p_id: id });
-      localStorage.removeItem(key); setSent(true);
+      localStorage.removeItem(key); setSent(true); refresh();
     } catch (e) { setErr(errText(e)); }
     setBusy(false);
   }
   const missing = fields.filter((f: Row) => f.required && !answered(f, vals[f.id])).map((f: Row) => f.label as string);
-  if (sent) return <><h2>Turno entregado</h2><div className="okmsg">El servidor confirmó el envío. La entrega quedó registrada con huella e inmutable; el entrante ya puede recibirla.</div><button className="btn" onClick={done}>Listo</button></>;
+  if (sent) return <><h2>Turno entregado</h2><div className="okmsg">El servidor confirmó el envío. La entrega quedó registrada con huella e inmutable; el entrante ya puede recibirla.</div><button className="btn" onClick={() => { done(); go('inicio'); }}>Listo</button></>;
 
   return (
     <>

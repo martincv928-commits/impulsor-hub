@@ -16,7 +16,7 @@ export default function Inicio() {
       sel(supabase.from('handoffs').select('id,shift_date').eq('org_id', org).eq('status', 'draft').eq('from_user', uid)),
       sel(supabase.from('handoffs').select('id,status,shift_date,areas(name),shift_definitions(name)').eq('org_id', org).neq('status', 'draft').order('submitted_at', { ascending: false }).limit(5)),
     ]);
-    const rec = toReceive.filter((h: any) => h.from_user !== uid && (!h.to_user || h.to_user === uid || role !== 'worker'));
+    const rec = toReceive.filter((h: any) => (h.from_user !== uid || members.length === 1) && (!h.to_user || h.to_user === uid || role !== 'worker'));
     return { rec, mine, drafts, recent, cfg: cfg ? { sites: cfg[0].length, areas: cfg[1].length, shifts: cfg[2].length } : null };
   }, [org, uid]);
   if (d.loading) return <p className="mut">Cargando…</p>;

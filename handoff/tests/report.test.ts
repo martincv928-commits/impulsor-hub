@@ -21,6 +21,12 @@ describe('reporte (contenido)', () => {
     expect(t).toContain('SIN RESPONSABLE');
     expect(t).toContain('Luis');
   });
+  it('marca la recepción propia en el reporte', () => {
+    const snap = { handoff: { site: { name: 'S' }, area: { name: 'A' }, shift: { name: 'T' }, shift_date: '2026-11-16', from_name: 'Ana', to_name: null }, fields: [], issues_created: [], issues_open: [] };
+    const t = handoffLines(snap, { id: 'h', status: 'accepted', submitted_at: '2026-11-16T08:00:00Z', snapshot_hash: 'x' },
+      { decision: 'accepted', received_by: 'u', received_at: '2026-11-16T09:00:00Z', notes: null, acknowledged: { self_receipt: true } }, []).join('\n');
+    expect(t).toContain('Recepción propia');
+  });
   it('reporte de entrega: contenido, huella y aclaración recibir≠responsabilidad', () => {
     const snap = {
       handoff: { site: { name: 'Planta' }, area: { name: 'Almacén' }, shift: { name: 'Matutino' }, shift_date: '2026-11-16', from_name: 'Ana', to_name: null },

@@ -46,7 +46,7 @@ async function signup(pg, tag) {
     ok('sede, área y turno creados', true);
     await shot(A, '3-estructura');
     await A.locator('.chips button:has-text("Equipo")').click(); await A.getByRole('button', { name: 'Generar código' }).click();
-    await A.locator('.item b').first().waitFor(); const code = (await A.locator('.item b').first().innerText()).trim();
+    const codeEl = A.locator('.item b').filter({ hasText: /^[A-Z0-9]{8}$/ }).first(); await codeEl.waitFor({ timeout: 15000 }); const code = (await codeEl.innerText()).trim();
     ok('código de invitación generado: ' + code, /^[A-Z0-9]{8}$/.test(code));
     await tab(A, 'Entregar');
     await A.locator('.card:has(h3:text("Nueva entrega")) select').nth(3).selectOption({ label: 'ALMACÉN' });

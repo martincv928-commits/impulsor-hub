@@ -65,6 +65,20 @@ try {
   const own = await B.c.storage.from('evidence').createSignedUrl(path, 60);
   ok('el receptor sí ve la foto (URL firmada)', !!own.data?.signedUrl && (await fetch(own.data.signedUrl)).ok);
   ok('la URL pública NO sirve el archivo', (await fetch(`${URL}/storage/v1/object/public/evidence/${path}`)).status >= 400);
+  // ── Equipo de UNA sola persona: puede recibir su propia entrega; al sumarse otra persona, ya no
+  const S = await user('solo');
+  const oS = await R(S.c.rpc('create_organization', { p_name: 'E2E Solo', p_display_name: 'Dueño solo' }));
+  const sS = (await R(S.c.from('sites').insert({ org_id: oS, name: 'Local' }).select()))[0];
+  const aS = (await R(S.c.from('areas').insert({ org_id: oS, site_id: sS.id, name: 'Caja' }).select()))[0];
+  const hS = (await R(S.c.from('shift_definitions').insert({ org_id: oS, name: 'Día' }).select()))[0];
+  const tS = (await R(S.c.from('templates').select('id').eq('org_id', oS).eq('name', 'SEGURIDAD')))[0];
+  const fS = (await R(S.c.from('template_fields').select('id').eq('template_id', tS.id).eq('label', 'Novedades del turno')))[0];
+  const mkS = async () => { const id = crypto.randomUUID(); await R(S.c.rpc('save_handoff_draft', { p_id: id, p_org: oS, p_site: sS.id, p_area: aS.id, p_shift: hS.id, p_template: tS.id, p_date: '2026-11-17', p_responses: { [fS.id]: 'Sin novedades' } })); await R(S.c.rpc('submit_handoff', { p_id: id })); return id; };
+  const rS = await R(S.c.rpc('receive_handoff', { p_id: await mkS(), p_decision: 'accepted' }));
+  ok('una sola persona recibe su propia entrega (marcada)', rS.acknowledged?.self_receipt === true);
+  const codeS = await R(S.c.rpc('create_invite', { p_org: oS, p_role: 'worker' }));
+  const W = await user('solo2'); await R(W.c.rpc('join_organization', { p_code: codeS, p_display_name: 'Empleada' }));
+  ok('con 2 personas ya no puede recibir la propia', /forbidden_self/.test(await E(S.c.rpc('receive_handoff', { p_id: await mkS(), p_decision: 'accepted' }))));
   console.log('ORG', org);
 } catch (e) { fails++; console.log('ERROR:', e.message); }
 console.log(fails ? `\n${fails} FALLO(S)` : '\nTODO OK');
