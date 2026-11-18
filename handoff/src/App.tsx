@@ -97,6 +97,13 @@ function Shell({ session }: { session: Session }) {
   const members = useLoad(() => (my ? sel(supabase.from('organization_members').select('user_id,display_name,role,active').eq('org_id', my.org_id)) : Promise.resolve([])), [my?.org_id]);
   const notes = useLoad(() => (my ? sel(supabase.from('notifications').select('id,event,title,body,entity_type,entity_id,read_at,created_at').eq('org_id', my.org_id).order('created_at', { ascending: false }).limit(30)) : Promise.resolve([])), [my?.org_id, screen]);
   const pending = useLoad(() => (my ? sel(supabase.from('handoffs').select('id,from_user,to_user').eq('org_id', my.org_id).eq('status', 'pending_receipt')) : Promise.resolve([])), [my?.org_id, screen, arg]);
+  // La barra y las notificaciones se refrescan solas (cada 30 s y al volver a la app)
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible' && navigator.onLine) { pending.reload(); notes.reload(); } };
+    const t = setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
+  }, [my?.org_id]); // eslint-disable-line
   useEffect(() => { if (my) localStorage.setItem('hf_org', my.org_id); }, [my?.org_id]);
 
   if (mem.loading) return <main><p className="mut">Cargando…</p></main>;
@@ -106,10 +113,11 @@ function Shell({ session }: { session: Session }) {
   const ctx: Ctx = {
     uid, org: my.org_id, orgName: my.organizations?.name ?? '', role: my.role, me: my.display_name,
     members: (members.data ?? []).filter((m: any) => m.active), reloadMembers: members.reload,
+    refresh: () => { pending.reload(); notes.reload(); },
     go: (s, a) => { if (s === screen && a === arg) return; history.pushState({ s, a }, ''); setScreen(s); setArg(a); window.scrollTo(0, 0); },
   };
   const unread = (notes.data ?? []).filter((n: any) => !n.read_at).length;
-  const toReceive = (pending.data ?? []).filter((h: any) => h.from_user !== uid && (!h.to_user || h.to_user === uid || my.role !== 'worker')).length;
+  const toReceive = (pending.data ?? []).filter((h: any) => (h.from_user !== uid || ctx.members.length === 1) && (!h.to_user || h.to_user === uid || my.role !== 'worker')).length;
   const body = {
     inicio: <Inicio />, entregar: <Entregar />, recibir: <Recibir arg={arg} />, pendientes: <Pendientes arg={arg} />,
     historial: <Historial arg={arg} />, supervisor: <Supervisor />, config: <Config arg={arg} />,

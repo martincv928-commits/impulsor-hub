@@ -120,3 +120,5 @@ nav.tabs button .dot{position:absolute;top:-6px;right:-12px;min-width:19px;heigh
 .seg button.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .opt{display:flex;align-items:center;gap:12px;margin:8px 0;padding:14px;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);font-weight:600;font-size:16px;cursor:pointer}
 .opt.on{border-color:var(--amber);background:var(--amber-l)}.opt input{margin:0;flex:none}
+
+.card.note{background:var(--sky-l);border-color:transparent;color:var(--text);box-shadow:none;font-size:15px}
