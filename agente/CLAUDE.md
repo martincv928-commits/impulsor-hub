@@ -1,6 +1,6 @@
-# CLAUDE.md — ATALAYA (Impulsor) · carpeta `agente/`
+# CLAUDE.md — ATALAIA (Impulsor) · carpeta `agente/`
 
-Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Nombre elegido 2026-11-20: **Atalaya** ("Tu negocio, a la vista."); sin verificar disponibilidad comercial. Identidad en `src/brand.ts` y `brand/`. ID del paquete Android (permanente): `mx.impulsor.atalaya`. Especificación: `docs/SPEC.md` (leer de ahí; no reescribirla). Guía de operación: `README.md`.
+Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Nombre: **AtalaIA** (Atalaya → AtalaIA el 2026-11-20; el ID técnico `atalaya` se conserva) ("Tu negocio, a la vista."); sin verificar disponibilidad comercial. Identidad en `src/brand.ts` y `brand/`. ID del paquete Android (permanente): `mx.impulsor.atalaya`. Especificación: `docs/SPEC.md` (leer de ahí; no reescribirla). Guía de operación: `README.md`.
 
 ## Reglas permanentes
 - Eficiencia: inspección dirigida, cambios agrupados, un build, smoke test, detenerse al cumplir aceptación. Respuestas finales BREVES; el usuario trabaja desde Android.
@@ -12,5 +12,5 @@ Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Nombre elegido
 - Stack: Vite + React + TS (PWA/Android), Supabase (Postgres/RLS/Edge Functions), vitest.
 
 ## Entrega
-- APK: workflow `ATALAYA APK` (push a master con cambios en `agente/`) → `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`. PR → `ATALAYA CI`.
+- APK: workflow `ATALAIA APK` (push a master con cambios en `agente/`) → `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`. PR → `ATALAIA CI`.
 - Backend Supabase `agente` (ref `lsbayfiblnylafyuxbeh`): migraciones y función `api` se aplican/despliegan antes de fusionar cambios que dependan de ellas.

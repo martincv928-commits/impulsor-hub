@@ -1,3 +1,3 @@
-LLAVE DE PRUEBAS de ATALAYA (alias androiddebugkey, contraseña "android", certificado estándar "Android Debug").
+LLAVE DE PRUEBAS de ATALAIA (alias androiddebugkey, contraseña "android", certificado estándar "Android Debug").
 Es PÚBLICA a propósito: sólo sirve para que cada APK de pruebas se instale encima del anterior.
 NUNCA se usa para Google Play ni para datos reales. Para publicar se crea otra llave de subida (fuera del repo).

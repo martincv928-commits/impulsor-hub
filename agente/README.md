@@ -1,4 +1,4 @@
-# Atalaya · *Tu negocio, a la vista.*
+# AtalaIA · *Tu negocio, a la vista.*
 
 Asistente de IA multiempresa que se conecta a **un ERP por empresa (sólo lectura)** y funciona en dos modos:
 
@@ -42,9 +42,9 @@ npm run icons       # regenera íconos PNG desde brand/*.svg (requiere playwrigh
 4. En el frontend sólo van la URL y la *publishable key* (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). Nunca `service_role`.
 
 ## Entrega (APK)
-Al fusionar a `master` con cambios en `agente/`, el workflow **ATALAYA APK** corre pruebas, compila y publica
+Al fusionar a `master` con cambios en `agente/`, el workflow **ATALAIA APK** corre pruebas, compila y publica
 `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`
-(ID `mx.impulsor.atalaya`, firma de pruebas fija: cada APK se instala sobre el anterior). Los PR corren **ATALAYA CI** (pruebas + build).
+(ID técnico `mx.impulsor.atalaya` y archivo `atalaya.apk` se conservan por continuidad; la app se llama AtalaIA; firma de pruebas fija: cada APK se instala sobre el anterior). Los PR corren **ATALAIA CI** (pruebas + build).
 Para Google Play hay que crear una llave de subida aparte (fuera del repo).
 
 ## Chat en un sitio web
@@ -61,4 +61,4 @@ El código y las pruebas existen, pero la pestaña está oculta (`VITE_FEATURE_W
 - El conector Odoo sólo se ha probado con datos simulados; falta una instancia real.
 - WhatsApp no se ha probado con Meta real. Audios no soportados.
 - El dominio autorizado del widget se valida por `Origin` (un cliente que no sea navegador puede falsificarlo); por eso el modo Cliente no toca datos privados y tiene límites de uso.
-- El nombre **Atalaya** no tiene verificación de disponibilidad comercial.
+- El nombre **AtalaIA** no tiene verificación de disponibilidad comercial.
