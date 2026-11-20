@@ -19,7 +19,7 @@ Especificación: [`docs/SPEC.md`](docs/SPEC.md) · Reglas de trabajo: [`CLAUDE.m
 ## Estructura
 ```
 src/                       App React (login, chat, configuración)
-supabase/migrations/       Esquema (0001 base, 0002 WhatsApp)
+supabase/migrations/       Esquema (0001 base, 0002/0004 WhatsApp, 0003 búsqueda de conocimiento)
 supabase/functions/api/    Edge Function única (chat, ERP, conocimiento, WhatsApp, widget.js)
 supabase/functions/_shared/ Núcleo testeable (agente, Odoo, reportes, WhatsApp…)
 brand/  scripts/  resources/  Logo (SVG), generador de íconos, íconos Android
@@ -49,6 +49,13 @@ Para Google Play hay que crear una llave de subida aparte (fuera del repo).
 
 ## Chat en un sitio web
 En la app: Configuración → Sitio web → autorizar dominio → copiar el `<script>` (apunta a `…/functions/v1/api/widget.js`).
+
+## WhatsApp (apagado por defecto)
+El código y las pruebas existen, pero la pestaña está oculta (`VITE_FEATURE_WHATSAPP=1` la enciende) hasta activarlo:
+1. Aplicar `0002_whatsapp.sql` y `0004_whatsapp_channels.sql` (esta última borra/recrea dos restricciones: Supabase pide confirmación).
+2. Crear la app de WhatsApp Cloud API en Meta; registrar el webhook `…/functions/v1/api/whatsapp`.
+3. Secretos de la función: `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` (y confirmar `WHATSAPP_GRAPH_VERSION`).
+4. Reconstruir la app con `VITE_FEATURE_WHATSAPP=1` y probar con un número real.
 
 ## Límites conocidos
 - El conector Odoo sólo se ha probado con datos simulados; falta una instancia real.

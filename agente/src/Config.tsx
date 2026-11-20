@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_URL, api, supabase } from './supabase';
+import { FEATURES } from './brand';
 
 type S = { company_name: string; company_profile: string; rules: string; forbidden_topics: string[]; tone: string; website_url: string; human_contact: string };
 const PUBLIC_TOOLS = [['buscar_conocimiento', 'Responder con la información de la empresa y del sitio'], ['catalogo_productos', 'Mostrar el catálogo de productos publicados en Odoo (requiere módulo Sitio web)']] as const;
@@ -9,9 +10,10 @@ type TabId = (typeof TABS)[number][0];
 
 export default function Config({ tenantId }: { tenantId: string }) {
   const [tab, setTab] = useState<TabId>('empresa');
+  const tabs = TABS.filter(([id]) => id !== 'whatsapp' || FEATURES.whatsapp);
   return (<div className="config">
     <div className="subnav" role="tablist" aria-label="Configuración">
-      {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
+      {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
     </div>
     {tab === 'empresa' && <Empresa t={tenantId} />}
     {tab === 'erp' && <Erp t={tenantId} />}
@@ -148,7 +150,7 @@ function WhatsApp({ t }: { t: string }) {
       <button>Guardar</button>
     </form>
     <h3>Números autorizados</h3>
-    <ul>{nums.map((x) => <li key={x.phone}>+{x.phone} — {x.email} <button className="link" onClick={async () => { await supabase.rpc('remove_whatsapp_number', { p_tenant: t, p_phone: x.phone }); load(); }}>quitar</button></li>)}</ul>
+    <ul>{nums.map((x) => <li key={x.phone}>+{x.phone} — {x.email} <button className="link" onClick={async () => { await supabase.from('whatsapp_numbers').delete().eq('tenant_id', t).eq('phone', x.phone); load(); }}>quitar</button></li>)}</ul>
     <input type="email" value={n.email} onChange={(e) => setN({ ...n, email: e.target.value })} placeholder="correo del gerente/admin" />
     <input value={n.phone} onChange={(e) => setN({ ...n, phone: e.target.value })} placeholder="Con código de país (5215512345678)" />
     <button onClick={add} disabled={!n.email || !n.phone}>Autorizar número</button>{msg && <span className="note">{msg}</span>}</section>);

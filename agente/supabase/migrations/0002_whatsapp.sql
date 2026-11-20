@@ -1,9 +1,4 @@
 -- AGENTE · WhatsApp (Cloud API de Meta), modo Gerente por números autorizados.
-alter table channels drop constraint channels_kind_check;
-alter table channels add constraint channels_kind_check check (kind in ('web','whatsapp'));
-alter table conversations drop constraint conversations_channel_check;
-alter table conversations add constraint conversations_channel_check check (channel in ('app','web','whatsapp'));
-
 -- Cuenta de WhatsApp Business por empresa. Token cifrado; ningún cliente lo lee (sin policies ni grants).
 create table whatsapp_accounts (
   tenant_id uuid primary key references tenants(id) on delete cascade,
@@ -46,14 +41,6 @@ language sql stable security definer set search_path = public as $$
   select w.phone, a.email::text from whatsapp_numbers w join auth.users a on a.id = w.user_id
   where w.tenant_id = p_tenant and has_role(p_tenant, array['admin']) $$;
 
-create function remove_whatsapp_number(p_tenant uuid, p_phone text) returns void
-language plpgsql security definer set search_path = public as $$
-begin
-  if not has_role(p_tenant, array['admin']) then raise exception 'sólo admin'; end if;
-  delete from whatsapp_numbers where tenant_id = p_tenant and phone = p_phone;
-  insert into audit_events(tenant_id, actor, action) values (p_tenant, auth.uid(), 'wa_number_removed');
-end $$;
-
 create function whatsapp_account_public(p_tenant uuid) returns table (phone_number_id text, enabled boolean)
 language sql stable security definer set search_path = public as $$
   select phone_number_id, enabled from whatsapp_accounts where tenant_id = p_tenant and has_role(p_tenant, array['admin']) $$;
@@ -63,7 +50,19 @@ alter table whatsapp_numbers enable row level security;
 alter table whatsapp_processed enable row level security;
 
 revoke all on whatsapp_accounts, whatsapp_numbers, whatsapp_processed from anon, authenticated;
-revoke all on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), remove_whatsapp_number(uuid, text), whatsapp_account_public(uuid) from public, anon, authenticated;
-grant execute on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), remove_whatsapp_number(uuid, text), whatsapp_account_public(uuid) to authenticated;
+revoke all on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), whatsapp_account_public(uuid) from public, anon, authenticated;
+grant execute on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), whatsapp_account_public(uuid) to authenticated;
 grant all on whatsapp_accounts, whatsapp_numbers, whatsapp_processed to service_role;
-grant execute on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), remove_whatsapp_number(uuid, text), whatsapp_account_public(uuid) to service_role;
+grant execute on function add_whatsapp_number(uuid, text, text), list_whatsapp_numbers(uuid), whatsapp_account_public(uuid) to service_role;
+
+-- Baja de números autorizados: sólo admin de la empresa (RLS), con auditoría automática.
+create policy wa_numbers_sel on whatsapp_numbers for select to authenticated using (has_role(tenant_id, array['admin']));
+create policy wa_numbers_del on whatsapp_numbers for delete to authenticated using (has_role(tenant_id, array['admin']));
+grant select, delete on whatsapp_numbers to authenticated;
+create function audit_wa_number_removed() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into audit_events(tenant_id, actor, action) values (old.tenant_id, auth.uid(), 'wa_number_removed');
+  return old;
+end $$;
+revoke all on function audit_wa_number_removed() from public, anon, authenticated;
+create trigger wa_number_removed after delete on whatsapp_numbers for each row execute function audit_wa_number_removed();

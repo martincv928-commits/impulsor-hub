@@ -86,6 +86,13 @@ describe('seguridad de datos sensibles', () => {
     const r = await asRole(db, 'service_role', "select content from search_knowledge($1,'horarios')", [tA]);
     expect(r).toHaveLength(1); expect(r[0].content).toContain('lunes');
   });
+  it('REGRESIÓN: una pregunta larga con palabras que no están en el texto igual encuentra el fragmento', async () => {
+    const r = await asRole(db, 'service_role', "select content from search_knowledge($1,'¿A qué hora abren los viernes y qué formas de pago aceptan en la tienda?')", [tA]);
+    expect(r.length).toBe(1); expect(r[0].content).toContain('lunes');
+    expect(await asRole(db, 'service_role', "select * from search_knowledge($1,'zzzz qqqq')", [tA])).toHaveLength(0);
+    expect(await asRole(db, 'service_role', "select * from search_knowledge($1,'')", [tA])).toHaveLength(0);
+    expect(await asRole(db, 'service_role', "select * from search_knowledge($1,'''; drop table x; -- \" :* & |')", [tA])).toHaveLength(0); // sintaxis hostil no rompe la consulta
+  });
   it('audit_events es append-only', async () => {
     await expect(asRole(db, 'service_role', "update audit_events set action='x'")).rejects.toThrow(/append-only/);
     await expect(asRole(db, 'service_role', 'delete from audit_events')).rejects.toThrow(/append-only/);
@@ -105,11 +112,15 @@ describe('whatsapp (BD)', () => {
     await expect(as(db, u.admA, "select add_whatsapp_number($1,'admB@test.mx','5215500000000')", [tA])).rejects.toThrow(/gerente/); // otra empresa
     await expect(as(db, u.admA, "select add_whatsapp_number($1,'gerA@test.mx','abc')", [tA])).rejects.toThrow(/inválido/);
   });
-  it('otra empresa no ve los números; quitar requiere admin', async () => {
+  it('otra empresa no ve ni borra los números; sólo admin quita, y queda auditado', async () => {
     expect(await as(db, u.admB, 'select * from list_whatsapp_numbers($1)', [tA])).toHaveLength(0);
-    await expect(as(db, u.gerA, "select remove_whatsapp_number($1,'5215512345678')", [tA])).rejects.toThrow(/admin/);
-    await as(db, u.admA, "select remove_whatsapp_number($1,'5215512345678')", [tA]);
+    expect(await as(db, u.admB, 'select * from whatsapp_numbers')).toHaveLength(0);
+    await as(db, u.admB, "delete from whatsapp_numbers where tenant_id=$1", [tA]); // RLS: no afecta filas ajenas
+    await as(db, u.gerA, "delete from whatsapp_numbers where tenant_id=$1", [tA]); // gerente tampoco
+    expect(await as(db, u.admA, 'select * from list_whatsapp_numbers($1)', [tA])).toHaveLength(1);
+    await as(db, u.admA, "delete from whatsapp_numbers where tenant_id=$1 and phone='5215512345678'", [tA]);
     expect(await as(db, u.admA, 'select * from list_whatsapp_numbers($1)', [tA])).toHaveLength(0);
+    expect((await as(db, u.admA, "select count(*)::int n from audit_events where tenant_id=$1 and action='wa_number_removed'", [tA]))[0].n).toBe(1);
   });
   it('el token de WhatsApp y los mensajes procesados no son legibles por clientes', async () => {
     await asRole(db, 'service_role', "insert into whatsapp_accounts(tenant_id,phone_number_id,token_enc) values ($1,'123456','v1.zzz')", [tA]);
