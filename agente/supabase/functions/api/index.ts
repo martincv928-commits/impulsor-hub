@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runAgent } from '../_shared/agent.ts';
 import { decryptSecret, deriveKeyB64, encryptSecret } from '../_shared/crypto.ts';
 import { chunkText, fetchPageText } from '../_shared/knowledge.ts';
-import { AnthropicClient, DEFAULT_MODEL, type LlmMessage } from '../_shared/llm.ts';
+import { AnthropicClient, DEFAULT_MODEL, isAuthError, keyHint, looksLikeAnthropicKey, type LlmMessage } from '../_shared/llm.ts';
 import { assertSafeUrl } from '../_shared/net.ts';
 import { buildConnector, SOURCE_TYPES } from '../_shared/source.ts';
 import { GenericRestConnector, validateGenericConfig } from '../_shared/generic.ts';
@@ -113,7 +113,13 @@ async function converse(a: Turn) {
   const forbidden = mode === 'cliente' ? findForbidden(text, settings.forbidden_topics) : null;
   let over = false; let usageRec: { input_tokens: number; output_tokens: number; calls: number } | null = null;
   const model = env('ANTHROPIC_MODEL') || DEFAULT_MODEL;
+  // Clave de IA propia de la empresa (opcional): el consumo va a su cuenta y no cuenta contra el tope de la plataforma.
+  let ownKey: string | null = null;
   if (!forbidden) {
+    const { data: lk } = await sb.from('tenant_llm').select('key_enc').eq('tenant_id', tenant).maybeSingle();
+    if (lk) { try { ownKey = await decryptSecret(lk.key_enc, await encKey(), tenant); } catch { ownKey = null; } }
+  }
+  if (!forbidden && !ownKey) {
     const { data: uc } = await sb.rpc('usage_check', { p_tenant: tenant, p_mode: mode });
     const q: any = Array.isArray(uc) ? uc[0] : uc;
     over = !!q && isOverLimit(Number(q.used), Number(q.token_limit));
@@ -123,6 +129,8 @@ async function converse(a: Turn) {
   } else if (over) {
     reply = limitMessage(mode, settings.human_contact); // tope mensual alcanzado: no se llama al modelo
   } else {
+    if (!ownKey && !env('ANTHROPIC_API_KEY')) { reply = 'El asistente aún no está configurado (falta la clave del modelo de IA).'; }
+    else {
     const ctx: ToolCtx = {
       erp: mode === 'gerente' || flags['catalogo_productos'] ? await connectorFor(tenant) : null,
       today, companyName: settings.company_name || 'Empresa', attachments, buildReport,
@@ -130,17 +138,20 @@ async function converse(a: Turn) {
     };
     try {
       const r = await runAgent({
-        llm: new AnthropicClient(env('ANTHROPIC_API_KEY'), model),
+        llm: new AnthropicClient(ownKey ?? env('ANTHROPIC_API_KEY'), model),
         system: buildSystemPrompt(mode, settings, today), history, userText: text, tools: toolsForMode(mode, flags), ctx,
       });
       reply = r.text || 'No tengo una respuesta para eso.'; traces = r.traces; usageRec = r.usage;
     } catch (e) {
-      console.error('agent error', e instanceof Error ? e.message : e);
-      reply = 'En este momento no puedo responder. Intenta de nuevo en unos minutos.';
+      console.error('agent error', e instanceof Error ? e.message.slice(0, 80) : e);
+      reply = ownKey && isAuthError(e)
+        ? (mode === 'gerente' ? 'La clave de IA de tu empresa fue rechazada (inválida, revocada o sin saldo). Revísala en Configuración → Uso.' : 'El asistente no está disponible por ahora.' + (settings.human_contact ? ` Puedes contactar a la empresa: ${settings.human_contact}` : ''))
+        : 'En este momento no puedo responder. Intenta de nuevo en unos minutos.';
     }
     if (mode === 'cliente' && findForbidden(reply, settings.forbidden_topics)) reply = REFUSAL(settings.human_contact);
+    }
   }
-  if (usageRec && usageRec.calls > 0) await sb.from('usage_events').insert({ tenant_id: tenant, conversation_id: convId, mode, channel, model, input_tokens: usageRec.input_tokens, output_tokens: usageRec.output_tokens });
+  if (usageRec && usageRec.calls > 0) await sb.from('usage_events').insert({ tenant_id: tenant, conversation_id: convId, mode, channel, model, input_tokens: usageRec.input_tokens, output_tokens: usageRec.output_tokens, own_key: !!ownKey });
   await sb.from('messages').insert({ conversation_id: convId, tenant_id: tenant, role: 'assistant', content: reply });
   if (traces.length) await sb.from('tool_calls').insert(traces.map((t) => ({ tenant_id: tenant, conversation_id: convId, tool: t.tool, params: t.params, ok: t.ok, summary: t.summary })));
   return { conversation_id: convId as string, reply, attachments: mode === 'gerente' ? attachments : [] };
@@ -149,7 +160,6 @@ async function converse(a: Turn) {
 async function chat(req: Request, body: any, origin: string | null) {
   const text = typeof body.message === 'string' ? body.message.trim() : '';
   if (!text) throw new HttpError(400, 'Mensaje vacío');
-  if (!env('ANTHROPIC_API_KEY')) throw new HttpError(503, 'El asistente aún no está configurado (falta la clave del modelo de IA).');
   const convId: string | null = typeof body.conversation_id === 'string' ? body.conversation_id : null;
 
   if (typeof body.channel_token === 'string') {
@@ -206,7 +216,6 @@ async function handleWhatsApp(m: { wamid: string; from: string; phoneNumberId: s
   try {
     const wa = new WhatsAppClient(await decryptSecret(acc.token_enc, await encKey(), acc.tenant_id), m.phoneNumberId, env('WHATSAPP_GRAPH_VERSION') || 'v23.0');
     if (m.type !== 'text' || !m.text.trim()) { await wa.sendText(m.from, 'Por ahora sólo puedo leer mensajes de texto.'); return; }
-    if (!env('ANTHROPIC_API_KEY')) { await wa.sendText(m.from, 'El asistente aún no está configurado.'); return; }
     const r = await converse({ tenant: acc.tenant_id, mode: 'gerente', channel: 'whatsapp', user: who.user_id, text: m.text.trim().slice(0, LIMITS.gerenteMsg), convId: null, reuseHours: 12 });
     for (const part of splitMessage(r.reply)) await wa.sendText(m.from, part);
     for (const att of r.attachments) await wa.sendDocument(m.from, att);
@@ -341,6 +350,23 @@ async function route(req: Request, origin: string | null) {
       const { count } = await sb.from('dataset_versions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant).eq('active', true);
       if (!count) await sb.from('erp_sources').update({ status: 'sin_probar', last_error: null }).eq('tenant_id', tenant).eq('type', 'files');
       await audit(tenant, user, 'dataset_removed', { dataset: ds });
+      return { ok: true };
+    }
+    case 'llm_key_save': {
+      const { tenant, user } = await requireAdmin(req, body.tenant_id);
+      const key = String(body.api_key ?? '').trim();
+      if (!looksLikeAnthropicKey(key)) throw new HttpError(400, 'Esa no parece una clave de API de Anthropic (empieza con sk-ant-).');
+      try { await new AnthropicClient(key, env('ANTHROPIC_MODEL') || DEFAULT_MODEL).complete({ system: 'Responde ok.', messages: [{ role: 'user', content: 'ok' }], tools: [] }); }
+      catch (e) { throw new HttpError(400, isAuthError(e) ? 'Anthropic rechazó esa clave. Revisa que esté activa y que la cuenta tenga saldo.' : 'No se pudo verificar la clave con Anthropic. Intenta de nuevo.'); }
+      const { error } = await sb.from('tenant_llm').upsert({ tenant_id: tenant, key_enc: await encryptSecret(key, await encKey(), tenant), key_hint: keyHint(key), updated_at: new Date().toISOString() });
+      if (error) throw new HttpError(500, 'No se pudo guardar');
+      await audit(tenant, user, 'llm_key_saved', {});
+      return { ok: true, hint: keyHint(key) };
+    }
+    case 'llm_key_remove': {
+      const { tenant, user } = await requireAdmin(req, body.tenant_id);
+      await sb.from('tenant_llm').delete().eq('tenant_id', tenant);
+      await audit(tenant, user, 'llm_key_removed', {});
       return { ok: true };
     }
     case 'erp_test': { const { tenant, user } = await requireAdmin(req, body.tenant_id); return erpTest(tenant, user); }
