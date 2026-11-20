@@ -255,3 +255,11 @@ describe('modelo y consumo de tokens', () => {
     expect(limitMessage('gerente', '')).toMatch(/límite mensual/);
   });
 });
+
+describe('herramientas: búsqueda por texto', () => {
+  it('REGRESIÓN: la herramienta inventario manda el término en singular al conector', async () => {
+    let got: string | undefined; const erp: any = { inventario: async (q?: string) => { got = q; return { filas: [], truncated: false }; } };
+    await TOOLS.find((t) => t.name === 'inventario')!.run(ctxFor(erp), { buscar: 'Tornillos grandes' });
+    expect(got).toBe('Tornillo grande');
+  });
+});

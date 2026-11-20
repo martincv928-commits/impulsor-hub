@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
-import { ErpUnsupported } from '../supabase/functions/_shared/erp.ts';
+import { ErpUnsupported, clientesFromRows, inventarioFromRows, singularize } from '../supabase/functions/_shared/erp.ts';
 import { FilesConnector, decodeText, normalizeRows, parseCsv, parseDatasetFile, parseXlsx, suggestMapping } from '../supabase/functions/_shared/files.ts';
 import { GenericRestConnector, validateGenericConfig, type GenericConfig } from '../supabase/functions/_shared/generic.ts';
 import { DATASETS, getPath, mapRow, parseDate, parseMoney, sanitizeMapping } from '../supabase/functions/_shared/mapping.ts';
@@ -267,6 +267,20 @@ describe('suggestMapping y normalizeRows', () => {
     expect(normalizeRows('ventas', p, map, { decimal: ',', date_format: 'dmy' }).rows[0]).toMatchObject({ fecha: '2026-01-05', total: '1234.5' });
   });
 });
+describe('búsqueda por texto', () => {
+  const inv = [{ codigo: 'T-14', producto: 'Tornillo 1/4"', existencia: '120', proyectado: '', udm: '' }, { codigo: 'M-01', producto: 'Martillo de uña', existencia: '3', proyectado: '', udm: '' }, { codigo: 'C-05', producto: 'Cámara de cobre', existencia: '0', proyectado: '', udm: '' }];
+  const o = { source: 's', truncated: false };
+  it('REGRESIÓN: plural/singular, acentos y mayúsculas no impiden encontrar el producto (hallado en prueba real: "Tornillos")', () => {
+    for (const q of ['Tornillos', 'tornillo', 'TORNILLOS', 'camara', 'Cámaras', 'martillos de una']) expect(inventarioFromRows(inv, q, o).filas.length, q).toBe(1);
+    expect(inventarioFromRows(inv, 'tornillos 1/4', o).filas).toHaveLength(1); expect(inventarioFromRows(inv, 'tornillos de oro', o).filas).toHaveLength(0);
+    expect(inventarioFromRows(inv, undefined, o).filas).toHaveLength(3); expect(inventarioFromRows(inv, '   ', o).filas).toHaveLength(3); expect(inventarioFromRows(inv, 'T-14', o).filas).toHaveLength(1);
+    expect(clientesFromRows([{ nombre: 'José Pérez', correo: '', telefono: '', ciudad: '' }], 'jose perez')).toHaveLength(1);
+  });
+  it('singularize sólo toca palabras largas que terminan en una sola s', () => {
+    expect(singularize('Tornillos grandes')).toBe('Tornillo grande'); expect(singularize('gas')).toBe('gas'); expect(singularize('pass')).toBe('pass'); expect(singularize('  luces  ')).toBe('luce');
+  });
+});
+
 describe('ranking de clientes', () => {
   it('REGRESIÓN: el top se calcula por moneda; nunca compara pesos con dólares', async () => {
     const f = new FilesConnector(async () => ({ meta: { filename: 'v.csv', uploaded_at: '2026-02-01T00:00:00Z' }, rows: [

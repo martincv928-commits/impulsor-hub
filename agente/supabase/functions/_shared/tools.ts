@@ -1,5 +1,5 @@
 // Registro de herramientas del agente. La visibilidad en modo Cliente se decide AQUÍ (código), no en el prompt.
-import { isValidDate, type DateRange, type ErpConnector } from './erp.ts';
+import { isValidDate, singularize, type DateRange, type ErpConnector } from './erp.ts';
 import type { Attachment, ReportKind } from './reports.ts';
 
 export type Mode = 'gerente' | 'cliente';
@@ -29,6 +29,7 @@ const range = (i: Record<string, any>): DateRange => {
 };
 const asOf = (c: ToolCtx, i: Record<string, any>) => { if (i.al == null) return c.today; if (!isValidDate(i.al)) throw new Error('Fecha "al" inválida (AAAA-MM-DD).'); return i.al as string; };
 const str = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 100) : undefined) || undefined;
+const term = (v: unknown) => { const t = str(v); return t ? singularize(t) : undefined; };
 const dates = { desde: { type: 'string', description: 'AAAA-MM-DD' }, hasta: { type: 'string', description: 'AAAA-MM-DD' } };
 
 export const TOOLS: ToolDef[] = [
@@ -39,11 +40,11 @@ export const TOOLS: ToolDef[] = [
   { name: 'cuentas_por_pagar', publicEligible: false, description: 'Cuentas por pagar a proveedores: facturas pendientes, saldo por moneda y antigüedad.',
     input_schema: { type: 'object', properties: { al: { type: 'string', description: 'Fecha de corte AAAA-MM-DD (por defecto hoy)' } } }, run: async (c, i) => { const d = asOf(c, i); return need(c).cuentasPorPagar(d); } },
   { name: 'inventario', publicEligible: false, description: 'Existencias de productos almacenables; opcionalmente filtra por nombre o código.',
-    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).inventario(str(i.buscar)) },
+    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).inventario(term(i.buscar)) },
   { name: 'clientes', publicEligible: false, description: 'Busca clientes por nombre y devuelve contacto básico.',
-    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).clientes(str(i.buscar)) },
+    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).clientes(term(i.buscar)) },
   { name: 'catalogo_productos', publicEligible: true, description: 'Productos publicados en el sitio web de la empresa, con precio de lista y descripción.',
-    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).catalogoPublico(str(i.buscar)) },
+    input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }, run: (c, i) => need(c).catalogoPublico(term(i.buscar)) },
   { name: 'buscar_conocimiento', publicEligible: true, description: 'Busca en la información de la empresa y de su sitio web (políticas, horarios, servicios, preguntas frecuentes).',
     input_schema: { type: 'object', properties: { consulta: { type: 'string' } }, required: ['consulta'] },
     run: async (c, i) => { const q = str(i.consulta); if (!q) throw new Error('Falta la consulta.'); const r = await c.searchKnowledge(q); return r.length ? { fragmentos: r.map((x) => x.content) } : { fragmentos: [], aviso: 'Sin información registrada sobre esto.' }; } },

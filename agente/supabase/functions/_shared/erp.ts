@@ -70,7 +70,11 @@ export function sumByCurrency(rows: { currency: string; amount: string | number 
 
 // ---- Constructores comunes de resultados (los usan Odoo, API genérica y archivos: una sola lógica de sumas y antigüedad) ----
 const money2 = (v: unknown): string => new Decimal(String(v ?? 0)).toFixed(2);
-const includes = (hay: string, q?: string) => !q || hay.toLowerCase().includes(q.toLowerCase());
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/** Plural simple en español → singular ("tornillos" → "tornillo"); sirve para búsquedas por texto. */
+export const singularize = (q: string): string => q.trim().split(/\s+/).map((w) => (w.length > 3 && /[^s]s$/i.test(w) ? w.slice(0, -1) : w)).join(' ');
+/** Coincidencia tolerante: sin acentos ni mayúsculas, plural/singular, y deben aparecer TODAS las palabras. */
+const includes = (hay: string, q?: string) => { if (!q || !q.trim()) return true; const h = fold(hay); return fold(singularize(q)).split(' ').filter(Boolean).every((w) => h.includes(w)); };
 
 export interface VentaRow { folio: string; cliente: string; fecha: string; currency: string; total: string }
 export function ventasFromRows(rows: VentaRow[], r: DateRange, o: { note: string; source: string; truncated: boolean }): VentasResult {
