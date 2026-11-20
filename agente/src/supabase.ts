@@ -16,3 +16,15 @@ export async function api<T = any>(body: Record<string, unknown>): Promise<T> {
   if (!res.ok) throw new Error(j.error ?? `Error ${res.status}`);
   return j as T;
 }
+
+/** Mensajes de error de Supabase Auth en español. */
+export function esError(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('invalid login')) return 'Correo o contraseña incorrectos.';
+  if (m.includes('email not confirmed')) return 'Falta confirmar tu correo. Revisa tu bandeja y el enlace que te enviamos.';
+  if (m.includes('already registered') || m.includes('already been registered')) return 'Ese correo ya tiene cuenta. Inicia sesión.';
+  if (m.includes('password should be') || m.includes('weak')) return 'La contraseña es muy débil (mínimo 8 caracteres).';
+  if (m.includes('rate limit') || m.includes('too many')) return 'Demasiados intentos. Espera unos minutos.';
+  if (m.includes('failed to fetch') || m.includes('network')) return 'Sin conexión con el servidor. Revisa tu internet.';
+  return msg;
+}

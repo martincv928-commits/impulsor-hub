@@ -1,8 +1,10 @@
-/* Widget de chat para sitios web (modo Cliente). Uso:
-   <script src=".../widget.js" data-token="TOKEN" data-api="URL_API" data-key="PUBLISHABLE_KEY"></script> */
+// Codigo del widget de chat (modo Cliente). Unica fuente: la funcion api lo sirve en GET /widget.js.
+export const WIDGET_JS = String.raw`/* Widget de chat para sitios web (modo Cliente). Se sirve desde la funcion api (GET /widget.js). Uso:
+   <script src="https://PROYECTO.supabase.co/functions/v1/api/widget.js" data-token="TOKEN"></script> */
 (function () {
   var s = document.currentScript; if (!s) return;
-  var token = s.getAttribute('data-token'), api = s.getAttribute('data-api'), key = s.getAttribute('data-key') || '';
+  var token = s.getAttribute('data-token'), key = s.getAttribute('data-key') || '';
+  var api = s.getAttribute('data-api') || (s.src ? s.src.replace(/\/widget\.js.*$/, '') : '');
   var title = s.getAttribute('data-title') || 'Asistente', color = s.getAttribute('data-color') || '#0f766e';
   if (!token || !api) return;
   var conv = null, busy = false;
@@ -23,7 +25,8 @@
   $('x').onclick = function () { $('b').style.display = 'none'; $('o').style.display = 'block'; };
   $('f').onsubmit = function (e) {
     e.preventDefault(); var t = $('i').value.trim(); if (!t || busy) return; $('i').value = ''; add(t, 'u'); busy = true; var w = add('…');
-    fetch(api, { method: 'POST', headers: { 'content-type': 'application/json', apikey: key, authorization: 'Bearer ' + key },
+    var h = { 'content-type': 'application/json' }; if (key) { h.apikey = key; h.authorization = 'Bearer ' + key; }
+    fetch(api, { method: 'POST', headers: h,
       body: JSON.stringify({ action: 'chat', channel_token: token, conversation_id: conv, message: t }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (r) { if (r.ok) { conv = r.j.conversation_id; w.textContent = r.j.reply; } else w.textContent = r.j.error || 'No pude responder.'; })
@@ -32,3 +35,4 @@
   };
   document.body.appendChild(host);
 })();
+`;

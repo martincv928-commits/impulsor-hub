@@ -6,7 +6,7 @@ import { TOOLS, toolsForMode, type ToolCtx } from '../supabase/functions/_shared
 import { runAgent } from '../supabase/functions/_shared/agent.ts';
 import type { LlmClient, LlmResponse } from '../supabase/functions/_shared/llm.ts';
 import { buildSystemPrompt, findForbidden } from '../supabase/functions/_shared/prompt.ts';
-import { chunkText, htmlToText } from '../supabase/functions/_shared/knowledge.ts';
+import { chunkText, fetchPageText, htmlToText } from '../supabase/functions/_shared/knowledge.ts';
 import { assertSafeUrl } from '../supabase/functions/_shared/net.ts';
 import { decryptSecret, deriveKeyB64, encryptSecret } from '../supabase/functions/_shared/crypto.ts';
 import { buildReport } from '../supabase/functions/_shared/reports.ts';
@@ -48,6 +48,13 @@ describe('conector Odoo: sólo lectura', () => {
   it('credenciales inválidas → error claro', async () => {
     const { fetcher } = fakeOdoo({});
     await expect(new OdooConnector({ ...cfg, apiKey: 'MAL' }, fetcher).ping()).rejects.toThrow(/Credenciales/);
+  });
+  it('REGRESIÓN: un fallo de red no filtra texto técnico y el mensaje va en español', async () => {
+    const f = (async () => { throw new TypeError('error sending request: dns error: failed to lookup address information'); }) as unknown as typeof fetch;
+    await expect(new OdooConnector(cfg, f).ping()).rejects.toThrow(/No se pudo conectar con Odoo/);
+    await expect(new OdooConnector(cfg, f).ping()).rejects.not.toThrow(/dns|lookup/i);
+    const html = (async () => new Response('<html>no es json</html>')) as unknown as typeof fetch;
+    await expect(new OdooConnector(cfg, html).ping()).rejects.toThrow(/inesperado/);
   });
   it('rechaza URLs inseguras (http, localhost, IP privada)', () => {
     for (const url of ['http://odoo.example.com', 'https://localhost', 'https://127.0.0.1', 'https://10.0.0.5', 'https://192.168.1.2', 'https://169.254.169.254', 'https://intranet'])
@@ -175,6 +182,10 @@ describe('conocimiento y red', () => {
     const ch = chunkText(text, 300, 50);
     expect(ch.length).toBeGreaterThan(3); for (const c of ch) expect(c.length).toBeLessThanOrEqual(300);
     expect(ch.join(' ')).toContain('palabra0'); expect(ch.join(' ')).toContain('palabra199'); expect(chunkText('  ')).toEqual([]);
+  });
+  it('REGRESIÓN: descargar una página con error de red da un mensaje claro', async () => {
+    const f = (async () => { throw new TypeError('dns error'); }) as unknown as typeof fetch;
+    await expect(fetchPageText('https://www.ejemplo.mx/faq', f)).rejects.toThrow(/No se pudo descargar la página/);
   });
   it('assertSafeUrl bloquea SSRF', () => {
     for (const u of ['http://a.com', 'https://localhost/x', 'https://127.0.0.1', 'https://10.1.1.1', 'https://172.16.0.1', 'https://169.254.169.254/latest', 'https://[::1]/', 'https://u:p@a.com', 'ftp://a.com', 'nope', 'https://2130706433', 'https://metadata.internal'])

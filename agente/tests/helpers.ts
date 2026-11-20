@@ -16,6 +16,9 @@ export async function makeDb(): Promise<Db> {
   const db = new PGlite();
   await db.exec(BOOT);
   await db.exec(readFileSync('supabase/migrations/0001_agente_v01.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/0002_whatsapp.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/0003_search_knowledge_or.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/0004_whatsapp_channels.sql', 'utf8'));
   return db;
 }
 export async function newUser(db: Db, email: string): Promise<string> {

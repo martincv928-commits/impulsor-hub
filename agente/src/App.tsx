@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { esError, supabase } from './supabase';
+import { BRAND } from './brand';
+import Logo from './Logo';
 import Chat from './Chat';
 import Config from './Config';
 
@@ -11,30 +13,38 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
-  if (session === undefined) return <p className="center">Cargando…</p>;
+  if (session === undefined) return <Splash />;
   if (!session) return <Login />;
   return <Home />;
 }
 
+function Splash({ text = 'Cargando…' }: { text?: string }) {
+  return <div className="splash"><Logo size={72} /><p className="muted">{text}</p></div>;
+}
+
 function Login() {
   const [email, setEmail] = useState(''); const [pass, setPass] = useState('');
-  const [signup, setSignup] = useState(false); const [msg, setMsg] = useState('');
+  const [signup, setSignup] = useState(false); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
   async function go(e: React.FormEvent) {
-    e.preventDefault(); setMsg('');
+    e.preventDefault(); setMsg(''); setBusy(true);
     const r = signup ? await supabase.auth.signUp({ email, password: pass }) : await supabase.auth.signInWithPassword({ email, password: pass });
-    if (r.error) setMsg(r.error.message);
-    else if (signup && !r.data.session) setMsg('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.');
+    setBusy(false);
+    if (r.error) setMsg(esError(r.error.message));
+    else if (signup && !r.data.session) setMsg('Cuenta creada. Confirma tu correo con el enlace que te enviamos y luego inicia sesión.');
   }
   return (
-    <form className="card narrow" onSubmit={go}>
-      <h1>Agente</h1>
-      <p className="muted">Tu asistente gerencial y de atención a clientes, conectado a tu ERP.</p>
-      <input type="email" placeholder="Correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      <input type="password" placeholder="Contraseña (mín. 8)" value={pass} onChange={(e) => setPass(e.target.value)} minLength={8} required />
-      <button>{signup ? 'Crear cuenta' : 'Entrar'}</button>
-      <button type="button" className="link" onClick={() => setSignup(!signup)}>{signup ? 'Ya tengo cuenta' : 'Crear una cuenta'}</button>
-      {msg && <p className="note">{msg}</p>}
-    </form>
+    <main className="auth">
+      <div className="brandblock"><Logo size={84} /><h1>{BRAND.name}</h1><p>{BRAND.tagline}</p></div>
+      <form className="card" onSubmit={go}>
+        <h2>{signup ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
+        <label>Correo<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+        <label>Contraseña<input type="password" autoComplete={signup ? 'new-password' : 'current-password'} value={pass} onChange={(e) => setPass(e.target.value)} minLength={8} required /></label>
+        <button disabled={busy}>{busy ? 'Un momento…' : signup ? 'Crear cuenta' : 'Entrar'}</button>
+        <button type="button" className="link" onClick={() => { setSignup(!signup); setMsg(''); }}>{signup ? 'Ya tengo cuenta' : 'Crear una cuenta'}</button>
+        {msg && <p className="note" role="alert">{msg}</p>}
+      </form>
+      <p className="muted foot">{BRAND.name} de {BRAND.by} · Sólo consulta: nunca modifica tu ERP.</p>
+    </main>
   );
 }
 
@@ -46,7 +56,7 @@ function Home() {
   const [err, setErr] = useState('');
   async function load() {
     const { data, error } = await supabase.from('tenants').select('id, name');
-    if (error) return setErr(error.message);
+    if (error) return setErr(esError(error.message));
     setTenants(data);
     if (data?.[0]) {
       const { data: me } = await supabase.auth.getUser();
@@ -55,39 +65,44 @@ function Home() {
     }
   }
   useEffect(() => { load(); }, []);
-  if (err) return <p className="center">{err}</p>;
-  if (!tenants) return <p className="center">Cargando…</p>;
+  if (err) return <div className="splash"><Logo size={56} /><p role="alert">{err}</p><button onClick={() => { setErr(''); load(); }}>Reintentar</button></div>;
+  if (!tenants) return <Splash />;
   if (!tenants.length) return <Onboarding onDone={load} />;
   const t = tenants[0];
   return (
     <div className="shell">
-      <header><strong>{t.name}</strong>
-        <nav>
+      <header>
+        <div className="hbrand"><Logo size={32} /><div><strong>{t.name}</strong><small>{BRAND.name}</small></div></div>
+        <nav aria-label="Secciones">
           <button className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>Asistente</button>
           {role === 'admin' && <button className={tab === 'config' ? 'on' : ''} onClick={() => setTab('config')}>Configuración</button>}
-          <button onClick={() => supabase.auth.signOut()}>Salir</button>
+          <button className="ghost" onClick={() => supabase.auth.signOut()}>Salir</button>
         </nav>
       </header>
-      {tab === 'chat' && (role === 'admin' || role === 'gerente') && <Chat tenantId={t.id} />}
-      {tab === 'chat' && role === 'lector' && <p className="center">Tu rol es "lector": no tienes acceso al asistente.</p>}
+      {tab === 'chat' && (role === 'admin' || role === 'gerente') && <Chat tenantId={t.id} isAdmin={role === 'admin'} goConfig={() => setTab('config')} />}
+      {tab === 'chat' && role === 'lector' && <p className="center">Tu rol es "lector": no tienes acceso al asistente. Pide al administrador que te cambie a "gerente".</p>}
       {tab === 'config' && role === 'admin' && <Config tenantId={t.id} />}
     </div>
   );
 }
 
 function Onboarding({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState(''); const [err, setErr] = useState('');
+  const [name, setName] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   async function create(e: React.FormEvent) {
-    e.preventDefault();
+    e.preventDefault(); setBusy(true);
     const { error } = await supabase.rpc('create_tenant', { p_name: name });
-    if (error) setErr(error.message); else onDone();
+    setBusy(false);
+    if (error) setErr(esError(error.message)); else onDone();
   }
   return (
-    <form className="card narrow" onSubmit={create}>
-      <h2>Crea tu empresa</h2>
-      <input placeholder="Nombre de la empresa" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
-      <button>Crear</button>
-      {err && <p className="note">{err}</p>}
-    </form>
+    <main className="auth">
+      <div className="brandblock"><Logo size={72} /><h1>Bienvenido a {BRAND.name}</h1><p>Empecemos creando tu empresa.</p></div>
+      <form className="card" onSubmit={create}>
+        <label>Nombre de la empresa<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></label>
+        <button disabled={busy}>{busy ? 'Creando…' : 'Crear empresa'}</button>
+        {err && <p className="note" role="alert">{err}</p>}
+      </form>
+      <p className="muted foot">Después podrás conectar tu ERP, escribir las reglas del asistente y poner el chat en tu sitio web.</p>
+    </main>
   );
 }

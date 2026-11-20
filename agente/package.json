@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "build:pages": "tsc --noEmit && vite build --base ./ --outDir app --emptyOutDir"
+    "icons": "node scripts/make-icons.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",

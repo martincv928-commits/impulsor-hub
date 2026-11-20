@@ -1,0 +1,28 @@
+# ATALAYA: en cada PR que toque agente/ corre pruebas, tipos y build (sin publicar nada).
+name: ATALAYA CI
+
+on:
+  pull_request:
+    paths: ['agente/**', '.github/workflows/agente-ci.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agente-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agente
+    steps:
+      - uses: actions/checkout@v5
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: agente/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
