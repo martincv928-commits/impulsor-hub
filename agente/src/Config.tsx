@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { API_URL, api, supabase } from './supabase';
 import { FEATURES } from './brand';
+import Datos from './Datos';
 
 type S = { company_name: string; company_profile: string; rules: string; forbidden_topics: string[]; tone: string; website_url: string; human_contact: string };
 const PUBLIC_TOOLS = [['buscar_conocimiento', 'Responder con la información de la empresa y del sitio'], ['catalogo_productos', 'Mostrar el catálogo de productos publicados en Odoo (requiere módulo Sitio web)']] as const;
 
-const TABS = [['empresa', 'Empresa'], ['erp', 'ERP'], ['publico', 'Público'], ['conocimiento', 'Conocimiento'], ['sitio', 'Sitio web'], ['whatsapp', 'WhatsApp'], ['uso', 'Uso'], ['equipo', 'Equipo']] as const;
+const TABS = [['empresa', 'Empresa'], ['erp', 'Datos'], ['publico', 'Público'], ['conocimiento', 'Conocimiento'], ['sitio', 'Sitio web'], ['whatsapp', 'WhatsApp'], ['uso', 'Uso'], ['equipo', 'Equipo']] as const;
 type TabId = (typeof TABS)[number][0];
 
 export default function Config({ tenantId }: { tenantId: string }) {
@@ -16,7 +17,7 @@ export default function Config({ tenantId }: { tenantId: string }) {
       {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
     </div>
     {tab === 'empresa' && <Empresa t={tenantId} />}
-    {tab === 'erp' && <Erp t={tenantId} />}
+    {tab === 'erp' && <Datos t={tenantId} />}
     {tab === 'publico' && <Publico t={tenantId} />}
     {tab === 'conocimiento' && <Conocimiento t={tenantId} />}
     {tab === 'sitio' && <Sitio t={tenantId} />}
@@ -45,27 +46,6 @@ function Empresa({ t }: { t: string }) {
     <label>Sitio web<input value={s.website_url} onChange={f('website_url')} placeholder="https://…" /></label>
     <label>Contacto humano para derivar (correo / teléfono)<input value={s.human_contact} onChange={f('human_contact')} /></label>
     <button onClick={save}>Guardar</button>{msg && <span className="note">{msg}</span>}</section>);
-}
-
-function Erp({ t }: { t: string }) {
-  const [st, setSt] = useState<any>(null); const [f, setF] = useState({ url: '', db: '', username: '', api_key: '' }); const [msg, say] = useMsg();
-  const load = () => supabase.rpc('erp_connection_public', { p_tenant: t }).then(({ data }) => { const r = data?.[0]; setSt(r ?? null); if (r) setF((x) => ({ ...x, url: r.url, db: r.db, username: r.username })); });
-  useEffect(() => { load(); }, [t]);
-  async function save(e: React.FormEvent) {
-    e.preventDefault(); say('Guardando y probando…');
-    try { const r = await api<{ ok: boolean; detail: string }>({ action: 'erp_save', tenant_id: t, ...f }); say((r.ok ? '✔ ' : '✖ ') + r.detail); setF({ ...f, api_key: '' }); load(); } catch (e) { say((e as Error).message); }
-  }
-  async function test() { try { const r = await api<{ ok: boolean; detail: string }>({ action: 'erp_test', tenant_id: t }); say((r.ok ? '✔ ' : '✖ ') + r.detail); load(); } catch (e) { say((e as Error).message); } }
-  return (<section className="card"><h2>ERP (Odoo) · sólo lectura</h2>
-    <p className="muted">Crea en Odoo un usuario con permisos de SÓLO LECTURA y una API key. La clave se guarda cifrada en el servidor y nunca se vuelve a mostrar.</p>
-    {st && <p>Estado: <strong>{st.status}</strong>{st.last_error ? ` — ${st.last_error}` : ''}</p>}
-    <form onSubmit={save}>
-      <label>URL de Odoo<input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://miempresa.odoo.com" required /></label>
-      <label>Base de datos<input value={f.db} onChange={(e) => setF({ ...f, db: e.target.value })} required /></label>
-      <label>Usuario (correo)<input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} required /></label>
-      <label>API key<input type="password" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} required autoComplete="off" /></label>
-      <button>Guardar y probar conexión</button>{st && <button type="button" onClick={test}>Probar de nuevo</button>}{msg && <span className="note">{msg}</span>}
-    </form></section>);
 }
 
 function Publico({ t }: { t: string }) {

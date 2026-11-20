@@ -5,7 +5,7 @@ import type { CarteraResult, InventarioResult, VentasResult } from './erp.ts';
 
 export type ReportKind = 'ventas' | 'cuentas_por_cobrar' | 'cuentas_por_pagar' | 'inventario';
 export interface Attachment { filename: string; mime: string; base64: string }
-interface Table { title: string; columns: string[]; rows: string[][]; summary: string[]; notes: string[] }
+interface Table { title: string; columns: string[]; rows: string[][]; summary: string[]; notes: string[]; source: string }
 
 const TITLES: Record<ReportKind, string> = { ventas: 'Reporte de ventas', cuentas_por_cobrar: 'Cuentas por cobrar', cuentas_por_pagar: 'Cuentas por pagar', inventario: 'Inventario' };
 
@@ -15,30 +15,30 @@ export function toTable(kind: ReportKind, data: any): Table {
     return { title: TITLES[kind], columns: ['Folio', 'Cliente', 'Fecha', 'Moneda', 'Total'],
       rows: d.pedidos.map((p) => [p.folio, p.cliente, p.fecha, p.currency, p.total]),
       summary: d.totals.map((t) => `Total ${t.currency}: ${t.total} (${t.count} pedidos)`),
-      notes: [d.note, ...(d.truncated ? ['AVISO: datos parciales (se alcanzó el límite de registros).'] : [])] };
+      notes: [d.note, ...(d.truncated ? ['AVISO: datos parciales (se alcanzó el límite de registros).'] : [])], source: d.source ?? 'ERP' };
   }
   if (kind === 'cuentas_por_cobrar' || kind === 'cuentas_por_pagar') {
     const d = data as CarteraResult;
     return { title: TITLES[kind], columns: ['Folio', kind === 'cuentas_por_cobrar' ? 'Cliente' : 'Proveedor', 'Vence', 'Días vencido', 'Moneda', 'Saldo'],
       rows: d.documentos.map((x) => [x.folio, x.tercero, x.vence, String(Math.max(x.diasVencido, 0)), x.currency, x.saldo]),
       summary: [...d.totals.map((t) => `Saldo total ${t.currency}: ${t.total} (${t.count} documentos)`), ...d.aging.map((a) => `Antigüedad ${a.bucket} ${a.currency}: ${a.total}`)],
-      notes: [`Corte al ${d.asOf}. Facturas publicadas con saldo pendiente.`, ...(d.truncated ? ['AVISO: datos parciales (se alcanzó el límite de registros).'] : [])] };
+      notes: [`Corte al ${d.asOf}. Facturas publicadas con saldo pendiente.`, ...(d.truncated ? ['AVISO: datos parciales (se alcanzó el límite de registros).'] : [])], source: d.source ?? 'ERP' };
   }
   const d = data as InventarioResult;
   return { title: TITLES.inventario, columns: ['Código', 'Producto', 'Existencia', 'Proyectado', 'UdM'],
     rows: d.filas.map((f) => [f.codigo, f.producto, f.existencia, f.proyectado, f.udm]), summary: [`${d.filas.length} productos`],
-    notes: d.truncated ? ['AVISO: datos parciales (límite de 500 productos).'] : [] };
+    notes: d.truncated ? ['AVISO: datos parciales (límite de 500 productos).'] : [], source: d.source ?? 'ERP' };
 }
 
 const b64 = (u: Uint8Array) => { let s = ''; const CH = 0x8000; for (let i = 0; i < u.length; i += CH) s += String.fromCharCode(...u.subarray(i, i + CH)); return btoa(s); };
 const slug = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase().slice(0, 40) || 'empresa';
 const latin1 = (s: string) => s.replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
-const trace = (company: string, periodo: string, ts: string) => `${company} · Periodo: ${periodo} · Fuente: ERP (Odoo, sólo lectura) · Consultado: ${ts}`;
+const trace = (company: string, periodo: string, ts: string, source: string) => `${company} · Periodo: ${periodo} · Fuente: ${source} · Sólo lectura · Generado: ${ts}`;
 
 export async function buildReport(kind: ReportKind, fmt: 'pdf' | 'xlsx', data: unknown, meta: { company: string; periodo: string }, now = new Date()): Promise<Attachment> {
   const t = toTable(kind, data); const ts = now.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   const base = `${kind}_${slug(meta.company)}_${now.toISOString().slice(0, 10)}`;
-  const head = trace(meta.company, meta.periodo, ts);
+  const head = trace(meta.company, meta.periodo, ts, t.source);
   if (fmt === 'xlsx') {
     const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet(t.title.slice(0, 31));
     ws.addRow([t.title]).font = { bold: true, size: 14 }; ws.addRow([head]); ws.addRow([]);

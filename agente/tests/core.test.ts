@@ -70,7 +70,7 @@ describe('conector Odoo: sólo lectura', () => {
     const r = await new OdooConnector(cfg, fetcher).ventas({ from: '2026-01-01', to: '2026-01-31' });
     expect(r.totals).toEqual([{ currency: 'MXN', total: '0.30', count: 2 }, { currency: 'USD', total: '100.50', count: 1 }]);
     expect(r.orderCount).toBe(3); expect(r.truncated).toBe(false);
-    expect(r.topClientes[0]).toEqual({ cliente: 'Cliente B', currency: 'USD', total: '100.50' });
+    expect(r.topClientes).toEqual([{ cliente: 'Cliente A', currency: 'MXN', total: '0.30' }, { cliente: 'Cliente B', currency: 'USD', total: '100.50' }]);
   });
   it('cartera: antigüedad por cubetas y totales', async () => {
     const { fetcher } = fakeOdoo({ 'account.move': [
@@ -253,5 +253,13 @@ describe('modelo y consumo de tokens', () => {
     expect(limitMessage('cliente', 'ventas@x.mx')).toContain('ventas@x.mx');
     expect(limitMessage('cliente', '')).not.toMatch(/plan|límite|token/i);
     expect(limitMessage('gerente', '')).toMatch(/límite mensual/);
+  });
+});
+
+describe('herramientas: búsqueda por texto', () => {
+  it('REGRESIÓN: la herramienta inventario manda el término en singular al conector', async () => {
+    let got: string | undefined; const erp: any = { inventario: async (q?: string) => { got = q; return { filas: [], truncated: false }; } };
+    await TOOLS.find((t) => t.name === 'inventario')!.run(ctxFor(erp), { buscar: 'Tornillos grandes' });
+    expect(got).toBe('Tornillo grande');
   });
 });
