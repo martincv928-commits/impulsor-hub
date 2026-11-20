@@ -75,6 +75,7 @@ export function handoffLines(snap: Row, handoff: Row, receipt: Row | null, adden
   if (receipt) {
     L.push(`Decisión: ${{ accepted: 'Aceptada', accepted_with_observations: 'Aceptada con observaciones', discrepancy: 'Discrepancia', rejected: 'Rechazada' }[receipt.decision as string]}`,
       `Receptor: ${receiverName ?? receipt.received_by} · ${fmt(receipt.received_at)}`, `Observaciones: ${receipt.notes ?? '—'}`,
+      ...(receipt.acknowledged?.self_receipt ? ['Recepción propia: la empresa tiene una sola persona activa, por eso quien entregó también recibió.'] : []),
       'Nota: recibir la información no implica aceptar la responsabilidad de resolver los pendientes.');
   } else L.push('Aún no recibida.');
   if (addenda.length) {

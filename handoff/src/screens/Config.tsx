@@ -7,8 +7,8 @@ import type { Row } from '../report';
 const EVENTS: [string, string][] = [['handoff_submitted', 'Entrega enviada'], ['handoff_accepted', 'Entrega aceptada'], ['handoff_rejected', 'Entrega rechazada'], ['handoff_discrepancy', 'Discrepancia registrada'], ['critical_issue', 'Pendiente crítico'], ['handoff_unreceived', 'Entrega sin recibir (requiere programador, pendiente)'], ['shift_summary', 'Resumen de cierre (manual)']];
 const HOOKS = ['handoff.created', 'handoff.submitted', 'handoff.accepted', 'handoff.disputed', 'handoff.rejected', 'issue.created', 'issue.assigned', 'issue.resolved'];
 
-export default function Config() {
-  const [tab, setTab] = useState('estructura');
+export default function Config({ arg }: { arg?: string }) {
+  const [tab, setTab] = useState(arg ?? 'estructura');
   const tabs = [['estructura', 'Estructura'], ['equipo', 'Equipo'], ['plantillas', 'Plantillas'], ['destinatarios', 'Destinatarios'], ['integraciones', 'API']];
   return (
     <>
@@ -56,18 +56,22 @@ function Estructura() {
 }
 
 function Equipo() {
-  const { org, uid, reloadMembers } = useCtx();
+  const { org, uid, reloadMembers, orgName } = useCtx();
   const d = useLoad(() => sel(supabase.from('organization_members').select('*').eq('org_id', org).order('created_at')), [org]);
   const inv = useLoad(() => sel(supabase.from('org_invites').select('code,role,used_at,expires_at').eq('org_id', org).order('created_at', { ascending: false }).limit(10)), [org]);
   const [role, setRole] = useState('worker'); const r = useRun();
+  async function share(code: string) {
+    const text = `Te invito a ${orgName} en HANDOFF. Crea tu cuenta, toca «Unirme con código» y escribe: ${code}`;
+    try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); r.setOk('Invitación copiada.'); } } catch { /* cancelado */ }
+  }
   const upd = (m: Row, patch: Row) => r.run(() => rpc('set_member', { p_org: org, p_user: m.user_id, p_role: patch.role ?? m.role, p_active: patch.active ?? m.active }), () => { d.reload(); reloadMembers(); });
   return (
     <>
-      <Msg err={r.err} />
+      <Msg err={r.err} ok={r.ok} />
       <div className="card"><h3>Invitar trabajador</h3><p className="mut">Genera un código de un solo uso (vence en 7 días). La persona crea su cuenta y entra con «Unirme con código».</p>
         <select value={role} onChange={(e) => setRole(e.target.value)}><option value="worker">Trabajador</option><option value="supervisor">Supervisor / encargado</option><option value="admin">Administrador</option></select>
         <button className="btn" onClick={() => r.run(() => rpc('create_invite', { p_org: org, p_role: role }), inv.reload)}>Generar código</button>
-        {(inv.data ?? []).map((i: Row) => <div className="item" key={i.code}><b style={{ letterSpacing: 2 }}>{i.code}</b> <span className="mut">{i.role} · {i.used_at ? 'usado' : 'vigente hasta ' + new Date(i.expires_at).toLocaleDateString('es-MX')}</span></div>)}</div>
+        {(inv.data ?? []).map((i: Row) => <div className="item row" key={i.code}><span><b style={{ letterSpacing: 2, fontSize: 18 }}>{i.code}</b><div className="mut">{{ worker: 'Trabajador', supervisor: 'Supervisor', admin: 'Administrador' }[i.role as string]} · {i.used_at ? 'ya usado' : 'vigente hasta ' + new Date(i.expires_at).toLocaleDateString('es-MX')}</div></span>{!i.used_at && <button className="link" onClick={() => share(i.code)}>Compartir</button>}</div>)}</div>
       <div className="card"><h3>Miembros</h3>{(d.data ?? []).map((m: Row) => (
         <div className="item" key={m.user_id}><div className="row"><b>{m.display_name}{m.user_id === uid ? ' (tú)' : ''}</b><span className="mut">{m.active ? '' : 'inactivo'}</span></div>
           <div className="grid"><select value={m.role} onChange={(e) => upd(m, { role: e.target.value })}><option value="worker">Trabajador</option><option value="supervisor">Supervisor</option><option value="admin">Administrador</option></select>

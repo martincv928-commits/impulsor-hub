@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { Ic } from '../brand';
-import { Msg, isManager, nameOf, useCtx, useLoad } from '../ctx';
+import { Msg, isManager, isSolo, nameOf, useCtx, useLoad } from '../ctx';
 import { errText, pdfFromLines, rpc, sel, sharePdf, signedUrl, fdt } from '../lib';
 import { handoffLines, fieldValueText, ISSUE_STATUS, PRIORITY, STATUS_LABEL, type Row } from '../report';
 
@@ -15,10 +15,11 @@ export function Recibir({ arg }: { arg?: string }) {
   const { org, uid, role, go, members } = useCtx();
   const list = useLoad(() => sel(supabase.from('handoffs').select('id,from_user,to_user,shift_date,submitted_at,areas(name),shift_definitions(name)').eq('org_id', org).eq('status', 'pending_receipt').order('submitted_at')), [org]);
   if (arg) return <HandoffDetail id={arg} back={() => go('recibir')} receiving />;
-  const rows = (list.data ?? []).filter((h: Row) => h.from_user !== uid && (!h.to_user || h.to_user === uid || isManager(role)));
+  const rows = (list.data ?? []).filter((h: Row) => (h.from_user !== uid || isSolo(members)) && (!h.to_user || h.to_user === uid || isManager(role)));
   return (
     <>
       <h2>Turnos por recibir</h2>
+      {isSolo(members) && <div className="card note">Eres la <b>única persona</b> de la empresa, así que puedes recibir tus propias entregas. Quedan marcadas como «recepción propia». Cuando invites a alguien más, ellos recibirán tus turnos.</div>}
       <Msg err={list.err} />
       {rows.length === 0 && !list.loading && <div className="card empty"><div className="ico"><Ic n="inbox" size={26} /></div>No hay entregas pendientes de recibir para ti.</div>}
       {rows.map((h: Row) => (
@@ -50,7 +51,7 @@ export function Historial({ arg }: { arg?: string }) {
 }
 
 export function HandoffDetail({ id, back, receiving }: { id: string; back: () => void; receiving?: boolean }) {
-  const { uid, role, members, go } = useCtx();
+  const { uid, role, members, go, refresh } = useCtx();
   const d = useLoad(async () => {
     const h = (await sel<Row[]>(supabase.from('handoffs').select('*').eq('id', id)))[0];
     const [receipt, addenda, atts] = await Promise.all([
@@ -65,19 +66,19 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
   if (!d.data) return <><Msg err={d.err} /><button className="link back" onClick={back}><Ic n="back" size={18} />Volver</button></>;
   const { h, receipt, addenda, atts } = d.data;
   const snap = h.snapshot as Row;
-  const canReceive = h.status === 'pending_receipt' && h.from_user !== uid && (!h.to_user || h.to_user === uid || isManager(role));
+  const canReceive = h.status === 'pending_receipt' && (h.from_user !== uid || isSolo(members)) && (!h.to_user || h.to_user === uid || isManager(role));
 
   async function decide(decision: string) {
     setBusy(true); setErr('');
     try {
       await rpc('receive_handoff', { p_id: id, p_decision: decision, p_notes: notes || null, p_ack: { checklist_reviewed: ack.checklist, issues_acknowledged: ack.issues ? [...snap.issues_created, ...snap.issues_open].map((i: Row) => i.id) : [] } });
-      setOk('Decisión registrada por el servidor.'); d.reload();
+      setOk('Decisión registrada por el servidor.'); d.reload(); refresh();
     } catch (e) { setErr(errText(e)); }
     setBusy(false);
   }
   async function pdf() {
     const lines = handoffLines(snap, h, receipt, addenda, receipt ? nameOf(members, receipt.received_by) : undefined);
-    setOk(await sharePdf(pdfFromLines(lines), `handoff-${h.shift_date}-${h.id.slice(0, 8)}.pdf`, 'Entrega de turno'));
+    setOk(await sharePdf(await pdfFromLines(lines), `handoff-${h.shift_date}-${h.id.slice(0, 8)}.pdf`, 'Entrega de turno'));
   }
   const IssueRow = ({ i }: { i: Row }) => (
     <div className="item" onClick={() => go('pendientes', i.id)}>
@@ -99,7 +100,7 @@ export function HandoffDetail({ id, back, receiving }: { id: string; back: () =>
       <div className="card"><h3>Pendientes heredados</h3>{snap.issues_open.length === 0 && <p className="mut">Ninguno.</p>}{snap.issues_open.map((i: Row) => <IssueRow key={i.id} i={i} />)}
         <p className="mut">Recibir la entrega no te hace responsable de resolver estos pendientes: para asumirlos, ábrelos y usa «Asumir responsabilidad».</p></div>
       {addenda.length > 0 && <div className="card"><h3>Anexos posteriores</h3>{addenda.map((a: Row) => <div className="item" key={a.id}>{a.body}<div className="mut">{nameOf(members, a.author)} · {fdt(a.created_at)}</div></div>)}</div>}
-      {receipt && <div className="card"><h3>Recepción</h3><b>{{ accepted: 'Aceptada', accepted_with_observations: 'Aceptada con observaciones', discrepancy: 'Discrepancia registrada', rejected: 'Rechazada' }[receipt.decision as string]}</b> por {nameOf(members, receipt.received_by)} · {fdt(receipt.received_at)}<div className="mut">{receipt.notes}</div></div>}
+      {receipt && <div className="card"><h3>Recepción</h3><b>{{ accepted: 'Aceptada', accepted_with_observations: 'Aceptada con observaciones', discrepancy: 'Discrepancia registrada', rejected: 'Rechazada' }[receipt.decision as string]}</b>{receipt.acknowledged?.self_receipt && <> <span className="badge b-accepted_obs">Recepción propia</span></>} por {nameOf(members, receipt.received_by)} · {fdt(receipt.received_at)}<div className="mut">{receipt.notes}</div></div>}
       {(receiving || canReceive) && canReceive && (
         <div className="card">
           <h3>Tu decisión</h3>

@@ -1,4 +1,3 @@
-import { jsPDF } from 'jspdf';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabase';
 import type { Row } from './report';
@@ -21,7 +20,14 @@ export function errText(e: any): string {
     return `${MSG[key]}${faltan ? ': ' + faltan : ''}.`;
   }
   if (key) return MSG[key];
-  if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión con el servidor. No se confirmó la operación; reintenta.';
+  if (/Failed to fetch|NetworkError|network|Load failed/i.test(m)) return 'Sin conexión con el servidor. No se confirmó la operación; reintenta.';
+  if (/Invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
+  if (/already registered|already been registered/i.test(m)) return 'Ese correo ya tiene cuenta. Toca «Ya tengo cuenta» y entra con tu contraseña.';
+  if (/Email not confirmed/i.test(m)) return 'Falta confirmar el correo. Pide que se desactive la confirmación de correo o revisa tu bandeja.';
+  if (/at least \d+ characters|weak/i.test(m)) return 'La contraseña es muy corta o débil (mínimo 8 caracteres).';
+  if (/rate limit|too many|security purposes/i.test(m)) return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+  if (/invalid format|valid email|Unable to validate email/i.test(m)) return 'Escribe un correo válido.';
+  if (/signups? (not allowed|are disabled)/i.test(m)) return 'El registro de cuentas nuevas está desactivado.';
   return m;
 }
 
@@ -64,7 +70,8 @@ export async function signedUrl(path: string): Promise<string | null> {
   return data?.signedUrl ?? null;
 }
 
-export function pdfFromLines(lines: string[]): Blob {
+export async function pdfFromLines(lines: string[]): Promise<Blob> {
+  const { jsPDF } = await import('jspdf'); // se carga sólo al generar un PDF (arranque más rápido)
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   let y = 48;
   for (const raw of lines) {

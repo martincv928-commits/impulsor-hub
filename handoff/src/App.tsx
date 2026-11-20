@@ -33,9 +33,9 @@ function Auth() {
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password: pass });
         if (error) throw error;
-        if (!data.session) setOk('Cuenta creada. Revisa tu correo para confirmarla y luego entra.');
+        if (!data.session) setOk('Cuenta creada. Si no entras sola, revisa tu correo para confirmarla y luego toca «Ya tengo cuenta».');
       }
-    } catch (x: any) { setErr(x.message?.includes('Invalid login') ? 'Correo o contraseña incorrectos.' : errText(x)); }
+    } catch (x: any) { setErr(errText(x)); }
     setBusy(false);
   }
   return (
@@ -83,9 +83,27 @@ function Shell({ session }: { session: Session }) {
   const mem = useLoad(() => sel(supabase.from('organization_members').select('org_id,role,display_name,active,organizations(name)').eq('user_id', uid).eq('active', true)), [uid]);
   const [orgId] = useState(() => localStorage.getItem('hf_org') ?? '');
   const [screen, setScreen] = useState('inicio'); const [arg, setArg] = useState<string | undefined>();
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    // El botón «atrás» de Android regresa a la pantalla anterior en lugar de cerrar la app
+    history.replaceState({ s: 'inicio' }, '');
+    const pop = (e: PopStateEvent) => { setScreen(e.state?.s ?? 'inicio'); setArg(e.state?.a); window.scrollTo(0, 0); };
+    window.addEventListener('popstate', pop);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); window.removeEventListener('popstate', pop); };
+  }, []);
   const my = mem.data?.find((m: any) => m.org_id === orgId) ?? mem.data?.[0];
   const members = useLoad(() => (my ? sel(supabase.from('organization_members').select('user_id,display_name,role,active').eq('org_id', my.org_id)) : Promise.resolve([])), [my?.org_id]);
-  const notes = useLoad(() => (my ? sel(supabase.from('notifications').select('id,title,body,entity_type,entity_id,read_at,created_at').eq('org_id', my.org_id).order('created_at', { ascending: false }).limit(30)) : Promise.resolve([])), [my?.org_id, screen]);
+  const notes = useLoad(() => (my ? sel(supabase.from('notifications').select('id,event,title,body,entity_type,entity_id,read_at,created_at').eq('org_id', my.org_id).order('created_at', { ascending: false }).limit(30)) : Promise.resolve([])), [my?.org_id, screen]);
+  const pending = useLoad(() => (my ? sel(supabase.from('handoffs').select('id,from_user,to_user').eq('org_id', my.org_id).eq('status', 'pending_receipt')) : Promise.resolve([])), [my?.org_id, screen, arg]);
+  // La barra y las notificaciones se refrescan solas (cada 30 s y al volver a la app)
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible' && navigator.onLine) { pending.reload(); notes.reload(); } };
+    const t = setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
+  }, [my?.org_id]); // eslint-disable-line
   useEffect(() => { if (my) localStorage.setItem('hf_org', my.org_id); }, [my?.org_id]);
 
   if (mem.loading) return <main><p className="mut">Cargando…</p></main>;
@@ -95,12 +113,14 @@ function Shell({ session }: { session: Session }) {
   const ctx: Ctx = {
     uid, org: my.org_id, orgName: my.organizations?.name ?? '', role: my.role, me: my.display_name,
     members: (members.data ?? []).filter((m: any) => m.active), reloadMembers: members.reload,
-    go: (s, a) => { setScreen(s); setArg(a); window.scrollTo(0, 0); },
+    refresh: () => { pending.reload(); notes.reload(); },
+    go: (s, a) => { if (s === screen && a === arg) return; history.pushState({ s, a }, ''); setScreen(s); setArg(a); window.scrollTo(0, 0); },
   };
   const unread = (notes.data ?? []).filter((n: any) => !n.read_at).length;
+  const toReceive = (pending.data ?? []).filter((h: any) => (h.from_user !== uid || ctx.members.length === 1) && (!h.to_user || h.to_user === uid || my.role !== 'worker')).length;
   const body = {
     inicio: <Inicio />, entregar: <Entregar />, recibir: <Recibir arg={arg} />, pendientes: <Pendientes arg={arg} />,
-    historial: <Historial arg={arg} />, supervisor: <Supervisor />, config: <Config />,
+    historial: <Historial arg={arg} />, supervisor: <Supervisor />, config: <Config arg={arg} />,
     mas: <Mas notes={notes.data ?? []} reload={notes.reload} />,
   }[screen];
   const onTab = (k: string) => k === screen || (k === 'mas' && ['historial', 'supervisor', 'config'].includes(screen));
@@ -111,10 +131,11 @@ function Shell({ session }: { session: Session }) {
         <div className="who"><Wordmark size={15} /><small>{ctx.orgName} · {ctx.me}</small></div>
         <button className="iconbtn" aria-label="Notificaciones" onClick={() => ctx.go('mas')}><Ic n="bell" />{unread > 0 && <i>{unread}</i>}</button>
       </header>
+      {!online && <div className="offline">Sin conexión: lo que captures no se envía hasta que regrese internet. Nada se da por enviado sin confirmación del servidor.</div>}
       <main key={screen + (arg ?? '')}>{body}</main>
       <nav className="tabs">{TABS.map(([k, ic, l]) => (
         <button key={k} className={`${onTab(k) ? 'on' : ''} ${k === 'entregar' ? 'go' : ''}`} onClick={() => ctx.go(k)}>
-          <span style={k === 'entregar' ? undefined : { display: 'grid' }}><Ic n={ic} size={k === 'entregar' ? 27 : 23} /></span>{l}
+          <span style={k === 'entregar' ? undefined : { display: 'grid', position: 'relative' }}><Ic n={ic} size={k === 'entregar' ? 27 : 23} />{k === 'recibir' && toReceive > 0 && <i className="dot">{toReceive}</i>}</span>{l}
         </button>))}
       </nav>
     </C.Provider>
@@ -126,7 +147,7 @@ function Mas({ notes, reload }: { notes: any[]; reload: () => void }) {
   async function open(n: any) {
     await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', n.id);
     reload();
-    if (n.entity_type === 'handoffs') go(n.title.includes('por recibir') ? 'recibir' : 'historial', n.entity_id);
+    if (n.entity_type === 'handoffs') go(n.event === 'handoff_submitted' ? 'recibir' : 'historial', n.entity_id);
     if (n.entity_type === 'issues') go('pendientes', n.entity_id);
   }
   const rows: [string, string, string, string][] = [['historial', 'history', 'Historial de entregas', 'Todas las entregas y su recepción']];

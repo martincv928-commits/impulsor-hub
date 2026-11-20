@@ -336,6 +336,46 @@ describe('14. API / integraciones: operaciones no autorizadas', () => {
   });
 });
 
+describe('resumen con hora de México', () => {
+  it('un pendiente creado a las 9:30 p.m. (hora de México) cuenta en ese día y no en el siguiente', async () => {
+    const [iss] = await as(db, u.sal, "select * from create_issue($1,$2,$3,'Pendiente tarde',null,'x','low')", [orgA, siteA, areaA]);
+    await db.query("update issues set created_at='2027-03-11 03:30:00+00' where id=$1", [iss.id]); // 10-mar 21:30 en CDMX
+    const day = async (d: string) => (await as(db, u.supA, 'select supervisor_summary($1,$2,$2) s', [orgA, d]))[0].s.issues.created_in_range;
+    expect(await day('2027-03-10')).toBeGreaterThanOrEqual(1);
+    expect(await day('2027-03-11')).toBe(0);
+  });
+});
+
+describe('equipo de una sola persona', () => {
+  it('puede recibir su propia entrega (marcada) y deja de poder al sumarse otra persona', async () => {
+    const solo = await newUser(db, 'solo@test.mx');
+    const org = (await as(db, solo, "select create_organization('Negocio de uno','Dueño') o"))[0].o;
+    const site = (await as(db, solo, "insert into sites (org_id,name) values ($1,'Local') returning id", [org]))[0].id;
+    const area = (await as(db, solo, "insert into areas (org_id,site_id,name) values ($1,$2,'Caja') returning id", [org, site]))[0].id;
+    const shift = (await as(db, solo, "insert into shift_definitions (org_id,name) values ($1,'Día') returning id", [org]))[0].id;
+    const tpl = (await as(db, solo, "select id from templates where org_id=$1 and name='SEGURIDAD'", [org]))[0].id;
+    const fld = (await as(db, solo, "select id from template_fields where template_id=$1 and label='Novedades del turno'", [tpl]))[0].id;
+    const mk = async () => {
+      const hid = id();
+      await as(db, solo, 'select save_handoff_draft($1,$2,$3,$4,$5,$6,$7,null,$8::jsonb)', [hid, org, site, area, shift, tpl, '2026-12-01', JSON.stringify({ [fld]: 'Sin novedades' })]);
+      await as(db, solo, 'select submit_handoff($1)', [hid]);
+      return hid;
+    };
+    const h1 = await mk();
+    const [r] = await as(db, solo, "select * from receive_handoff($1,'accepted')", [h1]);
+    expect(r.acknowledged.self_receipt).toBe(true);
+    expect((await as(db, solo, 'select status from handoffs where id=$1', [h1]))[0].status).toBe('accepted');
+    // se suma otra persona: la regla normal vuelve
+    const code = (await as(db, solo, "select create_invite($1,'worker') c", [org]))[0].c;
+    const otra = await newUser(db, 'otra@test.mx');
+    await as(db, otra, "select join_organization($1,'Empleada')", [code]);
+    const h2 = await mk();
+    await expect(as(db, solo, "select receive_handoff($1,'accepted')", [h2])).rejects.toThrow(/forbidden_self/);
+    const [r2] = await as(db, otra, "select * from receive_handoff($1,'accepted')", [h2]);
+    expect(r2.acknowledged.self_receipt).toBeUndefined();
+  });
+});
+
 describe('membresía', () => {
   it('invitaciones de un solo uso; no se puede quitar al último admin; plantillas iniciales presentes', async () => {
     const code = (await as(db, u.admA, "select create_invite($1,'worker') c", [orgA]))[0].c;

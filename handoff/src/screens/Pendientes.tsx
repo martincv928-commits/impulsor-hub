@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../supabase';
 import { Ic } from '../brand';
 import { Msg, isManager, nameOf, useCtx, useLoad } from '../ctx';
-import { errText, rpc, sel, uploadPhoto, fdt } from '../lib';
+import { errText, rpc, sel, uploadPhoto, uuid, fdt } from '../lib';
 import { ISSUE_STATUS, PRIORITY, type Row } from '../report';
 import { Thumbs } from './Recibir';
 
@@ -11,13 +11,16 @@ const ACTION: Record<string, string> = { created: 'Creado', received: 'Recibido 
 export default function Pendientes({ arg }: { arg?: string }) {
   const { org, go, members, uid } = useCtx();
   const [filter, setFilter] = useState<'open' | 'mine' | 'unassigned' | 'closed'>('open');
+  const [creating, setCreating] = useState(false);
   const list = useLoad(() => sel(supabase.from('issues').select('id,title,priority,status,assignee,due_date,areas(name)').eq('org_id', org).order('created_at', { ascending: false }).limit(200)), [org, arg]);
   if (arg) return <IssueDetail id={arg} back={() => go('pendientes')} />;
+  if (creating) return <NewIssue onCancel={() => setCreating(false)} onDone={(id) => { setCreating(false); go('pendientes', id); }} />;
   const openSt = ['open', 'in_progress', 'blocked'];
   const rows = (list.data ?? []).filter((i: Row) => filter === 'open' ? openSt.includes(i.status) : filter === 'mine' ? i.assignee === uid && openSt.includes(i.status) : filter === 'unassigned' ? !i.assignee && openSt.includes(i.status) : !openSt.includes(i.status));
   return (
     <>
       <h2>Pendientes</h2>
+      <button className="btn sec" onClick={() => setCreating(true)}><Ic n="plus" size={20} />Nuevo pendiente</button>
       <div className="chips">
         {([['open', 'Abiertos'], ['mine', 'Míos'], ['unassigned', 'Sin responsable'], ['closed', 'Cerrados']] as const).map(([k, l]) => <button key={k} className={`pill ${filter === k ? 'on' : ''}`} onClick={() => setFilter(k)}>{l}</button>)}
       </div>
@@ -96,6 +99,50 @@ function IssueDetail({ id, back }: { id: string; back: () => void }) {
       <h3>Cadena de responsabilidad</h3>
       <div className="card">
         {events.map((e: Row) => <div className={`tl t-${e.action}`} key={e.id}><b>{ACTION[e.action]}</b> · {nameOf(members, e.actor)}<div className="mut">{fdt(e.created_at)} {evText(e)}</div></div>)}
+      </div>
+    </>
+  );
+}
+
+function NewIssue({ onDone, onCancel }: { onDone: (id: string) => void; onCancel: () => void }) {
+  const { org, members } = useCtx();
+  const cfg = useLoad(async () => ({
+    sites: await sel(supabase.from('sites').select('id,name').eq('org_id', org).eq('active', true)),
+    areas: await sel(supabase.from('areas').select('id,name,site_id').eq('org_id', org).eq('active', true)),
+  }), [org]);
+  const [f, setF] = useState({ site: '', area: '', title: '', description: '', category: 'pendiente', priority: 'medium', due: '', assignee: '' });
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const nid = useState(() => uuid())[0]; // mismo id en cada reintento: no se duplica
+  if (!cfg.data) return <><Msg err={cfg.err} /><p className="mut">Cargando…</p></>;
+  const sites: Row[] = cfg.data.sites, areas: Row[] = cfg.data.areas.filter((a: Row) => a.site_id === (f.site || sites[0]?.id));
+  const site = f.site || (sites.length === 1 ? sites[0].id : '');
+  const area = f.area || (areas.length === 1 && site ? areas[0].id : '');
+  async function save() {
+    setBusy(true); setErr('');
+    try {
+      const i = await rpc('create_issue', { p_org: org, p_site: site, p_area: area, p_title: f.title, p_description: f.description || null, p_category: f.category, p_priority: f.priority, p_due: f.due || null, p_external_ref: null, p_handoff: null, p_assignee: f.assignee || null, p_id: nid });
+      onDone(i.id);
+    } catch (e) { setErr(errText(e)); }
+    setBusy(false);
+  }
+  return (
+    <>
+      <button className="link back" onClick={onCancel}><Ic n="back" size={18} />Volver</button>
+      <h2>Nuevo pendiente</h2>
+      <div className="card">
+        <label style={{ marginTop: 0 }}>¿Qué pasa?<input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Ej. Montacargas 2 no enciende" /></label>
+        <label>Detalle <small>(opcional)</small><textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+        <div className="grid">
+          <label>Sede<select value={site} onChange={(e) => setF({ ...f, site: e.target.value, area: '' })}><option value="">— elegir —</option>{sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+          <label>Área<select value={area} onChange={(e) => setF({ ...f, area: e.target.value })}><option value="">— elegir —</option>{areas.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+        </div>
+        <div className="grid">
+          <label>Prioridad<select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label>
+          <label>Fecha objetivo<input type="date" value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} /></label>
+        </div>
+        <label>Responsable <small>(puedes dejarlo sin asignar)</small><select value={f.assignee} onChange={(e) => setF({ ...f, assignee: e.target.value })}><option value="">Sin responsable</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}</select></label>
+        <Msg err={err} />
+        <button className="btn" disabled={busy || !f.title.trim() || !site || !area} onClick={save}>Guardar pendiente</button>
       </div>
     </>
   );
