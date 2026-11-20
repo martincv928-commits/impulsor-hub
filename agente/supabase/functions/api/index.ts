@@ -10,7 +10,7 @@ import { OdooConnector } from '../_shared/odoo.ts';
 import { buildSystemPrompt, findForbidden, REFUSAL, type Settings } from '../_shared/prompt.ts';
 import { buildReport } from '../_shared/reports.ts';
 import { WIDGET_JS } from '../_shared/widget.ts';
-import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, verifySignature } from '../_shared/whatsapp.ts';
+import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, timingSafeEqual, verifyAccess, verifySignature } from '../_shared/whatsapp.ts';
 import { toolsForMode, type Mode, type ToolCtx } from '../_shared/tools.ts';
 import type { Attachment } from '../_shared/reports.ts';
 
@@ -145,15 +145,20 @@ async function chat(req: Request, body: any, origin: string | null) {
 async function whatsappWebhook(req: Request): Promise<Response> {
   if (req.method === 'GET') {
     const u = new URL(req.url);
-    const ok = u.searchParams.get('hub.mode') === 'subscribe' && env('WHATSAPP_VERIFY_TOKEN') && u.searchParams.get('hub.verify_token') === env('WHATSAPP_VERIFY_TOKEN');
+    const ok = u.searchParams.get('hub.mode') === 'subscribe' && !!env('WHATSAPP_VERIFY_TOKEN') && timingSafeEqual(u.searchParams.get('hub.verify_token') ?? '', env('WHATSAPP_VERIFY_TOKEN'));
     return ok ? new Response(u.searchParams.get('hub.challenge') ?? '', { status: 200 }) : new Response('forbidden', { status: 403 });
   }
   const raw = await req.text();
   if (!(await verifySignature(raw, req.headers.get('x-hub-signature-256'), env('WHATSAPP_APP_SECRET')))) return new Response('bad signature', { status: 401 });
   let payload: unknown; try { payload = JSON.parse(raw); } catch { return new Response('bad json', { status: 400 }); }
-  for (const m of parseWebhook(payload)) {
-    try { await handleWhatsApp(m); } catch (e) { console.error('whatsapp error', e instanceof Error ? e.message : e); }
-  }
+  const work = (async () => {
+    for (const m of parseWebhook(payload)) {
+      try { await handleWhatsApp(m); } catch (e) { console.error('whatsapp error', e instanceof Error ? e.message : e); }
+    }
+  })();
+  // Responder 200 de inmediato (Meta reintenta si tarda) y terminar el trabajo en segundo plano.
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(work); else await work;
   return new Response('ok', { status: 200 }); // siempre 200: Meta reintenta si no
 }
 
@@ -166,13 +171,18 @@ async function handleWhatsApp(m: { wamid: string; from: string; phoneNumberId: s
   const role = await roleOf(acc.tenant_id, who.user_id);
   if (role !== 'admin' && role !== 'gerente') return;
   const { error: dup } = await sb.from('whatsapp_processed').insert({ wamid: m.wamid });
-  if (dup) return; // ya procesado (reintento de Meta)
-  const wa = new WhatsAppClient(await decryptSecret(acc.token_enc, await encKey(), acc.tenant_id), m.phoneNumberId, env('WHATSAPP_GRAPH_VERSION') || 'v23.0');
-  if (m.type !== 'text' || !m.text.trim()) { await wa.sendText(m.from, 'Por ahora sólo puedo leer mensajes de texto.'); return; }
-  if (!env('ANTHROPIC_API_KEY')) { await wa.sendText(m.from, 'El asistente aún no está configurado.'); return; }
-  const r = await converse({ tenant: acc.tenant_id, mode: 'gerente', channel: 'whatsapp', user: who.user_id, text: m.text.trim().slice(0, LIMITS.gerenteMsg), convId: null, reuseHours: 12 });
-  for (const part of splitMessage(r.reply)) await wa.sendText(m.from, part);
-  for (const att of r.attachments) await wa.sendDocument(m.from, att);
+  if (dup) { if (dup.code === '23505') return; throw new Error('dedupe: ' + dup.message); } // 23505 = ya procesado (reintento de Meta)
+  try {
+    const wa = new WhatsAppClient(await decryptSecret(acc.token_enc, await encKey(), acc.tenant_id), m.phoneNumberId, env('WHATSAPP_GRAPH_VERSION') || 'v23.0');
+    if (m.type !== 'text' || !m.text.trim()) { await wa.sendText(m.from, 'Por ahora sólo puedo leer mensajes de texto.'); return; }
+    if (!env('ANTHROPIC_API_KEY')) { await wa.sendText(m.from, 'El asistente aún no está configurado.'); return; }
+    const r = await converse({ tenant: acc.tenant_id, mode: 'gerente', channel: 'whatsapp', user: who.user_id, text: m.text.trim().slice(0, LIMITS.gerenteMsg), convId: null, reuseHours: 12 });
+    for (const part of splitMessage(r.reply)) await wa.sendText(m.from, part);
+    for (const att of r.attachments) await wa.sendDocument(m.from, att);
+  } catch (e) {
+    await sb.from('whatsapp_processed').delete().eq('wamid', m.wamid); // permite que el reintento de Meta vuelva a intentarlo
+    throw e;
+  }
 }
 
 async function erpTest(tenant: string, actor: string) {
@@ -209,6 +219,7 @@ async function route(req: Request, origin: string | null) {
       const { tenant, user } = await requireAdmin(req, body.tenant_id);
       const pid = String(body.phone_number_id ?? '').trim(); const token = String(body.access_token ?? '').trim();
       if (!/^[0-9]{5,25}$/.test(pid) || !token) throw new HttpError(400, 'Falta el ID del número o el token');
+      if (!(await verifyAccess(token, pid, env('WHATSAPP_GRAPH_VERSION') || 'v23.0'))) throw new HttpError(400, 'Meta no confirmó ese ID con ese token. Revisa que el token tenga acceso al número.');
       const { error } = await sb.from('whatsapp_accounts').upsert({ tenant_id: tenant, phone_number_id: pid, token_enc: await encryptSecret(token, await encKey(), tenant), enabled: true });
       if (error) throw new HttpError(error.code === '23505' ? 409 : 500, error.code === '23505' ? 'Ese número ya está registrado en otra empresa' : 'No se pudo guardar');
       await audit(tenant, user, 'wa_saved', { phone_number_id: pid });

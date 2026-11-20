@@ -32,12 +32,19 @@ export function parseWebhook(p: any): Incoming[] {
   return out;
 }
 
-/** Mismo número, tolerando prefijos de país distintos (p. ej. México 52 / 521): mismos dígitos o mismos últimos 10. */
+/** México: +52 1 XXXXXXXXXX (antiguo móvil) equivale a +52 XXXXXXXXXX. Fuera de eso se compara el número completo. */
+const normPhone = (p: string) => { const d = p.replace(/\D/g, ''); return /^521\d{10}$/.test(d) ? '52' + d.slice(3) : d; };
 export function phonesMatch(a: string, b: string): boolean {
-  const x = a.replace(/\D/g, ''), y = b.replace(/\D/g, '');
-  if (!x || !y) return false;
-  if (x === y) return true;
-  return x.length >= 10 && y.length >= 10 && x.slice(-10) === y.slice(-10);
+  const x = normPhone(a), y = normPhone(b);
+  return !!x && x === y;
+}
+
+/** Comparación de cadenas en tiempo constante (p. ej. token de verificación del webhook). */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
 }
 
 export function splitMessage(text: string, max = 4000): string[] {
@@ -51,6 +58,16 @@ export function splitMessage(text: string, max = 4000): string[] {
 }
 
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+/** Confirma que el token realmente da acceso a ese phone_number_id (prueba de que la empresa es dueña de la cuenta). */
+export async function verifyAccess(token: string, phoneNumberId: string, graphVersion = 'v23.0', fetcher: typeof fetch = fetch): Promise<boolean> {
+  try {
+    const res = await fetcher(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=id`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return false;
+    const j: any = await res.json();
+    return String(j?.id) === phoneNumberId;
+  } catch { return false; }
+}
 
 export class WhatsAppClient {
   constructor(private token: string, private phoneNumberId: string, private graphVersion = 'v23.0', private fetcher: typeof fetch = fetch) {}

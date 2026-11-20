@@ -19,7 +19,7 @@ export default function Chat({ tenantId, isAdmin, goConfig }: { tenantId: string
 
   useEffect(() => {
     if (!isAdmin) return;
-    supabase.rpc('erp_connection_public', { p_tenant: tenantId }).then(({ data }) => setErpOk(!!data?.[0] && data[0].status === 'ok'));
+    supabase.rpc('erp_connection_public', { p_tenant: tenantId }).then(({ data, error }) => { if (!error) setErpOk(!!data?.[0] && data[0].status === 'ok'); });
   }, [tenantId, isAdmin]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
 

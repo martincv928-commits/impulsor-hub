@@ -25,7 +25,8 @@ export const WIDGET_JS = String.raw`/* Widget de chat para sitios web (modo Clie
   $('x').onclick = function () { $('b').style.display = 'none'; $('o').style.display = 'block'; };
   $('f').onsubmit = function (e) {
     e.preventDefault(); var t = $('i').value.trim(); if (!t || busy) return; $('i').value = ''; add(t, 'u'); busy = true; var w = add('…');
-    fetch(api, { method: 'POST', headers: { 'content-type': 'application/json', apikey: key, authorization: 'Bearer ' + key },
+    var h = { 'content-type': 'application/json' }; if (key) { h.apikey = key; h.authorization = 'Bearer ' + key; }
+    fetch(api, { method: 'POST', headers: h,
       body: JSON.stringify({ action: 'chat', channel_token: token, conversation_id: conv, message: t }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (r) { if (r.ok) { conv = r.j.conversation_id; w.textContent = r.j.reply; } else w.textContent = r.j.error || 'No pude responder.'; })

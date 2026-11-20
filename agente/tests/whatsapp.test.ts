@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, verifySignature } from '../supabase/functions/_shared/whatsapp.ts';
+import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, timingSafeEqual, verifyAccess, verifySignature } from '../supabase/functions/_shared/whatsapp.ts';
 import { WIDGET_JS } from '../supabase/functions/_shared/widget.ts';
 
 const sign = (body: string, secret: string) => 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
@@ -38,6 +38,15 @@ describe('whatsapp: números', () => {
     expect(phonesMatch('5215512345678', '5215512345679')).toBe(false);
     expect(phonesMatch('', '5215512345678')).toBe(false); expect(phonesMatch('12345678', '87654321')).toBe(false);
   });
+  it('REGRESIÓN: otro país con los mismos últimos 10 dígitos NO coincide', () => {
+    expect(phonesMatch('5215512345678', '15512345678')).toBe(false); // EE. UU. +1 551 234 5678
+    expect(phonesMatch('525512345678', '445512345678')).toBe(false);
+    expect(phonesMatch('5512345678', '525512345678')).toBe(false); // sin código de país no se adivina
+  });
+  it('timingSafeEqual', () => {
+    expect(timingSafeEqual('abc', 'abc')).toBe(true); expect(timingSafeEqual('abc', 'abd')).toBe(false);
+    expect(timingSafeEqual('abc', 'abcd')).toBe(false); expect(timingSafeEqual('', '')).toBe(true);
+  });
   it('splitMessage respeta el límite y no pierde texto', () => {
     const t = Array.from({ length: 900 }, (_, i) => 'palabra' + i).join(' ');
     const parts = splitMessage(t, 1000);
@@ -65,7 +74,21 @@ describe('whatsapp: cliente de envío (fetch simulado)', () => {
   });
 });
 
+describe('whatsapp: prueba de propiedad del número (verifyAccess)', () => {
+  const mk = (status: number, body: unknown) => (async () => Response.json(body, { status })) as unknown as typeof fetch;
+  it('acepta sólo si Graph confirma el mismo id con ese token', async () => {
+    expect(await verifyAccess('T', '123456', 'v1', mk(200, { id: '123456' }))).toBe(true);
+    expect(await verifyAccess('T', '123456', 'v1', mk(200, { id: '999999' }))).toBe(false);
+    expect(await verifyAccess('T', '123456', 'v1', mk(401, { error: {} }))).toBe(false);
+    expect(await verifyAccess('T', '123456', 'v1', (async () => { throw new Error('red'); }) as unknown as typeof fetch)).toBe(false);
+  });
+});
+
 describe('widget servido por la función', () => {
+  it('REGRESIÓN: no manda cabeceras de autorización vacías cuando no hay clave', () => {
+    expect(WIDGET_JS).toContain("if (key) { h.apikey = key; h.authorization = 'Bearer ' + key; }");
+    expect(WIDGET_JS).not.toMatch(/authorization: 'Bearer ' \+ key \}/);
+  });
   it('es JavaScript válido, deduce la API de su propia URL y no incluye claves', () => {
     expect(() => new Function(WIDGET_JS)).not.toThrow();
     expect(WIDGET_JS).toContain("s.src.replace(/\\/widget\\.js.*$/, '')");
