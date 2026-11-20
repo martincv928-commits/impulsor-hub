@@ -1,5 +1,5 @@
-# ATALAYA (carpeta agente/): pruebas -> build web -> APK Android (Capacitor) en Release fijo "agente-apk-latest".
-name: ATALAYA APK
+# ATALAIA (carpeta agente/): pruebas -> build web -> APK Android (Capacitor) en Release fijo "agente-apk-latest".
+name: ATALAIA APK
 
 on:
   push:
@@ -73,7 +73,7 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt2" dump badging atalaya.apk | grep -E "^package:|application-label:" | tee -a "$GITHUB_STEP_SUMMARY"
           "$BT/aapt2" dump badging atalaya.apk | grep -q "package: name='mx.impulsor.atalaya'" || { echo "::error::ID de paquete inesperado"; exit 1; }
-          "$BT/aapt2" dump badging atalaya.apk | grep -q "application-label:'Atalaya'" || { echo "::error::Nombre de app inesperado"; exit 1; }
+          "$BT/aapt2" dump badging atalaya.apk | grep -q "application-label:'AtalaIA'" || { echo "::error::Nombre de app inesperado"; exit 1; }
       - name: Publicar APK (Release fijo agente-apk-latest)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +81,6 @@ jobs:
         run: |
           gh release delete agente-apk-latest --cleanup-tag -y || true
           gh release create agente-apk-latest atalaya.apk --target "$GITHUB_SHA" --prerelease \
-            --title "ATALAYA APK (último build, llave de pruebas fija)" \
+            --title "ATALAIA APK (último build, llave de pruebas fija)" \
             --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: llave de pruebas fija (se instala sobre la anterior)"
           echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/agente-apk-latest/atalaya.apk" >> "$GITHUB_STEP_SUMMARY"

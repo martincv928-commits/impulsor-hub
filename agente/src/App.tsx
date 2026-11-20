@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { esError, supabase } from './supabase';
 import { BRAND } from './brand';
-import Logo from './Logo';
+import Logo, { Wordmark } from './Logo';
 import Chat from './Chat';
 import Config from './Config';
 
@@ -34,7 +34,7 @@ function Login() {
   }
   return (
     <main className="auth">
-      <div className="brandblock"><Logo size={84} /><h1>{BRAND.name}</h1><p>{BRAND.tagline}</p></div>
+      <div className="brandblock"><Logo size={84} /><h1><Wordmark /></h1><p>{BRAND.tagline}</p></div>
       <form className="card" onSubmit={go}>
         <h2>{signup ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
         <label>Correo<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
@@ -72,7 +72,7 @@ function Home() {
   return (
     <div className="shell">
       <header>
-        <div className="hbrand"><Logo size={32} /><div><strong>{t.name}</strong><small>{BRAND.name}</small></div></div>
+        <div className="hbrand"><Logo size={32} /><div><strong>{t.name}</strong><small><Wordmark /></small></div></div>
         <nav aria-label="Secciones">
           <button className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>Asistente</button>
           {role === 'admin' && <button className={tab === 'config' ? 'on' : ''} onClick={() => setTab('config')}>Configuración</button>}
@@ -96,7 +96,7 @@ function Onboarding({ onDone }: { onDone: () => void }) {
   }
   return (
     <main className="auth">
-      <div className="brandblock"><Logo size={72} /><h1>Bienvenido a {BRAND.name}</h1><p>Empecemos creando tu empresa.</p></div>
+      <div className="brandblock"><Logo size={72} /><h1>Bienvenido a <Wordmark /></h1><p>Empecemos creando tu empresa.</p></div>
       <form className="card" onSubmit={create}>
         <label>Nombre de la empresa<input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} /></label>
         <button disabled={busy}>{busy ? 'Creando…' : 'Crear empresa'}</button>

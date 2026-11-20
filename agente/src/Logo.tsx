@@ -1,7 +1,8 @@
-// Faro de Atalaya (misma geometría que brand/logo.svg), con tamaño y color de fondo opcionales.
+import { WORDMARK } from './brand';
+// Faro de AtalaIA (misma geometría que brand/logo.svg), con tamaño y color de fondo opcionales.
 export default function Logo({ size = 40, tile = true }: { size?: number; tile?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" role="img" aria-label="Atalaya">
+    <svg width={size} height={size} viewBox="0 0 512 512" role="img" aria-label="AtalaIA">
       {tile && <><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0F8A7F" /><stop offset="1" stopColor="#083F3B" /></linearGradient></defs>
         <rect width="512" height="512" rx="112" fill="url(#lg)" /></>}
       <g stroke="#FFD27A" strokeWidth="12" strokeLinecap="round" fill="none">
@@ -16,4 +17,9 @@ export default function Logo({ size = 40, tile = true }: { size?: number; tile?:
       <rect x="194" y="404" width="124" height="26" rx="13" fill="#F4F7F6" />
     </svg>
   );
+}
+
+/** Logotipo de texto: "Atala" + "IA" resaltado. */
+export function Wordmark() {
+  return <span className="wordmark">{WORDMARK.base}<span className="ia">{WORDMARK.accent}</span></span>;
 }

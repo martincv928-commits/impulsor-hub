@@ -1,5 +1,5 @@
-# ATALAYA: en cada PR que toque agente/ corre pruebas, tipos y build (sin publicar nada).
-name: ATALAYA CI
+# ATALAIA: en cada PR que toque agente/ corre pruebas, tipos y build (sin publicar nada).
+name: ATALAIA CI
 
 on:
   pull_request:

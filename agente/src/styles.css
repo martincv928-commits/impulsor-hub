@@ -37,3 +37,5 @@ nav { display:flex; gap:.35rem; } nav button { background:none; color:var(--fg);
 ul { padding-left:1.1rem; margin:.2rem 0; } li { margin:.25rem 0; }
 @media (prefers-reduced-motion: reduce) { .typing span { animation:none; } }
 form { display:flex; flex-direction:column; gap:.7rem; }
+.wordmark .ia { color:var(--acc); font-weight:800; }
+.hbrand small .wordmark .ia { color:#C98A00; } @media (prefers-color-scheme: dark) { .hbrand small .wordmark .ia { color:var(--acc); } }
