@@ -1,5 +1,5 @@
-# AGENTE: pruebas -> build web -> APK Android (Capacitor) en Release fijo "agente-apk-latest".
-name: AGENTE APK
+# ATALAYA (carpeta agente/): pruebas -> build web -> APK Android (Capacitor) en Release fijo "agente-apk-latest".
+name: ATALAYA APK
 
 on:
   push:
@@ -35,7 +35,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npx cap add android && npx cap sync android
+      - run: npx cap add android && cp -r resources/android/res/. android/app/src/main/res/ && npx cap sync android
       - name: Ajustes del manifiesto
         run: |
           M=android/app/src/main/AndroidManifest.xml
@@ -46,18 +46,41 @@ jobs:
           VC=$(( ${{ github.run_number }} * 10 + ${{ github.run_attempt }} ))
           echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
           sed -i -E "s/versionCode [0-9]+/versionCode $VC/; s/versionName \"[^\"]*\"/versionName \"0.1.${{ github.run_number }}\"/" android/app/build.gradle
-      - name: "Compilar APK (firma debug, sólo para pruebas)"
+      - name: Llave de pruebas fija (para que cada APK se instale sobre el anterior)
+        run: |
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android.signingConfigs.debug {
+              storeFile rootProject.file('../signing/debug.keystore')
+              storePassword 'android'
+              keyAlias 'androiddebugkey'
+              keyPassword 'android'
+          }
+          GRADLE
+      - name: "Compilar APK (firma de pruebas fija)"
         working-directory: agente/android
         run: |
           ./gradlew --no-daemon assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk ../agente.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../atalaya.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs ../atalaya.apk | grep -E "SHA-256|Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY"
+          EXP=$(keytool -exportcert -keystore ../signing/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
+          GOT=$("$BT/apksigner" verify --print-certs ../atalaya.apk | grep -m1 "SHA-256 digest" | sed 's/.*: //')
+          [ "$EXP" = "$GOT" ] || { echo "::error::El APK NO está firmado con la llave fija"; exit 1; }
+      - name: Verificar identidad del paquete
+        working-directory: agente
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump badging atalaya.apk | grep -E "^package:|application-label:" | tee -a "$GITHUB_STEP_SUMMARY"
+          "$BT/aapt2" dump badging atalaya.apk | grep -q "package: name='mx.impulsor.atalaya'" || { echo "::error::ID de paquete inesperado"; exit 1; }
+          "$BT/aapt2" dump badging atalaya.apk | grep -q "application-label:'Atalaya'" || { echo "::error::Nombre de app inesperado"; exit 1; }
       - name: Publicar APK (Release fijo agente-apk-latest)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           gh release delete agente-apk-latest --cleanup-tag -y || true
-          gh release create agente-apk-latest agente.apk --target "$GITHUB_SHA" --prerelease \
-            --title "AGENTE APK (último build, firma debug)" \
-            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: debug (sólo pruebas)"
-          echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/agente-apk-latest/agente.apk" >> "$GITHUB_STEP_SUMMARY"
+          gh release create agente-apk-latest atalaya.apk --target "$GITHUB_SHA" --prerelease \
+            --title "ATALAYA APK (último build, llave de pruebas fija)" \
+            --notes "Commit ${GITHUB_SHA::7} · versionCode $VERSION_CODE · Firma: llave de pruebas fija (se instala sobre la anterior)"
+          echo "### APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/agente-apk-latest/atalaya.apk" >> "$GITHUB_STEP_SUMMARY"

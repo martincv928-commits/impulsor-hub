@@ -1,6 +1,6 @@
-# CLAUDE.md — AGENTE (Impulsor) · nombre provisional
+# CLAUDE.md — ATALAYA (Impulsor) · carpeta `agente/`
 
-Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Especificación: `docs/SPEC.md` (leer de ahí; no reescribirla). No asumir disponibilidad comercial del nombre.
+Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Nombre elegido 2026-11-20: **Atalaya** ("Tu negocio, a la vista."); sin verificar disponibilidad comercial. Identidad en `src/brand.ts` y `brand/`. ID del paquete Android (permanente): `mx.impulsor.atalaya`. Especificación: `docs/SPEC.md` (leer de ahí; no reescribirla). Guía de operación: `README.md`.
 
 ## Reglas permanentes
 - Eficiencia: inspección dirigida, cambios agrupados, un build, smoke test, detenerse al cumplir aceptación. Respuestas finales BREVES; el usuario trabaja desde Android.
@@ -10,3 +10,7 @@ Producto INDEPENDIENTE (no es Hub, Handoff, FiscalBox ni Ventor). Especificació
 - Nunca simular conexiones (ERP, WhatsApp, voz). Sin credenciales: preparar lo posible y señalar el paso exacto.
 - Sin secretos en el repo. Credenciales de ERP cifradas por tenant en servidor; nunca en frontend.
 - Stack: Vite + React + TS (PWA/Android), Supabase (Postgres/RLS/Edge Functions), vitest.
+
+## Entrega
+- APK: workflow `ATALAYA APK` (push a master con cambios en `agente/`) → `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`. PR → `ATALAYA CI`.
+- Backend Supabase `agente` (ref `lsbayfiblnylafyuxbeh`): migraciones y función `api` se aplican/despliegan antes de fusionar cambios que dependan de ellas.

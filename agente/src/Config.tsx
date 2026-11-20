@@ -4,9 +4,22 @@ import { API_URL, api, supabase } from './supabase';
 type S = { company_name: string; company_profile: string; rules: string; forbidden_topics: string[]; tone: string; website_url: string; human_contact: string };
 const PUBLIC_TOOLS = [['buscar_conocimiento', 'Responder con la información de la empresa y del sitio'], ['catalogo_productos', 'Mostrar el catálogo de productos publicados en Odoo (requiere módulo Sitio web)']] as const;
 
+const TABS = [['empresa', 'Empresa'], ['erp', 'ERP'], ['publico', 'Público'], ['conocimiento', 'Conocimiento'], ['sitio', 'Sitio web'], ['whatsapp', 'WhatsApp'], ['equipo', 'Equipo']] as const;
+type TabId = (typeof TABS)[number][0];
+
 export default function Config({ tenantId }: { tenantId: string }) {
+  const [tab, setTab] = useState<TabId>('empresa');
   return (<div className="config">
-    <Empresa t={tenantId} /><Erp t={tenantId} /><Publico t={tenantId} /><Conocimiento t={tenantId} /><Sitio t={tenantId} /><WhatsApp t={tenantId} /><Equipo t={tenantId} />
+    <div className="subnav" role="tablist" aria-label="Configuración">
+      {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
+    </div>
+    {tab === 'empresa' && <Empresa t={tenantId} />}
+    {tab === 'erp' && <Erp t={tenantId} />}
+    {tab === 'publico' && <Publico t={tenantId} />}
+    {tab === 'conocimiento' && <Conocimiento t={tenantId} />}
+    {tab === 'sitio' && <Sitio t={tenantId} />}
+    {tab === 'whatsapp' && <WhatsApp t={tenantId} />}
+    {tab === 'equipo' && <Equipo t={tenantId} />}
   </div>);
 }
 const useMsg = () => { const [m, set] = useState(''); return [m, (x: string) => { set(x); setTimeout(() => set(''), 6000); }] as const; };
@@ -137,6 +150,6 @@ function WhatsApp({ t }: { t: string }) {
     <h3>Números autorizados</h3>
     <ul>{nums.map((x) => <li key={x.phone}>+{x.phone} — {x.email} <button className="link" onClick={async () => { await supabase.rpc('remove_whatsapp_number', { p_tenant: t, p_phone: x.phone }); load(); }}>quitar</button></li>)}</ul>
     <input type="email" value={n.email} onChange={(e) => setN({ ...n, email: e.target.value })} placeholder="correo del gerente/admin" />
-    <input value={n.phone} onChange={(e) => setN({ ...n, phone: e.target.value })} placeholder="Número con código de país, ej. 5215512345678" />
+    <input value={n.phone} onChange={(e) => setN({ ...n, phone: e.target.value })} placeholder="Con código de país (5215512345678)" />
     <button onClick={add} disabled={!n.email || !n.phone}>Autorizar número</button>{msg && <span className="note">{msg}</span>}</section>);
 }
