@@ -29,7 +29,9 @@ export function chunkText(text: string, size = 800, overlap = 100): string[] {
 export async function fetchPageText(raw: string, fetcher: typeof fetch = fetch): Promise<string> {
   let url = assertSafeUrl(raw).toString();
   for (let hop = 0; hop < 4; hop++) {
-    const res = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'user-agent': 'AgenteBot/0.1', accept: 'text/html,text/plain' } });
+    let res: Response;
+    try { res = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'user-agent': 'AtalayaBot/0.1', accept: 'text/html,text/plain' } }); }
+    catch { throw new Error('No se pudo descargar la página. Revisa la dirección y que sea pública.'); }
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location'); if (!loc) throw new Error('Redirección inválida');
       url = assertSafeUrl(new URL(loc, url).toString()).toString(); continue;

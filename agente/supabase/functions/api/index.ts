@@ -23,6 +23,8 @@ const cors = (origin: string | null) => ({
   'access-control-allow-methods': 'POST, OPTIONS',
 });
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
+/** URL escrita por el usuario: si es insegura/inválida se responde 400 con el motivo (no 500). */
+const safeUrl = (raw: unknown): URL => { try { return assertSafeUrl(String(raw ?? '').trim()); } catch (e) { throw new HttpError(400, e instanceof Error ? e.message : 'URL inválida'); } };
 
 const encKey = async () => env('ERP_ENC_KEY') || deriveKeyB64(env('SUPABASE_SERVICE_ROLE_KEY'));
 const LIMITS = { gerenteMsg: 4000, clienteMsg: 1000, clienteConv: 30, clienteHour: 300 };
@@ -207,7 +209,7 @@ async function route(req: Request, origin: string | null) {
     case 'chat': return chat(req, body, origin);
     case 'erp_save': {
       const { tenant, user } = await requireAdmin(req, body.tenant_id);
-      const url = assertSafeUrl(String(body.url ?? '')).origin;
+      const url = safeUrl(body.url).origin;
       for (const k of ['db', 'username', 'api_key']) if (typeof body[k] !== 'string' || !body[k].trim()) throw new HttpError(400, `Falta ${k}`);
       const secret_enc = await encryptSecret(body.api_key.trim(), await encKey(), tenant);
       const { error } = await sb.from('erp_connections').upsert({ tenant_id: tenant, type: 'odoo', url, db: body.db.trim(), username: body.username.trim(), secret_enc, status: 'sin_probar', last_error: null });
@@ -230,7 +232,7 @@ async function route(req: Request, origin: string | null) {
       const { tenant, user } = await requireAdmin(req, body.tenant_id);
       const kind = body.kind === 'url' ? 'url' : 'text';
       let content: string, title = String(body.title ?? '').slice(0, 200), url: string | null = null;
-      if (kind === 'url') { url = assertSafeUrl(String(body.url ?? '')).toString(); title ||= url; }
+      if (kind === 'url') { url = safeUrl(body.url).toString(); title ||= url; }
       else { content = String(body.text ?? ''); if (!content.trim()) throw new HttpError(400, 'Texto vacío'); title ||= 'Texto'; }
       const { data: src, error } = await sb.from('knowledge_sources').insert({ tenant_id: tenant, kind, title, url }).select('id').single();
       if (error) throw new HttpError(500, 'No se pudo guardar');

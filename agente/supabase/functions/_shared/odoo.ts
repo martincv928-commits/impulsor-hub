@@ -22,13 +22,18 @@ export class OdooConnector implements ErpConnector {
   }
 
   private async rpc(service: 'common' | 'object', method: string, args: unknown[]): Promise<any> {
-    const res = await this.fetcher(this.base + '/jsonrpc', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: 1 }),
-      redirect: 'error',
-    });
+    let res: Response;
+    try {
+      res = await this.fetcher(this.base + '/jsonrpc', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: 1 }),
+        redirect: 'error', signal: AbortSignal.timeout(30000),
+      });
+    } catch {
+      throw new OdooError('No se pudo conectar con Odoo. Revisa que la URL sea correcta y accesible desde internet.');
+    }
     if (!res.ok) throw new OdooError(`Odoo respondió HTTP ${res.status}`);
-    const j: any = await res.json();
+    const j: any = await res.json().catch(() => { throw new OdooError('Odoo respondió algo inesperado. ¿La URL es la de tu Odoo?'); });
     if (j.error) throw new OdooError(String(j.error?.data?.message ?? j.error?.message ?? 'Error de Odoo').slice(0, 300));
     return j.result;
   }
