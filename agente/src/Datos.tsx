@@ -8,6 +8,9 @@ const TYPES: [SrcType, string, string][] = [
   ['generic_rest', 'API de mi sistema', 'Cualquier sistema con API REST. Sólo lectura.'],
   ['files', 'Archivos Excel / CSV', 'Cargas reportes exportados de tu sistema.'],
 ];
+const LABEL: Record<string, string> = { odoo: 'Odoo', generic_rest: 'API de mi sistema', files: 'Archivos' };
+/** Pide confirmación si guardar va a reemplazar una fuente distinta ya conectada (se pierde su configuración y llave). */
+const okReplace = (current: string | undefined, next: SrcType) => !current || current === next || confirm(`Esto reemplaza tu fuente actual (${LABEL[current] ?? current}) por ${LABEL[next]}. Se borra su configuración y su llave. ¿Continuar?`);
 const useMsg = () => { const [m, set] = useState(''); return [m, (x: string) => { set(x); setTimeout(() => set(''), 9000); }] as const; };
 
 export default function Datos({ t }: { t: string }) {
@@ -28,18 +31,18 @@ export default function Datos({ t }: { t: string }) {
       </div>
       {src && src.status === 'error' && src.last_error && src.type === type && <p className="note" role="alert">{src.last_error}</p>}
     </section>
-    {type === 'odoo' && <OdooForm t={t} src={same} onSaved={load} />}
-    {type === 'generic_rest' && <GenericForm t={t} src={same} onSaved={load} />}
-    {type === 'files' && <FilesPanel t={t} active={src?.type === 'files'} onSaved={load} />}
+    {type === 'odoo' && <OdooForm t={t} src={same} current={src?.type} onSaved={load} />}
+    {type === 'generic_rest' && <GenericForm t={t} src={same} current={src?.type} onSaved={load} />}
+    {type === 'files' && <FilesPanel t={t} active={src?.type === 'files'} current={src?.type} onSaved={load} />}
   </>);
 }
 
 // ───────── Odoo ─────────
-function OdooForm({ t, src, onSaved }: { t: string; src: any; onSaved: () => void }) {
+function OdooForm({ t, src, current, onSaved }: { t: string; src: any; current?: string; onSaved: () => void }) {
   const [f, setF] = useState({ url: src?.config?.url ?? '', db: src?.config?.db ?? '', username: src?.config?.username ?? '', secret: '' });
   const [msg, say] = useMsg(); const [busy, setBusy] = useState(false);
   async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); say('Guardando y probando…');
+    e.preventDefault(); if (!okReplace(current, 'odoo')) return; setBusy(true); say('Guardando y probando…');
     try { const r = await api<{ ok: boolean; detail: string }>({ action: 'source_save', tenant_id: t, type: 'odoo', config: { url: f.url, db: f.db, username: f.username }, secret: f.secret }); say((r.ok ? '✔ ' : '✖ ') + r.detail); setF({ ...f, secret: '' }); onSaved(); }
     catch (err) { say((err as Error).message); } setBusy(false);
   }
@@ -94,13 +97,13 @@ function toConfig(s: GS) {
   return cfg;
 }
 
-function GenericForm({ t, src, onSaved }: { t: string; src: any; onSaved: () => void }) {
+function GenericForm({ t, src, current, onSaved }: { t: string; src: any; current?: string; onSaved: () => void }) {
   const [s, setS] = useState<GS>(() => fromConfig(src?.config)); const [msg, say] = useMsg(); const [busy, setBusy] = useState(false);
   const [prev, setPrev] = useState<Record<string, { ok: boolean; detail: string; rows?: Record<string, string>[] }>>({});
   const set = (p: Partial<GS>) => setS({ ...s, ...p });
   const setQ = (ds: DatasetKey, p: Partial<Q>) => setS({ ...s, queries: { ...s.queries, [ds]: { ...s.queries[ds], ...p } } });
   async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); say('Guardando y probando…');
+    e.preventDefault(); if (!okReplace(current, 'generic_rest')) return; setBusy(true); say('Guardando y probando…');
     try { const r = await api<{ ok: boolean; detail: string }>({ action: 'source_save', tenant_id: t, type: 'generic_rest', config: toConfig(s), secret: s.secret }); say((r.ok ? '✔ ' : '✖ ') + r.detail); set({ secret: '' }); onSaved(); }
     catch (err) { say((err as Error).message); } setBusy(false);
   }
@@ -156,11 +159,11 @@ function GenericForm({ t, src, onSaved }: { t: string; src: any; onSaved: () => 
 interface Flow { ds: DatasetKey; filename: string; base64: string; headers: string[]; sample: Record<string, string>[]; row_count: number; map: Record<string, { col: string; const: string }>; decimal: string; date_format: string; errors?: { row: number; message: string }[]; detail?: string; busy?: boolean }
 const fileToBase64 = (file: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] ?? ''); r.onerror = () => rej(new Error('No se pudo leer el archivo')); r.readAsDataURL(file); });
 
-function FilesPanel({ t, active, onSaved }: { t: string; active: boolean; onSaved: () => void }) {
+function FilesPanel({ t, active, current, onSaved }: { t: string; active: boolean; current?: string; onSaved: () => void }) {
   const [vers, setVers] = useState<any[]>([]); const [flow, setFlow] = useState<Flow | null>(null); const [msg, say] = useMsg();
   const loadV = () => supabase.from('dataset_versions').select('dataset, filename, row_count, uploaded_at').eq('tenant_id', t).eq('active', true).then(({ data }) => setVers(data ?? []));
   useEffect(() => { loadV(); }, [t, active]);
-  async function enable() { try { await api({ action: 'source_save', tenant_id: t, type: 'files', config: {} }); onSaved(); } catch (e) { say((e as Error).message); } }
+  async function enable() { if (!okReplace(current, 'files')) return; try { await api({ action: 'source_save', tenant_id: t, type: 'files', config: {} }); onSaved(); } catch (e) { say((e as Error).message); } }
   async function pick(ds: DatasetKey, file: File | undefined) {
     if (!file) return;
     if (file.size > 5_000_000) return say('El archivo es demasiado grande (máximo 5 MB).');

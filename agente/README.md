@@ -75,7 +75,10 @@ El código y las pruebas existen, pero la pestaña está oculta (`VITE_FEATURE_W
 4. Reconstruir la app con `VITE_FEATURE_WHATSAPP=1` y probar con un número real.
 
 ## Límites conocidos
-- El conector Odoo sólo se ha probado con datos simulados; falta una instancia real.
+- El conector Odoo sólo se ha probado con datos simulados; falta una instancia real. La API genérica se probó en vivo contra una API pública (clientes) y los archivos con CSV/XLSX reales; importes y fechas de la API genérica se validan con pruebas unitarias.
+- Las direcciones que la empresa configura (API genérica, páginas del conocimiento) se validan por nombre (https, sin localhost ni IP privada); no se resuelve el DNS, así que un dominio público que apunte a una IP interna no se detecta (DNS rebinding).
+- Archivos: sólo `.csv` y `.xlsx` (no `.xls`), máx. 5 MB y 20,000 filas por conjunto. Los datos de archivo no son en vivo.
+- La pantalla de la API genérica no edita parámetros fijos ni encabezados extra (el servidor sí los admite); al guardar desde la pantalla se omiten.
 - WhatsApp no se ha probado con Meta real. Audios no soportados.
 - El dominio autorizado del widget se valida por `Origin` (un cliente que no sea navegador puede falsificarlo); por eso el modo Cliente no toca datos privados y tiene límites de uso.
 - El nombre **AtalaIA** no tiene verificación de disponibilidad comercial.
