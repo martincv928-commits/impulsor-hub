@@ -19,6 +19,7 @@ export async function makeDb(): Promise<Db> {
   await db.exec(readFileSync('supabase/migrations/0002_whatsapp.sql', 'utf8'));
   await db.exec(readFileSync('supabase/migrations/0003_search_knowledge_or.sql', 'utf8'));
   await db.exec(readFileSync('supabase/migrations/0004_whatsapp_channels.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/0005_usage.sql', 'utf8'));
   return db;
 }
 export async function newUser(db: Db, email: string): Promise<string> {

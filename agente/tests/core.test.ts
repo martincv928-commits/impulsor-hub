@@ -4,7 +4,8 @@ import { OdooConnector, ODOO_READ_METHODS } from '../supabase/functions/_shared/
 import { agingBucket, daysBetween, isValidDate, sumByCurrency } from '../supabase/functions/_shared/erp.ts';
 import { TOOLS, toolsForMode, type ToolCtx } from '../supabase/functions/_shared/tools.ts';
 import { runAgent } from '../supabase/functions/_shared/agent.ts';
-import type { LlmClient, LlmResponse } from '../supabase/functions/_shared/llm.ts';
+import { DEFAULT_MODEL, type LlmClient, type LlmResponse } from '../supabase/functions/_shared/llm.ts';
+import { isOverLimit, limitMessage } from '../supabase/functions/_shared/usage.ts';
 import { buildSystemPrompt, findForbidden } from '../supabase/functions/_shared/prompt.ts';
 import { chunkText, fetchPageText, htmlToText } from '../supabase/functions/_shared/knowledge.ts';
 import { assertSafeUrl } from '../supabase/functions/_shared/net.ts';
@@ -227,5 +228,30 @@ describe('reportes', () => {
     const car: any = { asOf: '2026-02-01', totals: [], aging: [], documentos: [], truncated: false };
     for (const k of ['cuentas_por_cobrar', 'cuentas_por_pagar'] as const) expect((await buildReport(k, 'pdf', car, { company: 'A', periodo: 'x' })).mime).toBe('application/pdf');
     expect((await buildReport('inventario', 'xlsx', { filas: [], truncated: false }, { company: 'A', periodo: 'x' })).filename).toMatch(/\.xlsx$/);
+  });
+});
+
+describe('modelo y consumo de tokens', () => {
+  it('el modelo por defecto es Haiku 5.5', () => expect(DEFAULT_MODEL).toBe('claude-haiku-5-5'));
+  it('runAgent suma los tokens de todas las llamadas al modelo', async () => {
+    const llm = scripted([
+      { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'buscar_conocimiento', input: { consulta: 'x' } }], usage: { input_tokens: 100, output_tokens: 20 } },
+      { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 150, output_tokens: 30 } },
+    ]);
+    const r = await runAgent({ llm, system: 's', history: [], userText: 'hola', tools: toolsForMode('cliente', { buscar_conocimiento: true }), ctx: ctxFor(null) });
+    expect(r.usage).toEqual({ input_tokens: 250, output_tokens: 50, calls: 2 });
+  });
+  it('sin datos de uso del proveedor cuenta llamadas pero 0 tokens (no revienta)', async () => {
+    const r = await runAgent({ llm: scripted([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }]), system: 's', history: [], userText: 'hola', tools: [], ctx: ctxFor(null) });
+    expect(r.usage).toEqual({ input_tokens: 0, output_tokens: 0, calls: 1 });
+  });
+  it('isOverLimit: al llegar al tope bloquea; con datos inválidos no bloquea por error', () => {
+    expect(isOverLimit(99, 100)).toBe(false); expect(isOverLimit(100, 100)).toBe(true); expect(isOverLimit(101, 100)).toBe(true);
+    expect(isOverLimit(NaN, 100)).toBe(false); expect(isOverLimit(5, 0)).toBe(false); expect(isOverLimit(5, NaN)).toBe(false);
+  });
+  it('limitMessage: el modo cliente nunca menciona planes ni consumo; deriva a contacto humano', () => {
+    expect(limitMessage('cliente', 'ventas@x.mx')).toContain('ventas@x.mx');
+    expect(limitMessage('cliente', '')).not.toMatch(/plan|límite|token/i);
+    expect(limitMessage('gerente', '')).toMatch(/límite mensual/);
   });
 });

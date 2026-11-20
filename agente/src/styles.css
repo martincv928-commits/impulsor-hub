@@ -39,3 +39,6 @@ ul { padding-left:1.1rem; margin:.2rem 0; } li { margin:.25rem 0; }
 form { display:flex; flex-direction:column; gap:.7rem; }
 .wordmark .ia { color:var(--acc); font-weight:800; }
 .hbrand small .wordmark .ia { color:#C98A00; } @media (prefers-color-scheme: dark) { .hbrand small .wordmark .ia { color:var(--acc); } }
+.usage { display:flex; flex-direction:column; gap:.3rem; margin:.3rem 0 .6rem; }
+.bar { height:12px; background:var(--bg); border:1px solid var(--bd); border-radius:999px; overflow:hidden; }
+.bar span { display:block; height:100%; background:var(--pri2); border-radius:999px; } .bar span.warn { background:#E0A100; } .bar span.full { background:var(--err); }

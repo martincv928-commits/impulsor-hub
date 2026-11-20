@@ -142,3 +142,49 @@ describe('whatsapp (BD)', () => {
     await asRole(db, 'service_role', "insert into conversations(tenant_id,mode,channel,user_id) values ($1,'gerente','whatsapp',$2)", [tA, u.gerA]);
   });
 });
+
+describe('uso y topes por empresa (BD)', () => {
+  const ev = (t: string, mode: string, i: number, o: number, when = 'now()') =>
+    asRole(db, 'service_role', `insert into usage_events(tenant_id,mode,channel,model,input_tokens,output_tokens,created_at) values ($1,$2,'app','claude-haiku-5-5',$3,$4,${when})`, [t, mode, i, o]);
+  it('usage_check: suma el mes en curso por modo y usa los topes por defecto', async () => {
+    await ev(tA, 'gerente', 1000, 200); await ev(tA, 'gerente', 300, 100); await ev(tA, 'cliente', 50, 50);
+    const g = (await asRole(db, 'service_role', "select * from usage_check($1,'gerente')", [tA]))[0];
+    expect(Number(g.used)).toBe(1600); expect(Number(g.token_limit)).toBe(3000000);
+    const c = (await asRole(db, 'service_role', "select * from usage_check($1,'cliente')", [tA]))[0];
+    expect(Number(c.used)).toBe(100); expect(Number(c.token_limit)).toBe(1000000);
+  });
+  it('REGRESIÓN: el consumo de meses anteriores y de otras empresas no cuenta', async () => {
+    await ev(tA, 'gerente', 999999, 0, "now() - interval '40 days'");
+    await ev(tB, 'gerente', 777, 0);
+    expect(Number((await asRole(db, 'service_role', "select used from usage_check($1,'gerente')", [tA]))[0].used)).toBe(1600);
+    expect(Number((await asRole(db, 'service_role', "select used from usage_check($1,'gerente')", [tB]))[0].used)).toBe(777);
+  });
+  it('el tope por empresa se puede ajustar (sólo service_role) y no afecta a las demás', async () => {
+    await asRole(db, 'service_role', "insert into tenant_limits(tenant_id,gerente_monthly_tokens) values ($1,1500)", [tA]);
+    expect(Number((await asRole(db, 'service_role', "select token_limit from usage_check($1,'gerente')", [tA]))[0].token_limit)).toBe(1500);
+    expect(Number((await asRole(db, 'service_role', "select token_limit from usage_check($1,'cliente')", [tA]))[0].token_limit)).toBe(1000000);
+    expect(Number((await asRole(db, 'service_role', "select token_limit from usage_check($1,'gerente')", [tB]))[0].token_limit)).toBe(3000000);
+    await expect(asRole(db, 'service_role', "insert into tenant_limits(tenant_id,gerente_monthly_tokens) values ($1,0)", [tB])).rejects.toThrow();
+  });
+  it('ningún cliente puede leer ni escribir usage_events ni tenant_limits (ni subirse el tope)', async () => {
+    for (const q of ['select * from usage_events', 'select * from tenant_limits', "insert into tenant_limits(tenant_id,gerente_monthly_tokens) values ('" + tA + "', 999999999)", "update tenant_limits set gerente_monthly_tokens = 999999999"])
+      await expect(as(db, u.admA, q)).rejects.toThrow();
+    await expect(asRole(db, 'anon', 'select * from usage_events')).rejects.toThrow();
+  });
+  it('usage_check sólo lo ejecuta service_role', async () => {
+    await expect(as(db, u.admA, "select * from usage_check($1,'gerente')", [tA])).rejects.toThrow();
+    await expect(asRole(db, 'anon', "select * from usage_check($1,'gerente')", [tA])).rejects.toThrow();
+  });
+  it('resumen y detalle diario: sólo el admin de esa empresa los ve', async () => {
+    const s = await as(db, u.admA, 'select * from tenant_usage_summary($1)', [tA]);
+    expect(s.map((r) => r.mode).sort()).toEqual(['cliente', 'gerente']);
+    expect(Number(s.find((r) => r.mode === 'gerente').used)).toBe(1600); expect(Number(s.find((r) => r.mode === 'gerente').token_limit)).toBe(1500);
+    expect(Number(s.find((r) => r.mode === 'gerente').requests)).toBe(2);
+    expect(await as(db, u.gerA, 'select * from tenant_usage_summary($1)', [tA])).toHaveLength(0);
+    expect(await as(db, u.lecA, 'select * from tenant_usage_summary($1)', [tA])).toHaveLength(0);
+    expect(await as(db, u.admB, 'select * from tenant_usage_summary($1)', [tA])).toHaveLength(0);
+    const d = await as(db, u.admA, 'select * from tenant_usage_daily($1, 14)', [tA]);
+    expect(d.length).toBeGreaterThan(0); expect(d.every((r) => Number(r.tokens) > 0)).toBe(true);
+    expect(await as(db, u.admB, 'select * from tenant_usage_daily($1, 14)', [tA])).toHaveLength(0);
+  });
+});
