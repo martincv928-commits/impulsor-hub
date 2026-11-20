@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runAgent } from '../_shared/agent.ts';
 import { decryptSecret, deriveKeyB64, encryptSecret } from '../_shared/crypto.ts';
 import { chunkText, fetchPageText } from '../_shared/knowledge.ts';
-import { AnthropicClient, type LlmMessage } from '../_shared/llm.ts';
+import { AnthropicClient, DEFAULT_MODEL, type LlmMessage } from '../_shared/llm.ts';
 import { assertSafeUrl } from '../_shared/net.ts';
 import { OdooConnector } from '../_shared/odoo.ts';
 import { buildSystemPrompt, findForbidden, REFUSAL, type Settings } from '../_shared/prompt.ts';
@@ -12,6 +12,7 @@ import { buildReport } from '../_shared/reports.ts';
 import { WIDGET_JS } from '../_shared/widget.ts';
 import { WhatsAppClient, parseWebhook, phonesMatch, splitMessage, timingSafeEqual, verifyAccess, verifySignature } from '../_shared/whatsapp.ts';
 import { toolsForMode, type Mode, type ToolCtx } from '../_shared/tools.ts';
+import { isOverLimit, limitMessage } from '../_shared/usage.ts';
 import type { Attachment } from '../_shared/reports.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -92,8 +93,17 @@ async function converse(a: Turn) {
   const today = new Date().toISOString().slice(0, 10);
   let reply: string; const attachments: Attachment[] = []; let traces: any[] = [];
   const forbidden = mode === 'cliente' ? findForbidden(text, settings.forbidden_topics) : null;
+  let over = false; let usageRec: { input_tokens: number; output_tokens: number; calls: number } | null = null;
+  const model = env('ANTHROPIC_MODEL') || DEFAULT_MODEL;
+  if (!forbidden) {
+    const { data: uc } = await sb.rpc('usage_check', { p_tenant: tenant, p_mode: mode });
+    const q: any = Array.isArray(uc) ? uc[0] : uc;
+    over = !!q && isOverLimit(Number(q.used), Number(q.token_limit));
+  }
   if (forbidden) {
     reply = REFUSAL(settings.human_contact);
+  } else if (over) {
+    reply = limitMessage(mode, settings.human_contact); // tope mensual alcanzado: no se llama al modelo
   } else {
     const ctx: ToolCtx = {
       erp: mode === 'gerente' || flags['catalogo_productos'] ? await connectorFor(tenant) : null,
@@ -102,16 +112,17 @@ async function converse(a: Turn) {
     };
     try {
       const r = await runAgent({
-        llm: new AnthropicClient(env('ANTHROPIC_API_KEY'), env('ANTHROPIC_MODEL') || 'claude-sonnet-5-5'),
+        llm: new AnthropicClient(env('ANTHROPIC_API_KEY'), model),
         system: buildSystemPrompt(mode, settings, today), history, userText: text, tools: toolsForMode(mode, flags), ctx,
       });
-      reply = r.text || 'No tengo una respuesta para eso.'; traces = r.traces;
+      reply = r.text || 'No tengo una respuesta para eso.'; traces = r.traces; usageRec = r.usage;
     } catch (e) {
       console.error('agent error', e instanceof Error ? e.message : e);
       reply = 'En este momento no puedo responder. Intenta de nuevo en unos minutos.';
     }
     if (mode === 'cliente' && findForbidden(reply, settings.forbidden_topics)) reply = REFUSAL(settings.human_contact);
   }
+  if (usageRec && usageRec.calls > 0) await sb.from('usage_events').insert({ tenant_id: tenant, conversation_id: convId, mode, channel, model, input_tokens: usageRec.input_tokens, output_tokens: usageRec.output_tokens });
   await sb.from('messages').insert({ conversation_id: convId, tenant_id: tenant, role: 'assistant', content: reply });
   if (traces.length) await sb.from('tool_calls').insert(traces.map((t) => ({ tenant_id: tenant, conversation_id: convId, tool: t.tool, params: t.params, ok: t.ok, summary: t.summary })));
   return { conversation_id: convId as string, reply, attachments: mode === 'gerente' ? attachments : [] };

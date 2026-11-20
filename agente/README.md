@@ -19,7 +19,7 @@ Especificación: [`docs/SPEC.md`](docs/SPEC.md) · Reglas de trabajo: [`CLAUDE.m
 ## Estructura
 ```
 src/                       App React (login, chat, configuración)
-supabase/migrations/       Esquema (0001 base, 0002/0004 WhatsApp, 0003 búsqueda de conocimiento)
+supabase/migrations/       Esquema (0001 base, 0002/0004 WhatsApp, 0003 búsqueda de conocimiento, 0005 uso y topes)
 supabase/functions/api/    Edge Function única (chat, ERP, conocimiento, WhatsApp, widget.js)
 supabase/functions/_shared/ Núcleo testeable (agente, Odoo, reportes, WhatsApp…)
 brand/  scripts/  resources/  Logo (SVG), generador de íconos, íconos Android
@@ -30,7 +30,7 @@ signing/                   Llave de PRUEBAS pública (APK instalable sobre el an
 ## Comandos
 ```bash
 npm ci
-npm test            # 57+ pruebas: BD/RLS, conector, modos, reportes, WhatsApp
+npm test            # 75+ pruebas: BD/RLS, conector, modos, reportes, WhatsApp
 npm run build       # tipos + build web
 npm run icons       # regenera íconos PNG desde brand/*.svg (requiere playwright)
 ```
@@ -38,7 +38,7 @@ npm run icons       # regenera íconos PNG desde brand/*.svg (requiere playwrigh
 ## Backend (Supabase `agente`, ref `lsbayfiblnylafyuxbeh`)
 1. Migraciones en orden (`supabase/migrations/`).
 2. Desplegar la función `api` (`supabase/functions/api` + `_shared` + `deno.json`), con `verify_jwt` desactivado: autentica por dentro.
-3. Secretos de la función: `ANTHROPIC_API_KEY` (obligatorio). Opcionales: `ANTHROPIC_MODEL`, `ERP_ENC_KEY` (32 bytes base64; si falta se deriva de la service key), y para WhatsApp `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_GRAPH_VERSION`.
+3. Secretos de la función: `ANTHROPIC_API_KEY` (obligatorio). Opcionales: `ANTHROPIC_MODEL` (por defecto `claude-haiku-5-5`), `ERP_ENC_KEY` (32 bytes base64; si falta se deriva de la service key), y para WhatsApp `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_GRAPH_VERSION`.
 4. En el frontend sólo van la URL y la *publishable key* (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). Nunca `service_role`.
 
 ## Entrega (APK)
@@ -46,6 +46,14 @@ Al fusionar a `master` con cambios en `agente/`, el workflow **ATALAIA APK** cor
 `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`
 (ID técnico `mx.impulsor.atalaya` y archivo `atalaya.apk` se conservan por continuidad; la app se llama AtalaIA; firma de pruebas fija: cada APK se instala sobre el anterior). Los PR corren **ATALAIA CI** (pruebas + build).
 Para Google Play hay que crear una llave de subida aparte (fuera del repo).
+
+## Modelo de IA y topes de uso por empresa
+- Modelo por defecto: `claude-haiku-5-5` (`DEFAULT_MODEL` en `_shared/llm.ts`); se cambia sin código con el secreto `ANTHROPIC_MODEL`.
+- Cada llamada al modelo se registra en `usage_events` (tokens de entrada/salida, modo, canal, modelo). Se mide en **tokens, no en dinero**: el precio lo define el proveedor.
+- Topes mensuales (UTC) **por empresa y por modo**: por defecto 3 000 000 tokens para la app gerencial y 1 000 000 para el chat del sitio (así un abuso del sitio no deja sin servicio al gerente). Al llegar al tope no se llama al modelo y se avisa.
+- Sólo la plataforma fija topes (tabla `tenant_limits`, accesible con `service_role`); las empresas ven su consumo en Configuración → Uso. Ejemplo para ampliar el tope de una empresa:
+  `insert into tenant_limits(tenant_id, gerente_monthly_tokens) values ('<id>', 10000000) on conflict (tenant_id) do update set gerente_monthly_tokens = excluded.gerente_monthly_tokens;`
+- Migración: `0005_usage.sql`. Los valores por defecto viven en la función SQL `usage_check` (única fuente).
 
 ## Chat en un sitio web
 En la app: Configuración → Sitio web → autorizar dominio → copiar el `<script>` (apunta a `…/functions/v1/api/widget.js`).

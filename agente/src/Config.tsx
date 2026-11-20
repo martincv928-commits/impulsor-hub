@@ -5,7 +5,7 @@ import { FEATURES } from './brand';
 type S = { company_name: string; company_profile: string; rules: string; forbidden_topics: string[]; tone: string; website_url: string; human_contact: string };
 const PUBLIC_TOOLS = [['buscar_conocimiento', 'Responder con la información de la empresa y del sitio'], ['catalogo_productos', 'Mostrar el catálogo de productos publicados en Odoo (requiere módulo Sitio web)']] as const;
 
-const TABS = [['empresa', 'Empresa'], ['erp', 'ERP'], ['publico', 'Público'], ['conocimiento', 'Conocimiento'], ['sitio', 'Sitio web'], ['whatsapp', 'WhatsApp'], ['equipo', 'Equipo']] as const;
+const TABS = [['empresa', 'Empresa'], ['erp', 'ERP'], ['publico', 'Público'], ['conocimiento', 'Conocimiento'], ['sitio', 'Sitio web'], ['whatsapp', 'WhatsApp'], ['uso', 'Uso'], ['equipo', 'Equipo']] as const;
 type TabId = (typeof TABS)[number][0];
 
 export default function Config({ tenantId }: { tenantId: string }) {
@@ -21,6 +21,7 @@ export default function Config({ tenantId }: { tenantId: string }) {
     {tab === 'conocimiento' && <Conocimiento t={tenantId} />}
     {tab === 'sitio' && <Sitio t={tenantId} />}
     {tab === 'whatsapp' && <WhatsApp t={tenantId} />}
+    {tab === 'uso' && <Uso t={tenantId} />}
     {tab === 'equipo' && <Equipo t={tenantId} />}
   </div>);
 }
@@ -154,4 +155,32 @@ function WhatsApp({ t }: { t: string }) {
     <input type="email" value={n.email} onChange={(e) => setN({ ...n, email: e.target.value })} placeholder="correo del gerente/admin" />
     <input value={n.phone} onChange={(e) => setN({ ...n, phone: e.target.value })} placeholder="Con código de país (5215512345678)" />
     <button onClick={add} disabled={!n.email || !n.phone}>Autorizar número</button>{msg && <span className="note">{msg}</span>}</section>);
+}
+
+const MODE_LABEL: Record<string, string> = { gerente: 'Asistente en la app (gerentes)', cliente: 'Chat del sitio web (clientes)' };
+const nf = (n: number) => Number(n).toLocaleString('es-MX');
+
+function Uso({ t }: { t: string }) {
+  const [sum, setSum] = useState<{ mode: string; used: number; token_limit: number; requests: number }[] | null>(null);
+  const [days, setDays] = useState<{ day: string; mode: string; tokens: number; requests: number }[]>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    supabase.rpc('tenant_usage_summary', { p_tenant: t }).then(({ data, error }) => (error ? setErr(error.message) : setSum(data ?? [])));
+    supabase.rpc('tenant_usage_daily', { p_tenant: t, p_days: 7 }).then(({ data }) => setDays(data ?? []));
+  }, [t]);
+  if (err) return <section className="card"><h2>Uso</h2><p className="note" role="alert">{err}</p></section>;
+  if (!sum) return <section className="card"><h2>Uso</h2><p className="muted">Cargando…</p></section>;
+  return (<section className="card"><h2>Uso del mes</h2>
+    <p className="muted">La IA consume "tokens" (unidades de texto que lee y escribe). El tope lo define tu plan y se renueva el día 1 de cada mes (hora UTC). Si se alcanza, el asistente avisa y deja de responder hasta el siguiente mes o hasta que se amplíe el plan.</p>
+    {sum.map((r) => {
+      const pct = r.token_limit > 0 ? Math.min(100, Math.round((Number(r.used) / Number(r.token_limit)) * 100)) : 0;
+      return (<div key={r.mode} className="usage">
+        <strong>{MODE_LABEL[r.mode] ?? r.mode}</strong>
+        <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span className={pct >= 100 ? 'full' : pct >= 80 ? 'warn' : ''} style={{ width: pct + '%' }} /></div>
+        <span className="muted">{nf(r.used)} de {nf(r.token_limit)} tokens ({pct}%) · {nf(r.requests)} consultas</span>
+      </div>);
+    })}
+    {!!days.length && <><h3>Últimos 7 días</h3>
+      <ul>{days.map((d, i) => <li key={i}>{d.day} · {d.mode === 'gerente' ? 'App' : 'Sitio web'}: {nf(d.tokens)} tokens ({nf(d.requests)} consultas)</li>)}</ul></>}
+  </section>);
 }

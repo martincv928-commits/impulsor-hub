@@ -3,7 +3,8 @@ import type { LlmClient, LlmMessage, Block } from './llm.ts';
 import type { ToolCtx, ToolDef } from './tools.ts';
 
 export interface ToolTrace { tool: string; params: Record<string, unknown>; ok: boolean; summary: string }
-export interface AgentResult { text: string; traces: ToolTrace[] }
+export interface AgentUsage { input_tokens: number; output_tokens: number; calls: number }
+export interface AgentResult { text: string; traces: ToolTrace[]; usage: AgentUsage }
 
 const MAX_RESULT_CHARS = 14000;
 export function compactResult(v: unknown): string {
@@ -18,13 +19,15 @@ export async function runAgent(opts: {
   const { llm, system, tools, ctx } = opts;
   const messages: LlmMessage[] = [...opts.history, { role: 'user', content: opts.userText }];
   const traces: ToolTrace[] = [];
+  const usage: AgentUsage = { input_tokens: 0, output_tokens: 0, calls: 0 };
   const specs = tools.map(({ name, description, input_schema }) => ({ name, description, input_schema }));
 
   for (let step = 0; step < (opts.maxSteps ?? 6); step++) {
     const r = await llm.complete({ system, messages, tools: specs });
+    usage.calls += 1; usage.input_tokens += r.usage?.input_tokens ?? 0; usage.output_tokens += r.usage?.output_tokens ?? 0;
     const uses = r.content.filter((b): b is Extract<Block, { type: 'tool_use' }> => b.type === 'tool_use');
     if (r.stop_reason !== 'tool_use' || !uses.length) {
-      return { text: r.content.filter((b) => b.type === 'text').map((b: any) => b.text).join('\n').trim(), traces };
+      return { text: r.content.filter((b) => b.type === 'text').map((b: any) => b.text).join('\n').trim(), traces, usage };
     }
     messages.push({ role: 'assistant', content: r.content });
     const results: Block[] = [];
@@ -48,5 +51,5 @@ export async function runAgent(opts: {
     }
     messages.push({ role: 'user', content: results });
   }
-  return { text: 'No pude completar la consulta con los datos disponibles. Intenta de nuevo con una pregunta más concreta.', traces };
+  return { text: 'No pude completar la consulta con los datos disponibles. Intenta de nuevo con una pregunta más concreta.', traces, usage };
 }

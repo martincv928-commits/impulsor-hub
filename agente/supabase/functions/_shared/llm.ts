@@ -6,11 +6,14 @@ export type Block =
 export interface LlmMessage { role: 'user' | 'assistant'; content: string | Block[] }
 export interface ToolSpec { name: string; description: string; input_schema: Record<string, unknown> }
 export interface LlmRequest { system: string; messages: LlmMessage[]; tools: ToolSpec[] }
-export interface LlmResponse { stop_reason: string; content: Block[] }
+export interface LlmUsage { input_tokens: number; output_tokens: number }
+export interface LlmResponse { stop_reason: string; content: Block[]; usage?: LlmUsage }
+/** Modelo por defecto (barato y rápido). Se puede cambiar sin código con el secreto ANTHROPIC_MODEL. */
+export const DEFAULT_MODEL = 'claude-haiku-5-5';
 export interface LlmClient { complete(req: LlmRequest): Promise<LlmResponse> }
 
 export class AnthropicClient implements LlmClient {
-  constructor(private apiKey: string, private model = 'claude-sonnet-5-5', private fetcher: typeof fetch = fetch) {}
+  constructor(private apiKey: string, private model = DEFAULT_MODEL, private fetcher: typeof fetch = fetch) {}
   async complete(req: LlmRequest): Promise<LlmResponse> {
     const res = await this.fetcher('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -20,6 +23,7 @@ export class AnthropicClient implements LlmClient {
     });
     if (!res.ok) throw new Error(`LLM HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const j: any = await res.json();
-    return { stop_reason: j.stop_reason, content: j.content as Block[] };
+    const usage = j.usage ? { input_tokens: Number(j.usage.input_tokens) || 0, output_tokens: Number(j.usage.output_tokens) || 0 } : undefined;
+    return { stop_reason: j.stop_reason, content: j.content as Block[], usage };
   }
 }
