@@ -19,7 +19,7 @@ export default function Chat({ tenantId, isAdmin, goConfig }: { tenantId: string
 
   useEffect(() => {
     if (!isAdmin) return;
-    supabase.rpc('erp_connection_public', { p_tenant: tenantId }).then(({ data, error }) => { if (!error) setErpOk(!!data?.[0] && data[0].status === 'ok'); });
+    supabase.rpc('erp_source_public', { p_tenant: tenantId }).then(({ data, error }) => { if (!error) setErpOk(!!data?.[0] && data[0].status === 'ok'); });
   }, [tenantId, isAdmin]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
 
@@ -41,7 +41,7 @@ export default function Chat({ tenantId, isAdmin, goConfig }: { tenantId: string
           <div className="empty">
             <h2>¿Qué quieres saber de tu negocio?</h2>
             <p className="muted">Consulto tu ERP en tiempo real. Sólo leo datos; no modifico nada.</p>
-            {isAdmin && erpOk === false && <button className="warn" onClick={goConfig}>Aún no conectas tu ERP · Conectar ahora</button>}
+            {isAdmin && erpOk === false && <button className="warn" onClick={goConfig}>Aún no conectas tus datos · Conectar ahora</button>}
             <div className="chips">{ideas.map((i) => <button key={i} onClick={(e) => send(e, i)}>{i}</button>)}</div>
           </div>
         )}

@@ -19,7 +19,7 @@ Especificación: [`docs/SPEC.md`](docs/SPEC.md) · Reglas de trabajo: [`CLAUDE.m
 ## Estructura
 ```
 src/                       App React (login, chat, configuración)
-supabase/migrations/       Esquema (0001 base, 0002/0004 WhatsApp, 0003 búsqueda de conocimiento, 0005 uso y topes)
+supabase/migrations/       Esquema (0001 base, 0002/0004 WhatsApp, 0003 búsqueda de conocimiento, 0005 uso y topes, 0006 fuentes de datos)
 supabase/functions/api/    Edge Function única (chat, ERP, conocimiento, WhatsApp, widget.js)
 supabase/functions/_shared/ Núcleo testeable (agente, Odoo, reportes, WhatsApp…)
 brand/  scripts/  resources/  Logo (SVG), generador de íconos, íconos Android
@@ -30,7 +30,7 @@ signing/                   Llave de PRUEBAS pública (APK instalable sobre el an
 ## Comandos
 ```bash
 npm ci
-npm test            # 75+ pruebas: BD/RLS, conector, modos, reportes, WhatsApp
+npm test            # 145+ pruebas: BD/RLS, conector, modos, reportes, WhatsApp
 npm run build       # tipos + build web
 npm run icons       # regenera íconos PNG desde brand/*.svg (requiere playwright)
 ```
@@ -46,6 +46,15 @@ Al fusionar a `master` con cambios en `agente/`, el workflow **ATALAIA APK** cor
 `https://github.com/martincv928-commits/impulsor-hub/releases/download/agente-apk-latest/atalaya.apk`
 (ID técnico `mx.impulsor.atalaya` y archivo `atalaya.apk` se conservan por continuidad; la app se llama AtalaIA; firma de pruebas fija: cada APK se instala sobre el anterior). Los PR corren **ATALAIA CI** (pruebas + build).
 Para Google Play hay que crear una llave de subida aparte (fuera del repo).
+
+## Fuentes de datos (cada empresa elige una)
+Configuración → **Datos**. Todas son de **sólo lectura** y comparten la misma lógica de sumas por moneda, antigüedad y reportes.
+- **Odoo:** consulta en vivo (JSON-RPC con lista blanca de métodos de lectura).
+- **API de mi sistema (REST genérica):** la empresa indica dirección base, autenticación (token, llave en encabezado o parámetro, usuario/contraseña), y por cada consulta (ventas, cuentas por cobrar/pagar, inventario, clientes, catálogo) la ruta, la paginación (página, offset, cursor o enlace siguiente) y qué campo es cada dato. Sólo `GET`, sin redirecciones, mismo servidor, límites de tamaño/páginas (5,000 registros), y un botón **Probar** que muestra cómo se leerían los primeros registros antes de guardar.
+- **Archivos Excel/CSV:** se sube un `.xlsx` o `.csv` por conjunto de datos; se sugieren las columnas, se elige separador decimal y formato de fecha, y se valida **fila por fila: si una sola fila es inválida no se carga nada** y se muestra la fila y el motivo. Los datos quedan versionados (una versión activa) y toda respuesta indica que **no son en vivo** y la fecha de carga.
+- Reglas comunes: importes con `Decimal`, moneda obligatoria (columna o valor fijo), nunca se adivinan valores ni se descartan filas en silencio, y el ranking de clientes se calcula por moneda.
+- Código: `_shared/mapping.ts` (normalización estricta), `generic.ts`, `files.ts`, `source.ts` (fábrica por tipo). Migración `0006_sources.sql` (tabla `erp_sources`; la anterior `erp_connections` se conserva sin uso).
+- Para agregar un ERP nativo: una clase que implemente `ErpConnector` y un caso en `source.ts` + el tipo en `erp_sources.type`.
 
 ## Modelo de IA y topes de uso por empresa
 - Modelo por defecto: `claude-haiku-5-5` (`DEFAULT_MODEL` en `_shared/llm.ts`); se cambia sin código con el secreto `ANTHROPIC_MODEL`.

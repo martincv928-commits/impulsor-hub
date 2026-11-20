@@ -1,10 +1,11 @@
 // Conector Odoo (JSON-RPC). SÓLO LECTURA: lista blanca de métodos; cualquier otro lanza error.
 import Decimal from 'decimal.js';
-import { agingBucket, daysBetween, sumByCurrency, type CarteraResult, type CatalogoRow, type ClienteRow, type DateRange, type ErpConnector, type InventarioResult, type VentasResult } from './erp.ts';
+import { carteraFromRows, inventarioFromRows, ventasFromRows, type CarteraResult, type CatalogoRow, type ClienteRow, type DateRange, type ErpConnector, type InventarioResult, type VentasResult } from './erp.ts';
 import { assertSafeUrl } from './net.ts';
 
 export const ODOO_READ_METHODS = new Set(['search_read', 'search_count', 'read_group', 'fields_get']);
 const LIMIT = 5000;
+const SOURCE = 'Odoo (consulta en vivo)';
 
 export interface OdooConfig { url: string; db: string; username: string; apiKey: string }
 export class OdooError extends Error {}
@@ -62,34 +63,19 @@ export class OdooConnector implements ErpConnector {
     const rows: Row[] = await this.read('sale.order', 'search_read',
       [[['state', 'in', ['sale', 'done']], ['date_order', '>=', `${r.from} 00:00:00`], ['date_order', '<=', `${r.to} 23:59:59`]]],
       { fields: ['name', 'partner_id', 'date_order', 'amount_total', 'currency_id'], limit: LIMIT, order: 'date_order asc' });
-    const pedidos = rows.map((o) => ({ folio: str(o.name), cliente: m2o(o.partner_id), fecha: str(o.date_order).slice(0, 10), currency: m2o(o.currency_id), total: money(o.amount_total) }));
-    const byClient = new Map<string, Decimal>();
-    for (const p of pedidos) { const k = p.cliente + '\u0000' + p.currency; byClient.set(k, (byClient.get(k) ?? new Decimal(0)).plus(p.total)); }
-    const topClientes = [...byClient.entries()].map(([k, t]) => { const [cliente, currency] = k.split('\u0000'); return { cliente, currency, total: t }; })
-      .sort((a, b) => b.total.comparedTo(a.total)).slice(0, 5).map((x) => ({ ...x, total: x.total.toFixed(2) }));
-    return {
-      from: r.from, to: r.to, orderCount: pedidos.length,
-      totals: sumByCurrency(pedidos.map((p) => ({ currency: p.currency, amount: p.total }))), topClientes, pedidos,
-      truncated: rows.length >= LIMIT,
-      note: 'Pedidos confirmados (estado venta/hecho), importe total con impuestos. Rango en hora UTC del servidor Odoo; en los bordes puede diferir de la hora local.',
-    };
+    return ventasFromRows(
+      rows.map((o) => ({ folio: str(o.name), cliente: m2o(o.partner_id), fecha: str(o.date_order).slice(0, 10), currency: m2o(o.currency_id), total: money(o.amount_total) })), r,
+      { source: SOURCE, truncated: rows.length >= LIMIT,
+        note: 'Pedidos confirmados (estado venta/hecho), importe total con impuestos. Rango en hora UTC del servidor Odoo; en los bordes puede diferir de la hora local.' });
   }
 
   private async cartera(moveType: 'out_invoice' | 'in_invoice', asOf: string): Promise<CarteraResult> {
     const rows: Row[] = await this.read('account.move', 'search_read',
       [[['move_type', '=', moveType], ['state', '=', 'posted'], ['payment_state', 'in', ['not_paid', 'partial']], ['amount_residual', '>', 0]]],
       { fields: ['name', 'partner_id', 'invoice_date_due', 'amount_residual', 'currency_id'], limit: LIMIT, order: 'invoice_date_due asc' });
-    const documentos = rows.map((d) => {
-      const vence = str(d.invoice_date_due);
-      return { folio: str(d.name), tercero: m2o(d.partner_id), vence, diasVencido: vence ? daysBetween(vence, asOf) : 0, currency: m2o(d.currency_id), saldo: money(d.amount_residual) };
-    });
-    const ag = new Map<string, Decimal>();
-    for (const d of documentos) { const k = agingBucket(d.diasVencido) + '|' + d.currency; ag.set(k, (ag.get(k) ?? new Decimal(0)).plus(d.saldo)); }
-    return {
-      asOf, totals: sumByCurrency(documentos.map((d) => ({ currency: d.currency, amount: d.saldo }))),
-      aging: [...ag.entries()].map(([k, t]) => { const [bucket, currency] = k.split('|'); return { bucket: bucket as any, currency, total: t.toFixed(2) }; }),
-      documentos, truncated: rows.length >= LIMIT,
-    };
+    return carteraFromRows(
+      rows.map((d) => ({ folio: str(d.name), tercero: m2o(d.partner_id), vence: str(d.invoice_date_due), currency: m2o(d.currency_id), saldo: money(d.amount_residual) })), asOf,
+      { source: SOURCE, truncated: rows.length >= LIMIT });
   }
   cuentasPorCobrar(asOf: string) { return this.cartera('out_invoice', asOf); }
   cuentasPorPagar(asOf: string) { return this.cartera('in_invoice', asOf); }
@@ -100,7 +86,9 @@ export class OdooConnector implements ErpConnector {
     let rows: Row[];
     try { rows = await this.read('product.product', 'search_read', [[['is_storable', '=', true], ...filt]], kw); } // Odoo 18+
     catch { rows = await this.read('product.product', 'search_read', [[['type', '=', 'product'], ...filt]], kw); } // Odoo ≤17
-    return { filas: rows.map((p) => ({ codigo: str(p.default_code), producto: str(p.display_name), existencia: String(p.qty_available ?? 0), proyectado: String(p.virtual_available ?? 0), udm: m2o(p.uom_id) })), truncated: rows.length >= 500 };
+    return inventarioFromRows(
+      rows.map((p) => ({ codigo: str(p.default_code), producto: str(p.display_name), existencia: String(p.qty_available ?? 0), proyectado: String(p.virtual_available ?? 0), udm: m2o(p.uom_id) })), undefined,
+      { source: SOURCE, truncated: rows.length >= 500 });
   }
 
   async clientes(q?: string): Promise<ClienteRow[]> {

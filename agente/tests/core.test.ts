@@ -70,7 +70,7 @@ describe('conector Odoo: sólo lectura', () => {
     const r = await new OdooConnector(cfg, fetcher).ventas({ from: '2026-01-01', to: '2026-01-31' });
     expect(r.totals).toEqual([{ currency: 'MXN', total: '0.30', count: 2 }, { currency: 'USD', total: '100.50', count: 1 }]);
     expect(r.orderCount).toBe(3); expect(r.truncated).toBe(false);
-    expect(r.topClientes[0]).toEqual({ cliente: 'Cliente B', currency: 'USD', total: '100.50' });
+    expect(r.topClientes).toEqual([{ cliente: 'Cliente A', currency: 'MXN', total: '0.30' }, { cliente: 'Cliente B', currency: 'USD', total: '100.50' }]);
   });
   it('cartera: antigüedad por cubetas y totales', async () => {
     const { fetcher } = fakeOdoo({ 'account.move': [

@@ -14,7 +14,7 @@ beforeAll(async () => {
   await as(db, u.admA, "select add_member_by_email($1,'lecA@test.mx','lector')", [tA]);
   convA = (await asRole(db, 'service_role', "insert into conversations(tenant_id,mode,channel) values ($1,'cliente','web') returning id", [tA]))[0].id;
   await asRole(db, 'service_role', "insert into messages(conversation_id,tenant_id,role,content) values ($1,$2,'user','hola secreto A')", [convA, tA]);
-  await asRole(db, 'service_role', "insert into erp_connections(tenant_id,type,url,db,username,secret_enc) values ($1,'odoo','https://x.example.com','d','u','v1.xxx')", [tA]);
+  await asRole(db, 'service_role', "insert into erp_sources(tenant_id,type,config,secret_enc) values ($1,'odoo','{\"url\":\"https://x.example.com\",\"db\":\"d\",\"username\":\"u\"}','v1.xxx')", [tA]);
 });
 
 describe('aislamiento entre empresas (RLS)', () => {
@@ -186,5 +186,69 @@ describe('uso y topes por empresa (BD)', () => {
     const d = await as(db, u.admA, 'select * from tenant_usage_daily($1, 14)', [tA]);
     expect(d.length).toBeGreaterThan(0); expect(d.every((r) => Number(r.tokens) > 0)).toBe(true);
     expect(await as(db, u.admB, 'select * from tenant_usage_daily($1, 14)', [tA])).toHaveLength(0);
+  });
+});
+
+describe('fuentes de datos y archivos (BD)', () => {
+  it('erp_sources: ningún cliente la lee ni escribe; el estado público sólo lo ve el admin de la empresa y sin secretos', async () => {
+    await expect(as(db, u.admA, 'select * from erp_sources')).rejects.toThrow();
+    await expect(asRole(db, 'anon', 'select * from erp_sources')).rejects.toThrow();
+    await expect(as(db, u.admA, "insert into erp_sources(tenant_id,type) values ('" + tB + "','files')")).rejects.toThrow();
+    const r = await as(db, u.admA, 'select * from erp_source_public($1)', [tA]);
+    expect(r).toHaveLength(1); expect(r[0].type).toBe('odoo'); expect(JSON.stringify(r)).not.toContain('v1.xxx');
+    expect(await as(db, u.gerA, 'select * from erp_source_public($1)', [tA])).toHaveLength(0);
+    expect(await as(db, u.admB, 'select * from erp_source_public($1)', [tA])).toHaveLength(0);
+  });
+  it('compatibilidad: erp_connection_public sólo devuelve fuentes Odoo', async () => {
+    expect(await as(db, u.admA, 'select * from erp_connection_public($1)', [tA])).toHaveLength(1);
+    await asRole(db, 'service_role', "update erp_sources set type='generic_rest' where tenant_id=$1", [tA]);
+    expect(await as(db, u.admA, 'select * from erp_connection_public($1)', [tA])).toHaveLength(0);
+    expect((await as(db, u.admA, 'select type from erp_source_public($1)', [tA]))[0].type).toBe('generic_rest');
+    await asRole(db, 'service_role', "update erp_sources set type='odoo' where tenant_id=$1", [tA]);
+  });
+  it('el tipo de fuente sólo admite odoo, generic_rest o files', async () => {
+    await expect(asRole(db, 'service_role', "insert into erp_sources(tenant_id,type) values ($1,'sap')", [tB])).rejects.toThrow();
+    await asRole(db, 'service_role', "insert into erp_sources(tenant_id,type) values ($1,'files')", [tB]);
+  });
+  it('MIGRACIÓN: las conexiones Odoo existentes pasan a erp_sources y siguen visibles para las apps ya instaladas', async () => {
+    const { PGlite } = await import('@electric-sql/pglite'); const { readFileSync } = await import('node:fs');
+    const d = new PGlite();
+    await d.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create schema auth; create table auth.users (id uuid primary key, email text);
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      grant usage on schema auth to anon, authenticated, service_role; grant usage on schema public to anon, authenticated, service_role;`);
+    for (const f of ['0001_agente_v01', '0002_whatsapp', '0003_search_knowledge_or', '0004_whatsapp_channels', '0005_usage']) await d.exec(readFileSync(`supabase/migrations/${f}.sql`, 'utf8'));
+    await d.exec("insert into auth.users values ('00000000-0000-0000-0000-0000000000aa','a@x.mx')");
+    await d.exec("select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000aa', false); set role authenticated;");
+    const t = (await d.query<any>("select create_tenant('Vieja') t")).rows[0].t; await d.exec('reset role');
+    await d.query("insert into erp_connections(tenant_id,type,url,db,username,secret_enc,status) values ($1,'odoo','https://o.example.com','db1','u@x.mx','v1.abc','ok')", [t]);
+    await d.exec(readFileSync('supabase/migrations/0006_sources.sql', 'utf8'));
+    const s = (await d.query<any>('select type, config, secret_enc, status from erp_sources where tenant_id=$1', [t])).rows;
+    expect(s).toEqual([{ type: 'odoo', config: { url: 'https://o.example.com', db: 'db1', username: 'u@x.mx' }, secret_enc: 'v1.abc', status: 'ok' }]);
+    await d.exec("select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000aa', false); set role authenticated;");
+    const c = (await d.query<any>('select * from erp_connection_public($1)', [t])).rows;
+    expect(c).toEqual([expect.objectContaining({ type: 'odoo', url: 'https://o.example.com', db: 'db1', username: 'u@x.mx', status: 'ok' })]);
+  });
+  it('dataset_versions: sólo una versión activa por empresa y conjunto; otra empresa no la ve; las filas no son legibles por clientes', async () => {
+    const v1 = (await asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'ventas','a.csv',1) returning id", [tA]))[0].id;
+    await asRole(db, 'service_role', "insert into dataset_rows(version_id,tenant_id,data) values ($1,$2,'{\"folio\":\"A1\"}')", [v1, tA]);
+    await expect(asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'ventas','b.csv',1)", [tA])).rejects.toThrow();
+    await asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'inventario','i.csv',1)", [tA]); // otro dataset: sí
+    await asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'ventas','b.csv',1)", [tB]); // otra empresa: sí
+    expect((await as(db, u.admA, 'select filename from dataset_versions order by filename')).map((r) => r.filename)).toEqual(['a.csv', 'i.csv']);
+    expect((await as(db, u.admB, 'select filename from dataset_versions')).map((r) => r.filename)).toEqual(['b.csv']);
+    expect(await as(db, u.gerA, 'select * from dataset_versions')).toHaveLength(0);
+    await expect(as(db, u.admA, 'select * from dataset_rows')).rejects.toThrow();
+    await expect(as(db, u.admA, "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ('" + tA + "','clientes','x.csv',1)")).rejects.toThrow();
+    await expect(asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'nomina','x.csv',1)", [tA])).rejects.toThrow();
+  });
+  it('al reemplazar un archivo la versión nueva queda activa y al borrar la vieja se van sus filas', async () => {
+    await asRole(db, 'service_role', "update dataset_versions set active=false where tenant_id=$1 and dataset='ventas' and active", [tA]);
+    const v2 = (await asRole(db, 'service_role', "insert into dataset_versions(tenant_id,dataset,filename,row_count) values ($1,'ventas','nuevo.csv',2) returning id", [tA]))[0].id;
+    await asRole(db, 'service_role', "insert into dataset_rows(version_id,tenant_id,data) values ($1,$2,'{}')", [v2, tA]);
+    await asRole(db, 'service_role', "select 1 from dataset_versions where tenant_id=$1 and not active and dataset='ventas'", [tA]);
+    const before = Number((await asRole(db, 'service_role', 'select count(*)::int n from dataset_rows where tenant_id=$1', [tA]))[0].n);
+    await asRole(db, 'service_role', "delete from dataset_versions where tenant_id=$1 and dataset='ventas' and not active", [tA]);
+    const after = Number((await asRole(db, 'service_role', 'select count(*)::int n from dataset_rows where tenant_id=$1', [tA]))[0].n);
+    expect(after).toBe(before - 1);
   });
 });
