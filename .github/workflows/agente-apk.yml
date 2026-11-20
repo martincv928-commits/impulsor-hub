@@ -60,7 +60,12 @@ jobs:
       - name: "Compilar APK (firma de pruebas fija)"
         working-directory: agente/android
         run: |
-          ./gradlew --no-daemon assembleDebug
+          # Maven Central a veces responde 429/5xx: se reintenta (hasta 3 veces) antes de dar el build por fallido.
+          for i in 1 2 3; do
+            ./gradlew --no-daemon assembleDebug && break
+            [ "$i" = 3 ] && { echo "::error::Gradle falló 3 veces"; exit 1; }
+            echo "Intento $i falló (¿red o Maven?). Reintentando en 30 s…"; sleep 30
+          done
           cp app/build/outputs/apk/debug/app-debug.apk ../atalaya.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs ../atalaya.apk | grep -E "SHA-256|Signer #1 certificate DN" | tee -a "$GITHUB_STEP_SUMMARY"
