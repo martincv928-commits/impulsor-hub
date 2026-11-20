@@ -27,3 +27,9 @@ export class AnthropicClient implements LlmClient {
     return { stop_reason: j.stop_reason, content: j.content as Block[], usage };
   }
 }
+
+/** Una clave de API de Anthropic empieza con "sk-ant-" y no lleva espacios. */
+export const looksLikeAnthropicKey = (k: string): boolean => /^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(k);
+export const keyHint = (k: string): string => '…' + k.slice(-4);
+/** El proveedor rechazó la clave (401/403). */
+export const isAuthError = (e: unknown): boolean => e instanceof Error && /^LLM HTTP (401|403)\b/.test(e.message);

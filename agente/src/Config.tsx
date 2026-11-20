@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_URL, api, supabase } from './supabase';
+import { API_URL, api, esError, supabase } from './supabase';
 import { FEATURES } from './brand';
 import Datos from './Datos';
 
@@ -150,7 +150,7 @@ function Uso({ t }: { t: string }) {
   }, [t]);
   if (err) return <section className="card"><h2>Uso</h2><p className="note" role="alert">{err}</p></section>;
   if (!sum) return <section className="card"><h2>Uso</h2><p className="muted">Cargando…</p></section>;
-  return (<section className="card"><h2>Uso del mes</h2>
+  return (<><LlmKey t={t} /><section className="card"><h2>Uso del mes</h2>
     <p className="muted">La IA consume "tokens" (unidades de texto que lee y escribe). El tope lo define tu plan y se renueva el día 1 de cada mes (hora UTC). Si se alcanza, el asistente avisa y deja de responder hasta el siguiente mes o hasta que se amplíe el plan.</p>
     {sum.map((r) => {
       const pct = r.token_limit > 0 ? Math.min(100, Math.round((Number(r.used) / Number(r.token_limit)) * 100)) : 0;
@@ -162,5 +162,27 @@ function Uso({ t }: { t: string }) {
     })}
     {!!days.length && <><h3>Últimos 7 días</h3>
       <ul>{days.map((d, i) => <li key={i}>{d.day} · {d.mode === 'gerente' ? 'App' : 'Sitio web'}: {nf(d.tokens)} tokens ({nf(d.requests)} consultas)</li>)}</ul></>}
+  </section></>);
+}
+
+/** Clave de IA propia de la empresa (opcional). Si la pone, el consumo va a su cuenta de Anthropic. */
+function LlmKey({ t }: { t: string }) {
+  const [hint, setHint] = useState<string | null | undefined>(undefined);
+  const [key, setKey] = useState(''); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
+  const load = () => supabase.rpc('tenant_llm_public', { p_tenant: t }).then(({ data }) => setHint(data?.[0]?.key_hint ?? null));
+  useEffect(() => { load(); }, [t]);
+  const run = async (body: Record<string, unknown>, ok: string) => {
+    setBusy(true); setMsg('');
+    try { await api({ tenant_id: t, ...body }); setMsg(ok); setKey(''); await load(); } catch (e) { setMsg(esError(e instanceof Error ? e.message : String(e))); } finally { setBusy(false); }
+  };
+  if (hint === undefined) return null;
+  return (<section className="card"><h2>Clave de IA de tu empresa</h2>
+    <p className="muted">Opcional. {hint ? <>Tu empresa usa su propia clave de Anthropic ({hint}): el consumo se cobra a tu cuenta de Anthropic y no tiene el tope mensual de tu plan.</> : 'Si no pones una, se usa la de tu plan (con tope mensual). Si pones la tuya, el consumo se cobra directo a tu cuenta de Anthropic (console.anthropic.com) y no tiene tope de tu plan.'}</p>
+    <label>Clave de API de Anthropic<input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" /></label>
+    <div className="row">
+      <button disabled={busy || !key.trim()} onClick={() => run({ action: 'llm_key_save', api_key: key }, 'Clave verificada y guardada.')}>{busy ? 'Verificando…' : hint ? 'Cambiar clave' : 'Guardar clave'}</button>
+      {hint && <button className="secondary" disabled={busy} onClick={() => { if (window.confirm('¿Volver a usar la clave del plan (con tope mensual)?')) run({ action: 'llm_key_remove' }, 'Listo: se usará la clave del plan.'); }}>Quitar mi clave</button>}
+    </div>
+    {msg && <p className="note" role="status">{msg}</p>}
   </section>);
 }

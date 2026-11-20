@@ -263,3 +263,18 @@ describe('herramientas: búsqueda por texto', () => {
     expect(got).toBe('Tornillo grande');
   });
 });
+
+import { isAuthError, keyHint, looksLikeAnthropicKey } from '../supabase/functions/_shared/llm.ts';
+describe('clave de IA propia: validación', () => {
+  it('reconoce el formato y oculta la clave', () => {
+    expect(looksLikeAnthropicKey('sk-ant-api03-' + 'a'.repeat(40))).toBe(true);
+    for (const k of ['', 'sk-123', 'sk-ant-corta', 'sk-ant-api03-' + 'a'.repeat(40) + ' x', 'Bearer sk-ant-' + 'a'.repeat(40)]) expect(looksLikeAnthropicKey(k)).toBe(false);
+    expect(keyHint('sk-ant-api03-' + 'a'.repeat(36) + 'WXYZ')).toBe('…WXYZ');
+  });
+  it('detecta rechazo de credenciales sólo en 401/403', () => {
+    expect(isAuthError(new Error('LLM HTTP 401: x'))).toBe(true);
+    expect(isAuthError(new Error('LLM HTTP 403: x'))).toBe(true);
+    expect(isAuthError(new Error('LLM HTTP 429: x'))).toBe(false);
+    expect(isAuthError('LLM HTTP 401')).toBe(false);
+  });
+});

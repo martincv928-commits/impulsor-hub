@@ -252,3 +252,21 @@ describe('fuentes de datos y archivos (BD)', () => {
     expect(after).toBe(before - 1);
   });
 });
+
+describe('clave de IA propia por empresa (BD)', () => {
+  it('el consumo con clave propia no cuenta contra el tope de la plataforma', async () => {
+    const before = Number((await asRole(db, 'service_role', "select used from usage_check($1,'cliente')", [tB]))[0].used);
+    await asRole(db, 'service_role', "insert into usage_events(tenant_id,mode,channel,model,input_tokens,output_tokens,own_key) values ($1,'cliente','web','claude-haiku-5-5',5000,5000,true)", [tB]);
+    expect(Number((await asRole(db, 'service_role', "select used from usage_check($1,'cliente')", [tB]))[0].used)).toBe(before);
+    await asRole(db, 'service_role', "insert into usage_events(tenant_id,mode,channel,model,input_tokens,output_tokens) values ($1,'cliente','web','claude-haiku-5-5',10,10)", [tB]);
+    expect(Number((await asRole(db, 'service_role', "select used from usage_check($1,'cliente')", [tB]))[0].used)).toBe(before + 20);
+  });
+  it('la clave guardada es inaccesible para clientes; el admin sólo ve el final, y sólo de su empresa', async () => {
+    await asRole(db, 'service_role', "insert into tenant_llm(tenant_id,key_enc,key_hint) values ($1,'v1.xxx','…abcd')", [tA]);
+    for (const q of ['select * from tenant_llm', "update tenant_llm set key_hint = 'x'"]) await expect(as(db, u.admA, q)).rejects.toThrow();
+    await expect(asRole(db, 'anon', 'select * from tenant_llm')).rejects.toThrow();
+    expect((await as(db, u.admA, "select key_hint from tenant_llm_public('" + tA + "')"))[0].key_hint).toBe('…abcd');
+    expect(await as(db, u.gerA, "select key_hint from tenant_llm_public('" + tA + "')")).toHaveLength(0);
+    expect(await as(db, u.admA, "select key_hint from tenant_llm_public('" + tB + "')")).toHaveLength(0);
+  });
+});
