@@ -1,0 +1,57 @@
+# AtalaIA: genera UNA VEZ la llave de firma de publicación y la entrega como archivo descargable (1 día).
+# Nunca se guarda en el repo. Si ya existe el secreto ATALAYA_KEYSTORE_BASE64, se niega (para no reemplazarla por error).
+name: ATALAIA Generar llave de firma
+
+on:
+  workflow_dispatch:
+    inputs:
+      reemplazar:
+        description: Escribe REEMPLAZAR sólo si quieres generar otra llave aunque ya exista una (requiere restablecerla en Play Console)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: 21 }
+      - name: Verificar que no exista ya una llave
+        env:
+          EXISTE: ${{ secrets.ATALAYA_KEYSTORE_BASE64 != '' }}
+          REEMPLAZAR: ${{ inputs.reemplazar }}
+        run: |
+          if [ "$EXISTE" = "true" ] && [ "$REEMPLAZAR" != "REEMPLAZAR" ]; then
+            echo "::error::Ya existe ATALAYA_KEYSTORE_BASE64. No se genera otra llave."; exit 1
+          fi
+      - name: Generar llave
+        run: |
+          umask 077
+          mkdir -p salida
+          PASS=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 28)
+          echo "::add-mask::$PASS"
+          keytool -genkeypair -storetype PKCS12 -keystore salida/atalaya-subida.p12 -alias subida \
+            -keyalg RSA -keysize 4096 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=AtalaIA, O=Impulsor, C=MX" >/dev/null 2>&1
+          base64 -w0 salida/atalaya-subida.p12 > salida/1_ATALAYA_KEYSTORE_BASE64.txt
+          printf '%s' "$PASS" > salida/2_ATALAYA_KEYSTORE_PASSWORD.txt
+          printf 'subida' > salida/3_ATALAYA_KEY_ALIAS.txt
+          keytool -exportcert -rfc -keystore salida/atalaya-subida.p12 -alias subida -storepass "$PASS" > salida/certificado_subida.pem 2>/dev/null
+          cat > salida/LEEME.txt <<'TXT'
+          LLAVE DE SUBIDA DE FISCALBOX (Google Play App Signing)
+          1) RESPALDO: guarda este ZIP completo en un lugar seguro y privado (p. ej. tu Google Drive). No lo compartas.
+          2) En GitHub > repo impulsor-hub > Settings > Secrets and variables > Actions > New repository secret, crea:
+             ATALAYA_KEYSTORE_BASE64  = contenido de 1_ATALAYA_KEYSTORE_BASE64.txt
+             ATALAYA_KEYSTORE_PASSWORD = contenido de 2_ATALAYA_KEYSTORE_PASSWORD.txt
+             ATALAYA_KEY_ALIAS         = subida
+          3) Si algún día la pierdes, se puede restablecer en Play Console (Integridad de la app > Firma de apps) usando certificado_subida.pem de una llave nueva.
+          TXT
+          ls -la salida
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llave-subida-atalaya
+          path: salida/
+          retention-days: 1
