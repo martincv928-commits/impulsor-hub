@@ -82,7 +82,7 @@ export class OdooConnector implements ErpConnector {
 
   async inventario(q?: string): Promise<InventarioResult> {
     const filt: unknown[] = q ? ['|', ['name', 'ilike', q], ['default_code', 'ilike', q]] : [];
-    const kw = { fields: ['default_code', 'display_name', 'qty_available', 'virtual_available', 'uom_id'], limit: 500, order: 'display_name asc' };
+    const kw = { fields: ['default_code', 'display_name', 'qty_available', 'virtual_available', 'uom_id'], limit: 500, order: 'name asc, id asc' };
     let rows: Row[];
     try { rows = await this.read('product.product', 'search_read', [[['is_storable', '=', true], ...filt]], kw); } // Odoo 18+
     catch { rows = await this.read('product.product', 'search_read', [[['type', '=', 'product'], ...filt]], kw); } // Odoo ≤17

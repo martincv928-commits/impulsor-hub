@@ -14,13 +14,13 @@ import { buildReport } from '../supabase/functions/_shared/reports.ts';
 
 // ---- Odoo simulado (fixtures sintéticos; NO es una conexión real) ----
 function fakeOdoo(data: Record<string, any[]>) {
-  const calls: { model?: string; method: string }[] = [];
+  const calls: { model?: string; method: string; order?: string }[] = [];
   const fetcher = (async (_url: string, init: any) => {
     const { params } = JSON.parse(init.body);
     if (params.service === 'common' && params.method === 'authenticate') return Response.json({ result: params.args[2] === 'KEY' ? 7 : false });
     if (params.service === 'common' && params.method === 'version') return Response.json({ result: { server_version: '17.0' } });
     const [, , , model, method] = params.args;
-    calls.push({ model, method });
+    calls.push({ model, method, order: params.args[6]?.order });
     if (data[model + ':error']) return Response.json({ error: { data: { message: 'campo inválido' } } });
     return Response.json({ result: data[model] ?? [] });
   }) as unknown as typeof fetch;
@@ -45,6 +45,11 @@ describe('conector Odoo: sólo lectura', () => {
     await o.cuentasPorPagar('2026-02-01'); await o.inventario('x'); await o.clientes('x'); await o.catalogoPublico('x');
     expect(calls.length).toBeGreaterThan(5);
     for (const c of calls) expect(ODOO_READ_METHODS.has(c.method)).toBe(true);
+  });
+  it('REGRESIÓN (Odoo 18 real): no se ordena por campos no almacenados como display_name', async () => {
+    const { fetcher, calls } = fakeOdoo({});
+    await new OdooConnector(cfg, fetcher).inventario();
+    for (const c of calls.filter((x) => x.order)) expect(c.order).not.toMatch(/display_name/);
   });
   it('credenciales inválidas → error claro', async () => {
     const { fetcher } = fakeOdoo({});
